@@ -1,0 +1,58 @@
+{
+  "name": "Formant",
+  "page": 98,
+  "params": [
+    {
+      "index": 0,
+      "name": "Start"
+    },
+    {
+      "index": 1,
+      "name": "Mid"
+    },
+    {
+      "index": 2,
+      "name": "End"
+    },
+    {
+      "index": 3,
+      "name": "Resonance"
+    },
+    {
+      "index": 4,
+      "name": "Ctrl"
+    },
+    {
+      "index": 5,
+      "name": "Mix"
+    },
+    {
+      "index": 6,
+      "name": "Level"
+    },
+    {
+      "index": 7,
+      "name": "Bal"
+    },
+    {
+      "index": 8,
+      "name": "bp mode"
+    },
+    {
+      "index": 9,
+      "name": "GlobMix"
+    },
+    {
+      "index": 10,
+      "name": "Spare"
+    },
+    {
+      "index": 11,
+      "name": "Bypass"
+    },
+    {
+      "index": 12,
+      "name": "Scene Ignore"
+    }
+  ]
+}

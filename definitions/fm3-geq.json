@@ -1,0 +1,86 @@
+{
+  "name": "Geq",
+  "page": 50,
+  "params": [
+    {
+      "index": 0,
+      "name": "Gain 1"
+    },
+    {
+      "index": 1,
+      "name": "Gain 2"
+    },
+    {
+      "index": 2,
+      "name": "Gain 3"
+    },
+    {
+      "index": 3,
+      "name": "Gain 4"
+    },
+    {
+      "index": 4,
+      "name": "Gain 5"
+    },
+    {
+      "index": 5,
+      "name": "Gain 6"
+    },
+    {
+      "index": 6,
+      "name": "Gain 7"
+    },
+    {
+      "index": 7,
+      "name": "Gain 8"
+    },
+    {
+      "index": 8,
+      "name": "Gain 9"
+    },
+    {
+      "index": 9,
+      "name": "Gain 10"
+    },
+    {
+      "index": 10,
+      "name": "Mix"
+    },
+    {
+      "index": 11,
+      "name": "Level"
+    },
+    {
+      "index": 12,
+      "name": "Bal"
+    },
+    {
+      "index": 13,
+      "name": "bp mode"
+    },
+    {
+      "index": 14,
+      "name": "GlobMix"
+    },
+    {
+      "index": 15,
+      "name": "Type"
+    },
+    {
+      "index": 16,
+      "name": "MasterQ"
+    },
+    {
+      "index": 17,
+      "name": "Spare3"
+    },
+    {
+      "index": 18,
+      "name": "Bypass"
+    },
+    {
+      "index": 19,
+      "name": "Scene Ignore"
+    }
+  ]
+}

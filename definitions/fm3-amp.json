@@ -1,0 +1,7 @@
+{
+  "name": "Amp",
+  "page": 58,
+  "params": [
+    { "index": 9, "name": "Mid", "unit": "", "min": 0, "max": 10, "scale": "Linear" }
+  ]
+}

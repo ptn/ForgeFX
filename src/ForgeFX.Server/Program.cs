@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
 var devicePath = app.Configuration["device"] ?? "/dev/ttyACM0";
+var packs = Definitions.LoadDirectory(app.Configuration["definitions"] ?? "definitions");
 var gate = new object();
 Fm3Device? device = null;
 Fm3Device Dev() { lock (gate) { return device ??= new Fm3Device(devicePath); } }
@@ -61,6 +62,18 @@ app.MapPost("/preset/restore", async (HttpRequest req) =>
     var syx = ms.ToArray();
     return Locked(() => { Dev().SendPreset(syx); return Results.Ok(new { ok = true, bytes = syx.Length }); });
 });
+
+// ---- named parameters (definition packs) ----
+
+app.MapGet("/blocks", () => Results.Ok(packs.Keys));
+
+// GET /block/{name}/params -> dump the block and return named, unit-scaled values
+app.MapGet("/block/{name}/params", (string name) => Locked(() =>
+{
+    if (!packs.TryGetValue(name, out var def)) return Results.NotFound(new { error = $"no pack for '{name}'" });
+    var dump = Dev().DumpPage((byte)def.Page);
+    return Results.Ok(new { block = def.Name, page = def.Page, named = Definitions.ReadNamed(def, dump) });
+}));
 
 app.Run();
 

@@ -1,0 +1,7 @@
+{
+  "name": "Cab",
+  "page": 62,
+  "params": [
+    { "index": 62, "name": "Low Cut", "unit": "Hz", "min": 20, "max": 200, "scale": "Log" }
+  ]
+}

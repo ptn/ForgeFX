@@ -1,0 +1,114 @@
+{
+  "name": "Chorus",
+  "page": 78,
+  "params": [
+    {
+      "index": 0,
+      "name": "Type"
+    },
+    {
+      "index": 1,
+      "name": "Voices"
+    },
+    {
+      "index": 2,
+      "name": "Rate"
+    },
+    {
+      "index": 3,
+      "name": "Tempo"
+    },
+    {
+      "index": 4,
+      "name": "Depth"
+    },
+    {
+      "index": 5,
+      "name": "Hi Cut"
+    },
+    {
+      "index": 6,
+      "name": "DelayTime"
+    },
+    {
+      "index": 7,
+      "name": "LFOPhase"
+    },
+    {
+      "index": 8,
+      "name": "LFO Type"
+    },
+    {
+      "index": 9,
+      "name": "AutoDepth"
+    },
+    {
+      "index": 10,
+      "name": "Mix"
+    },
+    {
+      "index": 11,
+      "name": "Level"
+    },
+    {
+      "index": 12,
+      "name": "Bal"
+    },
+    {
+      "index": 13,
+      "name": "bp mode"
+    },
+    {
+      "index": 14,
+      "name": "GlobMix"
+    },
+    {
+      "index": 15,
+      "name": "Bypass"
+    },
+    {
+      "index": 16,
+      "name": "PhaseRev"
+    },
+    {
+      "index": 17,
+      "name": "Width"
+    },
+    {
+      "index": 18,
+      "name": "LFO2Rate"
+    },
+    {
+      "index": 19,
+      "name": "LFO2Depth"
+    },
+    {
+      "index": 20,
+      "name": "Drive"
+    },
+    {
+      "index": 21,
+      "name": "Low Cut"
+    },
+    {
+      "index": 22,
+      "name": "Spread"
+    },
+    {
+      "index": 23,
+      "name": "DimMode"
+    },
+    {
+      "index": 24,
+      "name": "Left Depth"
+    },
+    {
+      "index": 25,
+      "name": "Center Depth"
+    },
+    {
+      "index": 26,
+      "name": "Right Depth"
+    }
+  ]
+}

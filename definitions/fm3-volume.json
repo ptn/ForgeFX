@@ -1,0 +1,42 @@
+{
+  "name": "Volume",
+  "page": 102,
+  "params": [
+    {
+      "index": 0,
+      "name": "Volume"
+    },
+    {
+      "index": 1,
+      "name": "Bal"
+    },
+    {
+      "index": 2,
+      "name": "VolTaper"
+    },
+    {
+      "index": 3,
+      "name": "Bypass"
+    },
+    {
+      "index": 4,
+      "name": "Pan L"
+    },
+    {
+      "index": 5,
+      "name": "Pan R"
+    },
+    {
+      "index": 6,
+      "name": "Level"
+    },
+    {
+      "index": 7,
+      "name": "bp mode"
+    },
+    {
+      "index": 8,
+      "name": "InputSel"
+    }
+  ]
+}

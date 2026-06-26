@@ -1,0 +1,146 @@
+{
+  "name": "Comp",
+  "page": 46,
+  "params": [
+    {
+      "index": 0,
+      "name": "Thresh"
+    },
+    {
+      "index": 1,
+      "name": "Ratio"
+    },
+    {
+      "index": 2,
+      "name": "Attack"
+    },
+    {
+      "index": 3,
+      "name": "Release"
+    },
+    {
+      "index": 4,
+      "name": "Level"
+    },
+    {
+      "index": 5,
+      "name": "Knee"
+    },
+    {
+      "index": 6,
+      "name": "Makeup"
+    },
+    {
+      "index": 7,
+      "name": "Detect"
+    },
+    {
+      "index": 8,
+      "name": "Low Cut"
+    },
+    {
+      "index": 9,
+      "name": "Bypass"
+    },
+    {
+      "index": 10,
+      "name": "Sidechain Src"
+    },
+    {
+      "index": 11,
+      "name": "Mix"
+    },
+    {
+      "index": 12,
+      "name": "Type"
+    },
+    {
+      "index": 13,
+      "name": "Compression"
+    },
+    {
+      "index": 14,
+      "name": "bp mode"
+    },
+    {
+      "index": 15,
+      "name": "LookAHead"
+    },
+    {
+      "index": 16,
+      "name": "Auto"
+    },
+    {
+      "index": 17,
+      "name": "Emphasis"
+    },
+    {
+      "index": 18,
+      "name": "Dynamics"
+    },
+    {
+      "index": 19,
+      "name": "InputLvl"
+    },
+    {
+      "index": 20,
+      "name": "High Cut"
+    },
+    {
+      "index": 21,
+      "name": "Gain"
+    },
+    {
+      "index": 22,
+      "name": "Frequency"
+    },
+    {
+      "index": 23,
+      "name": "Q"
+    },
+    {
+      "index": 24,
+      "name": "Light type"
+    },
+    {
+      "index": 25,
+      "name": "Gain"
+    },
+    {
+      "index": 26,
+      "name": "Filter Type"
+    },
+    {
+      "index": 27,
+      "name": "Thresh"
+    },
+    {
+      "index": 30,
+      "name": "Ratio(compand)"
+    },
+    {
+      "index": 31,
+      "name": "Time(compand)"
+    },
+    {
+      "index": 32,
+      "name": "Transients"
+    },
+    {
+      "index": 33,
+      "name": "EmphasisFreq"
+    },
+    {
+      "index": 34,
+      "name": "Scene Ignore"
+    },
+    {
+      "index": 35,
+      "name": "Tone"
+    },
+    {
+      "index": 36,
+      "name": "Drive"
+    }
+  ]
+}

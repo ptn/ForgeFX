@@ -1,0 +1,158 @@
+{
+  "name": "Tremolo",
+  "page": 106,
+  "params": [
+    {
+      "index": 0,
+      "name": "Type"
+    },
+    {
+      "index": 1,
+      "name": "LFOType"
+    },
+    {
+      "index": 2,
+      "name": "Rate"
+    },
+    {
+      "index": 3,
+      "name": "Depth"
+    },
+    {
+      "index": 4,
+      "name": "Duty"
+    },
+    {
+      "index": 5,
+      "name": "Tempo"
+    },
+    {
+      "index": 6,
+      "name": "Mix"
+    },
+    {
+      "index": 7,
+      "name": "Level"
+    },
+    {
+      "index": 8,
+      "name": "Bal"
+    },
+    {
+      "index": 9,
+      "name": "bp mode"
+    },
+    {
+      "index": 10,
+      "name": "GlobMix"
+    },
+    {
+      "index": 11,
+      "name": "LFOPhase"
+    },
+    {
+      "index": 12,
+      "name": "Width"
+    },
+    {
+      "index": 13,
+      "name": "PanCenter"
+    },
+    {
+      "index": 14,
+      "name": "Bypass"
+    },
+    {
+      "index": 15,
+      "name": "StartPhase"
+    },
+    {
+      "index": 16,
+      "name": "Type"
+    },
+    {
+      "index": 17,
+      "name": "LFO Type"
+    },
+    {
+      "index": 18,
+      "name": "Rate"
+    },
+    {
+      "index": 19,
+      "name": "Depth"
+    },
+    {
+      "index": 20,
+      "name": "Duty"
+    },
+    {
+      "index": 21,
+      "name": "Tempo"
+    },
+    {
+      "index": 22,
+      "name": "Mix"
+    },
+    {
+      "index": 23,
+      "name": "Level"
+    },
+    {
+      "index": 24,
+      "name": "Bal"
+    },
+    {
+      "index": 25,
+      "name": "bp mode"
+    },
+    {
+      "index": 26,
+      "name": "Global Mix"
+    },
+    {
+      "index": 27,
+      "name": "LFO Phase"
+    },
+    {
+      "index": 28,
+      "name": "Width"
+    },
+    {
+      "index": 29,
+      "name": "PanCenter"
+    },
+    {
+      "index": 30,
+      "name": "Bypass"
+    },
+    {
+      "index": 31,
+      "name": "StartPhase"
+    },
+    {
+      "index": 32,
+      "name": "XOver Slope"
+    },
+    {
+      "index": 33,
+      "name": "XOver Freq"
+    },
+    {
+      "index": 34,
+      "name": "Trigger Thresh"
+    },
+    {
+      "index": 35,
+      "name": "Scene Ignore"
+    },
+    {
+      "index": 36,
+      "name": "LFO Shape"
+    },
+    {
+      "index": 37,
+      "name": "Ducking"
+    }
+  ]
+}

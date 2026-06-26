@@ -1,0 +1,146 @@
+{
+  "name": "Phaser",
+  "page": 90,
+  "params": [
+    {
+      "index": 0,
+      "name": "Type"
+    },
+    {
+      "index": 1,
+      "name": "Order"
+    },
+    {
+      "index": 2,
+      "name": "Rate"
+    },
+    {
+      "index": 3,
+      "name": "LFOType"
+    },
+    {
+      "index": 4,
+      "name": "Tempo"
+    },
+    {
+      "index": 5,
+      "name": "Depth"
+    },
+    {
+      "index": 6,
+      "name": "Feedback"
+    },
+    {
+      "index": 7,
+      "name": "Min Freq"
+    },
+    {
+      "index": 8,
+      "name": "Max Freq"
+    },
+    {
+      "index": 9,
+      "name": "LFOPhase"
+    },
+    {
+      "index": 10,
+      "name": "VCR Bias"
+    },
+    {
+      "index": 11,
+      "name": "Mix"
+    },
+    {
+      "index": 12,
+      "name": "Level"
+    },
+    {
+      "index": 13,
+      "name": "Bal"
+    },
+    {
+      "index": 14,
+      "name": "bp mode"
+    },
+    {
+      "index": 15,
+      "name": "GlobMix"
+    },
+    {
+      "index": 16,
+      "name": "Bypass"
+    },
+    {
+      "index": 17,
+      "name": "VibeMode"
+    },
+    {
+      "index": 18,
+      "name": "FbkTap"
+    },
+    {
+      "index": 19,
+      "name": "Tone"
+    },
+    {
+      "index": 20,
+      "name": "Direction"
+    },
+    {
+      "index": 21,
+      "name": "FilterQ"
+    },
+    {
+      "index": 22,
+      "name": "LFO Reset"
+    },
+    {
+      "index": 23,
+      "name": "LFO Quantize"
+    },
+    {
+      "index": 24,
+      "name": "VCR Type"
+    },
+    {
+      "index": 25,
+      "name": "VCR Shape"
+    },
+    {
+      "index": 26,
+      "name": "Astable Beta"
+    },
+    {
+      "index": 27,
+      "name": "LFO HiCut"
+    },
+    {
+      "index": 28,
+      "name": "PCell Attack"
+    },
+    {
+      "index": 29,
+      "name": "PCell Release"
+    },
+    {
+      "index": 30,
+      "name": "Manual"
+    },
+    {
+      "index": 31,
+      "name": "Scene Ignore"
+    },
+    {
+      "index": 32,
+      "name": "LoCut"
+    },
+    {
+      "index": 33,
+      "name": "HiCut"
+    },
+    {
+      "index": 34,
+      "name": "LFO Mode"
+    }
+  ]
+}

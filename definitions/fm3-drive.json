@@ -1,0 +1,174 @@
+{
+  "name": "Drive",
+  "page": 118,
+  "params": [
+    {
+      "index": 0,
+      "name": "Type"
+    },
+    {
+      "index": 1,
+      "name": "Drive"
+    },
+    {
+      "index": 2,
+      "name": "Tone"
+    },
+    {
+      "index": 3,
+      "name": "Level"
+    },
+    {
+      "index": 4,
+      "name": "Mix"
+    },
+    {
+      "index": 5,
+      "name": "bp mode"
+    },
+    {
+      "index": 6,
+      "name": "Slew"
+    },
+    {
+      "index": 7,
+      "name": "Bypass"
+    },
+    {
+      "index": 8,
+      "name": "Low Cut"
+    },
+    {
+      "index": 9,
+      "name": "High Cut"
+    },
+    {
+      "index": 10,
+      "name": "Clip Type"
+    },
+    {
+      "index": 11,
+      "name": "Bias"
+    },
+    {
+      "index": 12,
+      "name": "Bass"
+    },
+    {
+      "index": 13,
+      "name": "Mid"
+    },
+    {
+      "index": 14,
+      "name": "Mid Freq"
+    },
+    {
+      "index": 15,
+      "name": "Treble"
+    },
+    {
+      "index": 16,
+      "name": "BitReduce"
+    },
+    {
+      "index": 17,
+      "name": "InputSel"
+    },
+    {
+      "index": 18,
+      "name": "Bal"
+    },
+    {
+      "index": 19,
+      "name": "SampleRate"
+    },
+    {
+      "index": 20,
+      "name": "ClipShape"
+    },
+    {
+      "index": 21,
+      "name": "EQ"
+    },
+    {
+      "index": 22,
+      "name": "100"
+    },
+    {
+      "index": 23,
+      "name": "160"
+    },
+    {
+      "index": 24,
+      "name": "250"
+    },
+    {
+      "index": 25,
+      "name": "400"
+    },
+    {
+      "index": 26,
+      "name": "640"
+    },
+    {
+      "index": 27,
+      "name": "1000"
+    },
+    {
+      "index": 28,
+      "name": "1600"
+    },
+    {
+      "index": 29,
+      "name": "2500"
+    },
+    {
+      "index": 30,
+      "name": "4000"
+    },
+    {
+      "index": 31,
+      "name": "6400"
+    },
+    {
+      "index": 32,
+      "name": "Diode+ Type"
+    },
+    {
+      "index": 33,
+      "name": "Diode+ Qty"
+    },
+    {
+      "index": 34,
+      "name": "Diode- Type"
+    },
+    {
+      "index": 35,
+      "name": "Diode- Qty"
+    },
+    {
+      "index": 36,
+      "name": "Dry Level"
+    },
+    {
+      "index": 37,
+      "name": "Bass Response"
+    },
+    {
+      "index": 38,
+      "name": "HiMid"
+    },
+    {
+      "index": 39,
+      "name": "Scene Ignore"
+    },
+    {
+      "index": 40,
+      "name": "Tone"
+    },
+    {
+      "index": 41,
+      "name": "Wicker"
+    }
+  ]
+}

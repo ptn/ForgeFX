@@ -2,6 +2,493 @@
   "name": "Amp",
   "page": 58,
   "params": [
-    { "index": 9, "name": "Mid", "unit": "", "min": 0, "max": 10, "scale": "Linear" }
+    {
+      "index": 0,
+      "name": "Type"
+    },
+    {
+      "index": 1,
+      "name": "Drive"
+    },
+    {
+      "index": 2,
+      "name": "Bass"
+    },
+    {
+      "index": 3,
+      "name": "Mid"
+    },
+    {
+      "index": 4,
+      "name": "Treble"
+    },
+    {
+      "index": 5,
+      "name": "M.Vol"
+    },
+    {
+      "index": 6,
+      "name": "In LowCut"
+    },
+    {
+      "index": 7,
+      "name": "HiCutF"
+    },
+    {
+      "index": 8,
+      "name": "Tone Freq"
+    },
+    {
+      "index": 9,
+      "name": "Xformer Grind"
+    },
+    {
+      "index": 10,
+      "name": "Bright Cap"
+    },
+    {
+      "index": 11,
+      "name": "WsLPF"
+    },
+    {
+      "index": 12,
+      "name": "Xformer Low"
+    },
+    {
+      "index": 13,
+      "name": "Xformer Hi"
+    },
+    {
+      "index": 14,
+      "name": "Tone Location"
+    },
+    {
+      "index": 15,
+      "name": "Input Select"
+    },
+    {
+      "index": 16,
+      "name": "Depth"
+    },
+    {
+      "index": 19,
+      "name": "Sag"
+    },
+    {
+      "index": 20,
+      "name": "Presence"
+    },
+    {
+      "index": 21,
+      "name": "Level"
+    },
+    {
+      "index": 22,
+      "name": "Pan"
+    },
+    {
+      "index": 23,
+      "name": "Bypass mode"
+    },
+    {
+      "index": 24,
+      "name": "Negative Feedback"
+    },
+    {
+      "index": 25,
+      "name": "Presence Freq"
+    },
+    {
+      "index": 26,
+      "name": "LowRes Freq"
+    },
+    {
+      "index": 27,
+      "name": "Low Resonance"
+    },
+    {
+      "index": 28,
+      "name": "Bypass"
+    },
+    {
+      "index": 29,
+      "name": "Depth Freq"
+    },
+    {
+      "index": 30,
+      "name": "DriveType"
+    },
+    {
+      "index": 31,
+      "name": "MV Cap"
+    },
+    {
+      "index": 33,
+      "name": "Harmonics"
+    },
+    {
+      "index": 34,
+      "name": "ToneStack"
+    },
+    {
+      "index": 35,
+      "name": "B+ Time Const"
+    },
+    {
+      "index": 36,
+      "name": "PowerTube Bias"
+    },
+    {
+      "index": 39,
+      "name": "Bright sw"
+    },
+    {
+      "index": 40,
+      "name": "Boost"
+    },
+    {
+      "index": 41,
+      "name": "LowRes Q"
+    },
+    {
+      "index": 42,
+      "name": "Preamp Bias"
+    },
+    {
+      "index": 43,
+      "name": "Hi Freq"
+    },
+    {
+      "index": 44,
+      "name": "Hi Resonance"
+    },
+    {
+      "index": 45,
+      "name": "Cut"
+    },
+    {
+      "index": 46,
+      "name": "Xformer Drive"
+    },
+    {
+      "index": 47,
+      "name": "Input Trim"
+    },
+    {
+      "index": 48,
+      "name": "Preamp Hardness"
+    },
+    {
+      "index": 49,
+      "name": "MV Location"
+    },
+    {
+      "index": 50,
+      "name": "Speaker Drive"
+    },
+    {
+      "index": 51,
+      "name": "Xformer Match"
+    },
+    {
+      "index": 54,
+      "name": "Sat"
+    },
+    {
+      "index": 55,
+      "name": "EQ 1"
+    },
+    {
+      "index": 56,
+      "name": "EQ 2"
+    },
+    {
+      "index": 57,
+      "name": "EQ 3"
+    },
+    {
+      "index": 58,
+      "name": "EQ 4"
+    },
+    {
+      "index": 59,
+      "name": "EQ 5"
+    },
+    {
+      "index": 60,
+      "name": "EQ 6"
+    },
+    {
+      "index": 61,
+      "name": "EQ 7"
+    },
+    {
+      "index": 62,
+      "name": "EQ 8"
+    },
+    {
+      "index": 63,
+      "name": "BiasExc"
+    },
+    {
+      "index": 66,
+      "name": "Triode2 Plate Freq"
+    },
+    {
+      "index": 67,
+      "name": "Triode1 Plate Freq"
+    },
+    {
+      "index": 68,
+      "name": "Tube Type"
+    },
+    {
+      "index": 69,
+      "name": "Preamp Tube"
+    },
+    {
+      "index": 70,
+      "name": "Clarity"
+    },
+    {
+      "index": 71,
+      "name": "Q"
+    },
+    {
+      "index": 72,
+      "name": "Frequency"
+    },
+    {
+      "index": 73,
+      "name": "Gain"
+    },
+    {
+      "index": 74,
+      "name": "OverDrive"
+    },
+    {
+      "index": 75,
+      "name": "Output Comp"
+    },
+    {
+      "index": 76,
+      "name": "Comp Threshold"
+    },
+    {
+      "index": 77,
+      "name": "MV Trim"
+    },
+    {
+      "index": 78,
+      "name": "Fat"
+    },
+    {
+      "index": 79,
+      "name": "Definition"
+    },
+    {
+      "index": 80,
+      "name": "CF Comp"
+    },
+    {
+      "index": 81,
+      "name": "Grid Clipping"
+    },
+    {
+      "index": 82,
+      "name": "Modeling"
+    },
+    {
+      "index": 83,
+      "name": "In HiCut"
+    },
+    {
+      "index": 86,
+      "name": "PowerType"
+    },
+    {
+      "index": 87,
+      "name": "ACLine Freq"
+    },
+    {
+      "index": 88,
+      "name": "PowerAmp Hardness"
+    },
+    {
+      "index": 89,
+      "name": "Trem Freq"
+    },
+    {
+      "index": 90,
+      "name": "Trem Depth"
+    },
+    {
+      "index": 92,
+      "name": "Out EQ Type"
+    },
+    {
+      "index": 93,
+      "name": "Cathode Resist"
+    },
+    {
+      "index": 94,
+      "name": "Cathode Time Const"
+    },
+    {
+      "index": 96,
+      "name": "Pre Sag"
+    },
+    {
+      "index": 97,
+      "name": "Bright"
+    },
+    {
+      "index": 98,
+      "name": "PowerTube Mismatch"
+    },
+    {
+      "index": 99,
+      "name": "Dynamics"
+    },
+    {
+      "index": 100,
+      "name": "HiFreq Slope"
+    },
+    {
+      "index": 101,
+      "name": "Variac"
+    },
+    {
+      "index": 102,
+      "name": "In EQ Type"
+    },
+    {
+      "index": 104,
+      "name": "Presence Shift"
+    },
+    {
+      "index": 105,
+      "name": "Sat Drive"
+    },
+    {
+      "index": 106,
+      "name": "Crunch"
+    },
+    {
+      "index": 109,
+      "name": "Comp Type"
+    },
+    {
+      "index": 110,
+      "name": "EQ location"
+    },
+    {
+      "index": 111,
+      "name": "Pre Comp Type"
+    },
+    {
+      "index": 113,
+      "name": "CF Hardness"
+    },
+    {
+      "index": 114,
+      "name": "PI Bias Shift"
+    },
+    {
+      "index": 115,
+      "name": "Speaker Comp"
+    },
+    {
+      "index": 116,
+      "name": "Motor Time Const"
+    },
+    {
+      "index": 117,
+      "name": "Resolution"
+    },
+    {
+      "index": 118,
+      "name": "B+"
+    },
+    {
+      "index": 119,
+      "name": "Dynamic Gain"
+    },
+    {
+      "index": 120,
+      "name": "Speaker Gain"
+    },
+    {
+      "index": 122,
+      "name": "Boost level"
+    },
+    {
+      "index": 123,
+      "name": "Boost type"
+    },
+    {
+      "index": 124,
+      "name": "Output Mode"
+    },
+    {
+      "index": 125,
+      "name": "Speaker Compliance"
+    },
+    {
+      "index": 126,
+      "name": "Out EQ"
+    },
+    {
+      "index": 127,
+      "name": "Speaker Impedance"
+    },
+    {
+      "index": 128,
+      "name": "Speaker Z Curve"
+    },
+    {
+      "index": 129,
+      "name": "Cab Resonance"
+    },
+    {
+      "index": 130,
+      "name": "Headroom"
+    },
+    {
+      "index": 132,
+      "name": "Master BiasEx"
+    },
+    {
+      "index": 134,
+      "name": "PowerAmp Modeling"
+    },
+    {
+      "index": 135,
+      "name": "Scene Ignore"
+    },
+    {
+      "index": 136,
+      "name": "Speaker Breakup"
+    },
+    {
+      "index": 137,
+      "name": "Speaker Thump"
+    },
+    {
+      "index": 138,
+      "name": "Plate Supppress Diodes"
+    },
+    {
+      "index": 139,
+      "name": "Overdrive Vol"
+    },
+    {
+      "index": 140,
+      "name": "Auto DynaCab Z"
+    },
+    {
+      "index": 141,
+      "name": "NFB Compensation"
+    }
   ]
 }

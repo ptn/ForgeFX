@@ -36,6 +36,32 @@ app.MapGet("/dump/{page:int}", (int page) => Locked(() =>
     return Results.Ok(new { page, bytes = data.Length, hex = Convert.ToHexString(data) });
 }));
 
+// ---- librarian: preset backup / restore ----
+
+// GET /preset/{n}/backup  -> download the preset as a .syx file (n omitted/"current" = edit buffer)
+app.MapGet("/preset/{n:int}/backup", (int n) => Locked(() =>
+{
+    var syx = Dev().DumpPreset(n);
+    return syx.Length == 0 ? Results.Problem($"no data for preset {n}")
+        : Results.Bytes(syx, "application/octet-stream", $"preset-{n}.syx");
+}));
+
+app.MapGet("/preset/current/backup", () => Locked(() =>
+{
+    var syx = Dev().DumpPreset(null);
+    return syx.Length == 0 ? Results.Problem("no data from edit buffer")
+        : Results.Bytes(syx, "application/octet-stream", "preset-current.syx");
+}));
+
+// POST /preset/restore  (body = raw .syx bytes) -> send to the device (edit buffer / slot per header)
+app.MapPost("/preset/restore", async (HttpRequest req) =>
+{
+    using var ms = new MemoryStream();
+    await req.Body.CopyToAsync(ms);
+    var syx = ms.ToArray();
+    return Locked(() => { Dev().SendPreset(syx); return Results.Ok(new { ok = true, bytes = syx.Length }); });
+});
+
 app.Run();
 
 // request DTOs (minimal-API model binding from JSON body)

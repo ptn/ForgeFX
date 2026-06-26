@@ -79,7 +79,55 @@ public sealed class Fm3Device : IDisposable
         return frames.Where(f => f.Func == 0x75).SelectMany(f => f.Body).ToArray();
     }
 
+    /// <summary>Back up a preset to a .syx byte stream (func 0x03 request →
+    /// 0x77 + 0x78×8 + 0x79). preset = null reads the current edit buffer (0x7F7F).</summary>
+    public byte[] DumpPreset(int? preset = null, int timeoutMs = 5000)
+    {
+        int n = preset ?? 0x3FFF;
+        byte[] body = { (byte)((n >> 7) & 0x7F), (byte)(n & 0x7F), 0x00 };  // [hi, lo, 0]
+        _port.DiscardInBuffer();
+        Send(0x03, body);
+        return ReadRawUntil(0x79, new byte[] { 0x77, 0x78, 0x79 }, timeoutMs);
+    }
+
+    /// <summary>Restore a preset by sending its .syx stream (0x77 + 0x78×8 + 0x79) as-is.
+    /// The 0x77 header's id field selects the slot (0x7F7F = edit buffer).</summary>
+    public void SendPreset(ReadOnlySpan<byte> syx) => _port.Write(syx.ToArray(), 0, syx.Length);
+
     // ---- framing read loop ----
+
+    /// Collect raw SysEx frames whose func is in <paramref name="keep"/>, until one with
+    /// func == stopFunc is seen. Returns the concatenated raw bytes (a .syx stream).
+    private byte[] ReadRawUntil(byte stopFunc, byte[] keep, int timeoutMs)
+    {
+        var sw = Stopwatch.StartNew();
+        var buf = new List<byte>();
+        var outBytes = new List<byte>();
+        var tmp = new byte[8192];
+        bool done = false;
+        while (sw.ElapsedMilliseconds < timeoutMs && !done)
+        {
+            int nb = 0;
+            try { if (_port.BytesToRead > 0) nb = _port.Read(tmp, 0, Math.Min(tmp.Length, _port.BytesToRead)); }
+            catch (TimeoutException) { }
+            if (nb > 0) buf.AddRange(tmp.AsSpan(0, nb).ToArray()); else Thread.Sleep(5);
+
+            int consumed = 0;
+            while (true)
+            {
+                int s = buf.IndexOf(FractalSysex.SysexStart, consumed);
+                if (s < 0) break;
+                int e = buf.IndexOf(FractalSysex.SysexEnd, s);
+                if (e < 0) break;
+                byte func = (e - s) >= 5 ? buf[s + 5] : (byte)0;
+                if (Array.IndexOf(keep, func) >= 0) outBytes.AddRange(buf.GetRange(s, e - s + 1));
+                if (func == stopFunc) done = true;
+                consumed = e + 1;
+            }
+            if (consumed > 0) buf.RemoveRange(0, consumed);
+        }
+        return outBytes.ToArray();
+    }
 
     private List<FractalSysex.Frame> ReadUntil(Func<FractalSysex.Frame, bool> stop, int timeoutMs)
     {

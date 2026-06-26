@@ -1,13 +1,454 @@
 {
   "name": "Cab",
   "page": 62,
-  "_note": "CAB 1 instance, 'Cab' tab. Bound via learn_block (inject+image-diff+label-read).",
   "params": [
-    { "index": 8,  "name": "Level",     "unit": "dB",     "min": -40,   "max": 0,     "scale": "Linear" },
-    { "index": 12, "name": "Pan",       "unit": "",       "min": -1,    "max": 1,     "scale": "Linear" },
-    { "index": 20, "name": "Proximity", "unit": "",       "min": 0,     "max": 1,     "scale": "Linear" },
-    { "index": 62, "name": "Low Cut",   "unit": "Hz",     "min": 20,    "max": 200,   "scale": "Log" },
-    { "index": 66, "name": "High Cut",  "unit": "Hz",     "min": 2000,  "max": 20000, "scale": "Log" },
-    { "index": 74, "name": "Low Slope", "unit": "dB/oct", "min": 0,     "max": 1,     "scale": "Raw" }
+    {
+      "index": 0,
+      "name": "Bank 1"
+    },
+    {
+      "index": 1,
+      "name": "Bank 2"
+    },
+    {
+      "index": 2,
+      "name": "Bank 3"
+    },
+    {
+      "index": 3,
+      "name": "Bank 4"
+    },
+    {
+      "index": 4,
+      "name": "Cab 1"
+    },
+    {
+      "index": 5,
+      "name": "Cab 2"
+    },
+    {
+      "index": 6,
+      "name": "Cab 3"
+    },
+    {
+      "index": 7,
+      "name": "Cab 4"
+    },
+    {
+      "index": 8,
+      "name": "Level 1",
+      "unit": "dB",
+      "min": -40,
+      "max": 0,
+      "scale": "Linear"
+    },
+    {
+      "index": 9,
+      "name": "Level 2"
+    },
+    {
+      "index": 10,
+      "name": "Level 3"
+    },
+    {
+      "index": 11,
+      "name": "Level 4"
+    },
+    {
+      "index": 12,
+      "name": "Pan 1",
+      "unit": "",
+      "min": -1,
+      "max": 1,
+      "scale": "Linear"
+    },
+    {
+      "index": 13,
+      "name": "Pan 2"
+    },
+    {
+      "index": 14,
+      "name": "Pan 3"
+    },
+    {
+      "index": 15,
+      "name": "Pan 4"
+    },
+    {
+      "index": 16,
+      "name": "Mic Dist 1"
+    },
+    {
+      "index": 17,
+      "name": "Mic Dist 2"
+    },
+    {
+      "index": 18,
+      "name": "Mic Dist 3"
+    },
+    {
+      "index": 19,
+      "name": "Mic Dist 4"
+    },
+    {
+      "index": 20,
+      "name": "Proximity 1",
+      "unit": "",
+      "min": 0,
+      "max": 1,
+      "scale": "Linear"
+    },
+    {
+      "index": 21,
+      "name": "Proximity 2"
+    },
+    {
+      "index": 22,
+      "name": "Proximity 3"
+    },
+    {
+      "index": 23,
+      "name": "Proximity 4"
+    },
+    {
+      "index": 24,
+      "name": "Mute/Solo 1"
+    },
+    {
+      "index": 25,
+      "name": "Mute/Solo 2"
+    },
+    {
+      "index": 26,
+      "name": "Mute/Solo 3"
+    },
+    {
+      "index": 27,
+      "name": "Mute/Solo 4"
+    },
+    {
+      "index": 28,
+      "name": "Level"
+    },
+    {
+      "index": 29,
+      "name": "Balance"
+    },
+    {
+      "index": 30,
+      "name": "bp mode"
+    },
+    {
+      "index": 31,
+      "name": "Mode"
+    },
+    {
+      "index": 32,
+      "name": "Bypass"
+    },
+    {
+      "index": 33,
+      "name": "Drive"
+    },
+    {
+      "index": 34,
+      "name": "Saturation"
+    },
+    {
+      "index": 35,
+      "name": "Room Level"
+    },
+    {
+      "index": 36,
+      "name": "Room Size"
+    },
+    {
+      "index": 37,
+      "name": "Mic Spacing"
+    },
+    {
+      "index": 38,
+      "name": "Low Cut"
+    },
+    {
+      "index": 39,
+      "name": "High Cut"
+    },
+    {
+      "index": 40,
+      "name": "Dynamics"
+    },
+    {
+      "index": 41,
+      "name": "Prox Frequency"
+    },
+    {
+      "index": 42,
+      "name": "Input Sel"
+    },
+    {
+      "index": 43,
+      "name": "Preamp Type"
+    },
+    {
+      "index": 44,
+      "name": "Bass"
+    },
+    {
+      "index": 45,
+      "name": "Mid"
+    },
+    {
+      "index": 46,
+      "name": "Treble"
+    },
+    {
+      "index": 47,
+      "name": "Preamp Mode"
+    },
+    {
+      "index": 48,
+      "name": "Smoothing 1"
+    },
+    {
+      "index": 49,
+      "name": "Smoothing 2"
+    },
+    {
+      "index": 50,
+      "name": "Smoothing 3"
+    },
+    {
+      "index": 51,
+      "name": "Smoothing 4"
+    },
+    {
+      "index": 52,
+      "name": "Filter Slope"
+    },
+    {
+      "index": 53,
+      "name": "Floor Reflect"
+    },
+    {
+      "index": 54,
+      "name": "Air"
+    },
+    {
+      "index": 55,
+      "name": "Air Freq"
+    },
+    {
+      "index": 56,
+      "name": "Room Shape"
+    },
+    {
+      "index": 57,
+      "name": "LF Damping"
+    },
+    {
+      "index": 58,
+      "name": "HF Damping"
+    },
+    {
+      "index": 59,
+      "name": "Room Diffusion"
+    },
+    {
+      "index": 60,
+      "name": "Gain Monitor"
+    },
+    {
+      "index": 61,
+      "name": "VuMeter"
+    },
+    {
+      "index": 62,
+      "name": "LowCut 1",
+      "unit": "Hz",
+      "min": 20,
+      "max": 200,
+      "scale": "Log"
+    },
+    {
+      "index": 63,
+      "name": "LowCut 2"
+    },
+    {
+      "index": 64,
+      "name": "LowCut 3"
+    },
+    {
+      "index": 65,
+      "name": "LowCut 4"
+    },
+    {
+      "index": 66,
+      "name": "HiCut 1",
+      "unit": "Hz",
+      "min": 2000,
+      "max": 20000,
+      "scale": "Log"
+    },
+    {
+      "index": 67,
+      "name": "HiCut 2"
+    },
+    {
+      "index": 68,
+      "name": "HiCut 3"
+    },
+    {
+      "index": 69,
+      "name": "HiCut 4"
+    },
+    {
+      "index": 70,
+      "name": "IR Len 1"
+    },
+    {
+      "index": 71,
+      "name": "IR Len 2"
+    },
+    {
+      "index": 72,
+      "name": "IR Len 3"
+    },
+    {
+      "index": 73,
+      "name": "IR Len 4"
+    },
+    {
+      "index": 74,
+      "name": "Low Slope 1",
+      "unit": "dB/oct",
+      "min": 0,
+      "max": 1,
+      "scale": "Raw"
+    },
+    {
+      "index": 75,
+      "name": "Low Slope 2"
+    },
+    {
+      "index": 76,
+      "name": "Low Slope 3"
+    },
+    {
+      "index": 77,
+      "name": "Low Slope 4"
+    },
+    {
+      "index": 78,
+      "name": "Hi Slope 1"
+    },
+    {
+      "index": 79,
+      "name": "Hi Slope 2"
+    },
+    {
+      "index": 80,
+      "name": "Hi Slope 3"
+    },
+    {
+      "index": 81,
+      "name": "Hi Slope 4"
+    },
+    {
+      "index": 82,
+      "name": "LoCut Slope"
+    },
+    {
+      "index": 83,
+      "name": "HiCut Slope"
+    },
+    {
+      "index": 84,
+      "name": "Scene Ignore"
+    },
+    {
+      "index": 85,
+      "name": "DynaCab1 type"
+    },
+    {
+      "index": 86,
+      "name": "DynaCab2 type"
+    },
+    {
+      "index": 87,
+      "name": "DynaCab3 type"
+    },
+    {
+      "index": 88,
+      "name": "DynaCab4 type"
+    },
+    {
+      "index": 89,
+      "name": "DynaCab1 Mic"
+    },
+    {
+      "index": 90,
+      "name": "DynaCab2 Mic"
+    },
+    {
+      "index": 91,
+      "name": "DynaCab3 Mic"
+    },
+    {
+      "index": 92,
+      "name": "DynaCab4 Mic"
+    },
+    {
+      "index": 93,
+      "name": "DynaCab1 Pos"
+    },
+    {
+      "index": 94,
+      "name": "DynaCab2 Pos"
+    },
+    {
+      "index": 95,
+      "name": "DynaCab3 Pos"
+    },
+    {
+      "index": 96,
+      "name": "DynaCab4 Pos"
+    },
+    {
+      "index": 97,
+      "name": "DynaCab1 Dist"
+    },
+    {
+      "index": 98,
+      "name": "DynaCab2 Dist"
+    },
+    {
+      "index": 99,
+      "name": "DynaCab3 Dist"
+    },
+    {
+      "index": 100,
+      "name": "DynaCab4 Dist"
+    },
+    {
+      "index": 101,
+      "name": "DynaCab1 Smooth"
+    },
+    {
+      "index": 102,
+      "name": "DynaCab2 Smooth"
+    },
+    {
+      "index": 103,
+      "name": "DynaCab3 Smooth"
+    },
+    {
+      "index": 104,
+      "name": "DynaCab4 Smooth"
+    },
+    {
+      "index": 105,
+      "name": "Auto Align"
+    }
   ]
 }

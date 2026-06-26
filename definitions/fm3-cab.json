@@ -1,7 +1,13 @@
 {
   "name": "Cab",
   "page": 62,
+  "_note": "CAB 1 instance, 'Cab' tab. Bound via learn_block (inject+image-diff+label-read).",
   "params": [
-    { "index": 62, "name": "Low Cut", "unit": "Hz", "min": 20, "max": 200, "scale": "Log" }
+    { "index": 8,  "name": "Level",     "unit": "dB",     "min": -40,   "max": 0,     "scale": "Linear" },
+    { "index": 12, "name": "Pan",       "unit": "",       "min": -1,    "max": 1,     "scale": "Linear" },
+    { "index": 20, "name": "Proximity", "unit": "",       "min": 0,     "max": 1,     "scale": "Linear" },
+    { "index": 62, "name": "Low Cut",   "unit": "Hz",     "min": 20,    "max": 200,   "scale": "Log" },
+    { "index": 66, "name": "High Cut",  "unit": "Hz",     "min": 2000,  "max": 20000, "scale": "Log" },
+    { "index": 74, "name": "Low Slope", "unit": "dB/oct", "min": 0,     "max": 1,     "scale": "Raw" }
   ]
 }

@@ -1,0 +1,43 @@
+using ForgeFX.Core;
+
+// ForgeFX.Server — HTTP API over the FM3 SDK. Run this on the box the FM3 is plugged into
+// (PC or Raspberry Pi); a web frontend talks to it. It owns the serial port, so it can't
+// run alongside the fm3-midi-bridge / FM3-Edit.
+
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+var devicePath = app.Configuration["device"] ?? "/dev/ttyACM0";
+var gate = new object();
+Fm3Device? device = null;
+Fm3Device Dev() { lock (gate) { return device ??= new Fm3Device(devicePath); } }
+T Locked<T>(Func<T> f) { lock (gate) return f(); }
+
+app.MapGet("/healthz", () => Results.Ok(new { ok = true, device = devicePath }));
+
+app.MapGet("/firmware", () => Locked(() =>
+    Dev().Firmware() is { } fw ? Results.Ok(fw) : Results.Problem("no reply from device")));
+
+app.MapPost("/preset", (PresetRequest r) => Locked(() =>
+{
+    Dev().SelectPreset(r.N);
+    return Results.Ok(new { ok = true, preset = r.N });
+}));
+
+app.MapPost("/param", (ParamRequest r) => Locked(() =>
+{
+    var stored = Dev().SetParam(r.Effect, r.Addr, r.Value);
+    return Results.Ok(new { ok = true, stored });
+}));
+
+app.MapGet("/dump/{page:int}", (int page) => Locked(() =>
+{
+    var data = Dev().DumpPage((byte)page);
+    return Results.Ok(new { page, bytes = data.Length, hex = Convert.ToHexString(data) });
+}));
+
+app.Run();
+
+// request DTOs (minimal-API model binding from JSON body)
+record PresetRequest(int N);
+record ParamRequest(byte Effect, byte[] Addr, float Value);

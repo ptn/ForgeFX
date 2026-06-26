@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ForgeFX.Core/ForgeFX.Core.csproj" />
+    <Project Path="src/ForgeFX.Server/ForgeFX.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ForgeFX.Core.Tests/ForgeFX.Core.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -19,6 +19,8 @@ import {
   ROUTING_OP_CONNECT,
   ROUTING_OP_DISCONNECT
 } from 'fractal-midi/gen3/axe-fx-iii';
+import { FM3_RANGES, FM3_PARAMS_BY_FAMILY } from 'fractal-midi/gen3/fm3';
+import { wireToDisplay } from 'fractal-midi/shared';
 import { FractalSerial, autoDetectPath } from './transport/serial.js';
 import { decodePresetDump } from './codec/fm3PresetGrid.js';
 import { allPacks, packBySlug, rosterBySlug, slugForEffectId, paramIndex, type TypeModel } from './defs.js';
@@ -27,6 +29,21 @@ const MODEL_FM3 = 0x11;
 const FM3_ROWS = 4;
 const EDIT_BUFFER = 0x3fff; // preset number sentinel = current edit buffer
 const CH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+
+// pack slug → FM3 catalog family (for device-true ranges/units from fractal-midi)
+const SLUG_FAMILY: Record<string, string> = {
+  amp: 'DISTORT', cab: 'CABINET', drive: 'FUZZ', comp: 'COMP', multicomp: 'MULTICOMP',
+  peq: 'PEQ', geq: 'GEQ', reverb: 'REVERB', delay: 'DELAY', multitap: 'MULTITAP',
+  chorus: 'CHORUS', flanger: 'FLANGER', phaser: 'PHASER', rotary: 'ROTARY', tremolo: 'TREMOLO',
+  pitch: 'PITCH', wah: 'WAH', filter: 'FILTER', formant: 'FORMANT', enhancer: 'ENHANCER',
+  mixer: 'MIXER', volume: 'VOLUME', input: 'INPUT', output: 'OUTPUT', gate: 'GATE',
+  synth: 'SYNTH', ringmod: 'RINGMOD', looper: 'LOOPER', resonator: 'RESONATOR'
+};
+// catalog unit code → display label (blank = show the bare number)
+const UNIT_LABEL: Record<string, string> = {
+  db: 'dB', hz: 'Hz', ms: 'ms', seconds: 's', percent: '%', bipolar_percent: '%',
+  degrees: '°', semitones: 'st', pf: 'pF', ratio: ':1'
+};
 
 export interface GridCellDTO { row: number; col: number; effectId: number; name: string; isShunt: boolean; routeFlag: number; fromRows: number[]; }
 export interface PresetGridDTO { model: string; name: string; crcValid: boolean; rows: number; cols: number; scenes: string[]; cells: GridCellDTO[]; source: 'dump'; }
@@ -181,14 +198,15 @@ class Device {
   /**
    * Read a placed block's params via the fn=0x1F bulk read. The 0x75 body is
    * CHANNEL-BLOCKED: index = channel*stride + paramId, stride = paramCount,
-   * channelCount = values.length/stride (per-block, NOT always 4). Wire values are
-   * raw 0..65534 → normalized = raw/65534. (Display units via param ranges = TODO,
-   * sourced from the FM3-Edit cache.)
+   * channelCount = values.length/stride (per-block, NOT always 4). `norm` = raw/65534
+   * (knob position); `value`/`unit` are the device-true DISPLAY reading via FM3_RANGES
+   * (e.g. 1.2k Hz, -12 dB) where the cache has a range, else the 0..10 position.
    */
   async blockParams(slug: string): Promise<{ block: string; slug: string; page: number; named: NamedParam[] }> {
     const pack = packBySlug(slug);
     if (!pack) throw new Error(`unknown block ${slug}`);
     const eid = await this.#effectIdForSlug(slug);
+    const family = SLUG_FAMILY[slug.toLowerCase()];
     const named: NamedParam[] = [];
     if (eid != null) {
       const dev = await this.#conn();
@@ -202,14 +220,26 @@ class Device {
         for (const p of pack.params) {
           if (p.name.toLowerCase() === 'type') continue;
           const raw = bulk.values[base + p.index] ?? 0;
-          named.push({ name: p.name, value: raw, norm: clamp01(raw / 65534), unit: p.unit });
+          named.push({ name: p.name, ...this.#display(family, p.index, raw) });
         }
       } catch {
         // fall back to a structural list (names only) so the editor still renders
-        for (const p of pack.params) if (p.name.toLowerCase() !== 'type') named.push({ name: p.name, value: 0, norm: 0, unit: p.unit });
+        for (const p of pack.params) if (p.name.toLowerCase() !== 'type') named.push({ name: p.name, value: 0, norm: 0 });
       }
     }
     return { block: pack.name, slug: pack.slug, page: pack.page, named };
+  }
+
+  /** Map a raw 0..65534 wire value to {value, norm, unit} via the device-true FM3 range. */
+  #display(family: string | undefined, paramId: number, raw: number): { value: number; norm: number; unit?: string } {
+    const norm = clamp01(raw / 65534);
+    const range = family ? FM3_RANGES[family]?.[paramId] : undefined;
+    if (range && range.kind === 'float' && Number.isFinite(range.displayMin) && Number.isFinite(range.displayMax)) {
+      const v = wireToDisplay(raw, { displayMin: range.displayMin, displayMax: range.displayMax, displayScale: 'linear' });
+      const unitCode = family ? FM3_PARAMS_BY_FAMILY[family]?.find((x) => x.paramId === paramId)?.unit : undefined;
+      return { value: round3(v), norm, unit: (unitCode && UNIT_LABEL[unitCode]) || undefined };
+    }
+    return { value: Math.round(norm * 1000) / 100, norm }; // 0..10 fallback
   }
 
   // ── writes ──
@@ -262,5 +292,6 @@ class Device {
 }
 
 function clamp01(v: number) { return Math.max(0, Math.min(1, v)); }
+function round3(v: number) { return Math.round(v * 1000) / 1000; }
 
 export const device = new Device();

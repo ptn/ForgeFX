@@ -105,6 +105,25 @@ export class FractalSerial {
     return p;
   }
 
+  /**
+   * Fire-and-forget write, but SERIALIZED on the request chain so it never injects
+   * bytes mid-read (which would corrupt a concurrent dump/bulk-read). Resolves after
+   * a short settle so any echo is drained before the next request collects.
+   */
+  sendQueued(bytes: readonly number[], settleMs = 20): Promise<void> {
+    const task = () =>
+      new Promise<void>((resolve) => {
+        this.send(bytes);
+        setTimeout(resolve, settleMs);
+      });
+    const p = this.#chain.then(task, task);
+    this.#chain = p.then(
+      () => {},
+      () => {}
+    );
+    return p;
+  }
+
   #once(
     bytes: readonly number[],
     { timeoutMs = 1500, quietMs = 90, match }: { timeoutMs?: number; quietMs?: number; match?: (frames: number[][]) => boolean } = {}

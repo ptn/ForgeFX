@@ -23,7 +23,7 @@ import { FM3_RANGES, FM3_PARAMS_BY_FAMILY } from 'fractal-midi/gen3/fm3';
 import { wireToDisplay } from 'fractal-midi/shared';
 import { FractalSerial, autoDetectPath } from './transport/serial.js';
 import { decodePresetDump } from './codec/fm3PresetGrid.js';
-import { allPacks, packBySlug, rosterBySlug, slugForEffectId, paramIndex, type TypeModel } from './defs.js';
+import { allPacks, packBySlug, rosterBySlug, slugForEffectId, type TypeModel } from './defs.js';
 
 const MODEL_FM3 = 0x11;
 const FM3_ROWS = 4;
@@ -44,11 +44,15 @@ const UNIT_LABEL: Record<string, string> = {
   db: 'dB', hz: 'Hz', ms: 'ms', seconds: 's', percent: '%', bipolar_percent: '%',
   degrees: '°', semitones: 'st', pf: 'pF', ratio: ':1'
 };
+// units that mark a musician-facing knob (vs internal 'numeric'/'unverified'/'count'/'enum')
+const KNOB_UNITS = new Set([
+  'knob_0_10', 'knob_0_20', 'db', 'hz', 'ms', 'seconds', 'percent', 'bipolar_percent', 'ratio', 'semitones', 'degrees'
+]);
 
 export interface GridCellDTO { row: number; col: number; effectId: number; name: string; isShunt: boolean; routeFlag: number; fromRows: number[]; }
 export interface PresetGridDTO { model: string; name: string; crcValid: boolean; rows: number; cols: number; scenes: string[]; cells: GridCellDTO[]; source: 'dump'; }
 export interface PresetBlockDTO { slug: string; name: string; effectId: number; row: number; col: number; fromRows: number[]; bypassed: boolean | null; channel: string | null; }
-export interface NamedParam { name: string; value: number; norm: number; unit?: string; }
+export interface NamedParam { name: string; value: number; norm: number; unit?: string; min?: number; max?: number; }
 
 class Device {
   #serial: FractalSerial | null = null;
@@ -65,9 +69,9 @@ class Device {
     return this.#serial;
   }
 
-  /** Fire-and-forget write — no wait. For high-frequency / instant ops (knobs, bypass, channel). */
+  /** Fire-and-forget write, serialized on the request chain (so it never injects mid-read). */
   async #send(bytes: number[]): Promise<{ ok: boolean }> {
-    (await this.#conn()).send(bytes);
+    await (await this.#conn()).sendQueued(bytes);
     return { ok: true };
   }
 
@@ -204,9 +208,22 @@ class Device {
    */
   async blockParams(slug: string): Promise<{ block: string; slug: string; page: number; named: NamedParam[] }> {
     const pack = packBySlug(slug);
-    if (!pack) throw new Error(`unknown block ${slug}`);
-    const eid = await this.#effectIdForSlug(slug);
     const family = SLUG_FAMILY[slug.toLowerCase()];
+    const blockName = pack?.name ?? family ?? slug;
+    const page = pack?.page ?? -1;
+    if (!family) {
+      if (!pack) throw new Error(`unknown block ${slug}`);
+      return { block: blockName, slug, page, named: [] }; // no device-true param family mapped
+    }
+    const defs = FM3_PARAMS_BY_FAMILY[family] ?? [];
+    // knob params = continuous, musician-facing: a float range + a real display unit
+    // (drops enum selectors, internal 'numeric'/'unverified' params, and bypass flags).
+    const knobs = defs.filter((p) => {
+      if (FM3_RANGES[family]?.[p.paramId]?.kind !== 'float') return false;
+      if (/bypass/i.test(p.displayLabel ?? p.name)) return false;
+      return KNOB_UNITS.has(p.unit ?? '');
+    });
+    const eid = await this.#effectIdForSlug(slug);
     const named: NamedParam[] = [];
     if (eid != null) {
       const dev = await this.#conn();
@@ -214,39 +231,46 @@ class Device {
         const activeCh = (await this.#statusByEffectId()).get(eid)?.channel ?? 0;
         const frames = await dev.request(buildBlockBulkReadPoll(eid, MODEL_FM3), { timeoutMs: 2500, quietMs: 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
         const bulk = assembleGen3BlockBulkRead(frames, MODEL_FM3);
-        const stride = Math.max(...pack.params.map((p) => p.index)) + 1;
+        const stride = Math.max(1, ...defs.map((p) => p.paramId)) + 1;
         const channelCount = Math.max(1, Math.floor(bulk.values.length / stride));
         const base = Math.min(activeCh, channelCount - 1) * stride;
-        for (const p of pack.params) {
-          if (p.name.toLowerCase() === 'type') continue;
-          const raw = bulk.values[base + p.index] ?? 0;
-          named.push({ name: p.name, ...this.#display(family, p.index, raw) });
+        for (const p of knobs) {
+          const raw = bulk.values[base + p.paramId] ?? 0;
+          named.push({ name: p.displayLabel ?? p.name, ...this.#display(family, p.paramId, raw) });
         }
       } catch {
-        // fall back to a structural list (names only) so the editor still renders
-        for (const p of pack.params) if (p.name.toLowerCase() !== 'type') named.push({ name: p.name, value: 0, norm: 0 });
+        for (const p of knobs) named.push({ name: p.displayLabel ?? p.name, value: 0, norm: 0 });
       }
     }
-    return { block: pack.name, slug: pack.slug, page: pack.page, named };
+    return { block: blockName, slug, page, named };
   }
 
-  /** Map a raw 0..65534 wire value to {value, norm, unit} via the device-true FM3 range. */
-  #display(family: string | undefined, paramId: number, raw: number): { value: number; norm: number; unit?: string } {
+  /** Map a raw 0..65534 wire value to {value, norm, unit, min, max} via the device-true FM3 range. */
+  #display(family: string | undefined, paramId: number, raw: number): { value: number; norm: number; unit?: string; min?: number; max?: number } {
     const norm = clamp01(raw / 65534);
     const range = family ? FM3_RANGES[family]?.[paramId] : undefined;
     if (range && range.kind === 'float' && Number.isFinite(range.displayMin) && Number.isFinite(range.displayMax)) {
       const v = wireToDisplay(raw, { displayMin: range.displayMin, displayMax: range.displayMax, displayScale: 'linear' });
       const unitCode = family ? FM3_PARAMS_BY_FAMILY[family]?.find((x) => x.paramId === paramId)?.unit : undefined;
-      return { value: round3(v), norm, unit: (unitCode && UNIT_LABEL[unitCode]) || undefined };
+      return { value: round3(v), norm, unit: (unitCode && UNIT_LABEL[unitCode]) || undefined, min: range.displayMin, max: range.displayMax };
     }
     return { value: Math.round(norm * 1000) / 100, norm }; // 0..10 fallback
+  }
+
+  /** Resolve a param name (display label) → device-true paramId. 'Type' → the model-selector enum. */
+  #paramId(family: string, name: string): number | undefined {
+    const defs = FM3_PARAMS_BY_FAMILY[family] ?? [];
+    if (name.toLowerCase() === 'type') return defs.find((p) => p.unit === 'enum' && /TYPE$/i.test(p.name))?.paramId;
+    return defs.find((p) => p.displayLabel === name || p.name === name)?.paramId;
   }
 
   // ── writes ──
   async setParam(slug: string, param: string, value: number, continuous: boolean) {
     const eid = await this.#effectIdForSlug(slug);
-    const pid = paramIndex(slug, param);
-    if (eid == null || pid == null) return { ok: false };
+    const family = SLUG_FAMILY[slug.toLowerCase()];
+    if (eid == null || !family) return { ok: false };
+    const pid = this.#paramId(family, param);
+    if (pid == null) return { ok: false };
     // continuous knob writes stream at high frequency → fire-and-forget (instant, like the C#);
     // a typed/discrete write (retype) is rare + worth confirming, so reject-watch it.
     if (continuous) return this.#send(buildSetParameterContinuous(eid, pid, clamp01(value), MODEL_FM3));

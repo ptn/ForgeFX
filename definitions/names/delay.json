@@ -1,149 +1,137 @@
 {
-  "block": "chorus",
-  "source": "Fractal Audio Wiki \u2014 Chorus models",
-  "count": 24,
+  "block": "delay",
+  "source": "Fractal Audio FM3 (device dictionary) + wiki notes",
+  "count": 22,
   "models": [
     {
+      "value": 0,
+      "name": "Reverb Pre-Swell",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
       "value": 1,
-      "name": "Boss CE-1",
+      "name": "Ping-Pong Echo Verb",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 2,
-      "name": "Boss CE-2",
+      "name": "Diffusion Swirl",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 3,
-      "name": "MX234",
+      "name": "Decepticons",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 4,
-      "name": "MX134 Stereo",
+      "name": "Reverse Reverb Echo",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 5,
-      "name": "Small Copy",
+      "name": "Lazer Zaps",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 6,
-      "name": "Japan CH-1",
+      "name": "Creaky",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 7,
-      "name": "Rockguy",
+      "name": "Tap Verb Plush",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 8,
-      "name": "Vintage tape",
+      "name": "Tap Verb Grit",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 9,
-      "name": "Triangle Chorus",
+      "name": "Bounce",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 10,
-      "name": "Dimension",
+      "name": "Bounce Reverse",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 11,
-      "name": "BBD algorithm",
+      "name": "Motion Echoes",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 12,
-      "name": "Vibrato",
+      "name": "Staccato Spread",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 13,
-      "name": "Tri-Chorus",
+      "name": "Tank Taps",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 14,
-      "name": "Dual Chorus",
+      "name": "Serpentine Swells",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 15,
-      "name": "Using other blocks to create a chorus",
+      "name": "Late Bloomer",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 16,
-      "name": "Arion chorus",
+      "name": "Brute Force Reverb",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 17,
-      "name": "Voices",
+      "name": "Megaverb",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 18,
-      "name": "LFO Type",
+      "name": "Gated Reverb",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 19,
-      "name": "Stereo Spread",
+      "name": "Take Five",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 20,
-      "name": "Chorus vs Detune",
+      "name": "Diffused Ping-Pong Echo",
       "manufacturer": null,
       "basedOn": null
     },
     {
       "value": 21,
-      "name": "Factory presets",
-      "manufacturer": null,
-      "basedOn": null
-    },
-    {
-      "value": 22,
-      "name": "Use a Flanger for chorus",
-      "manufacturer": null,
-      "basedOn": null
-    },
-    {
-      "value": 23,
-      "name": "Double chorus",
-      "manufacturer": null,
-      "basedOn": null
-    },
-    {
-      "value": 24,
-      "name": "More information about chorus",
+      "name": "Echo Room",
       "manufacturer": null,
       "basedOn": null
     }

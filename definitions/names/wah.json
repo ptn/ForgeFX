@@ -1,0 +1,61 @@
+{
+  "block": "wah",
+  "source": "Fractal Audio FM3 (device dictionary) + wiki notes",
+  "count": 9,
+  "models": [
+    {
+      "value": 0,
+      "name": "FAS Wah",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 1,
+      "name": "Clyde",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 2,
+      "name": "Cry Babe",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 3,
+      "name": "VX846",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 4,
+      "name": "Color-Tone",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 5,
+      "name": "Funk Wah",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 6,
+      "name": "Mortal",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 7,
+      "name": "VX845",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 8,
+      "name": "Paragon",
+      "manufacturer": null,
+      "basedOn": null
+    }
+  ]
+}

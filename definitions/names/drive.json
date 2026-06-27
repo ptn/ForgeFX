@@ -1,529 +1,523 @@
 {
   "block": "drive",
-  "source": "Fractal Audio Wiki \u2014 Drive models",
-  "count": 87,
+  "source": "Fractal Audio FM3 (device dictionary) + wiki notes",
+  "count": 86,
   "models": [
     {
-      "value": 1,
-      "name": "77 CUSTOM OD",
-      "manufacturer": null,
-      "basedOn": "MXR M77 Custom Badass Modified O.D."
-    },
-    {
-      "value": 2,
-      "name": "ANGRY CHUCK",
-      "manufacturer": null,
-      "basedOn": "JHS Angry Charlie V3"
-    },
-    {
-      "value": 3,
-      "name": "BB PRE",
-      "manufacturer": null,
-      "basedOn": "Xotic BB preamp"
-    },
-    {
-      "value": 4,
-      "name": "BB PRE AT",
-      "manufacturer": null,
-      "basedOn": "Xotic BB preamp AT"
-    },
-    {
-      "value": 5,
-      "name": "BENDER FUZZ",
-      "manufacturer": null,
-      "basedOn": "Sola Sound / Vox Tone Bender"
-    },
-    {
-      "value": 6,
-      "name": "BIT CRUSHER",
-      "manufacturer": null,
-      "basedOn": "custom model"
-    },
-    {
-      "value": 7,
-      "name": "BLACKGLASS 7K",
-      "manufacturer": null,
-      "basedOn": "Darkglass Microtubes B7K"
-    },
-    {
-      "value": 8,
-      "name": "BLUES OD",
-      "manufacturer": null,
-      "basedOn": "Marshall Bluesbreaker Mk1"
-    },
-    {
-      "value": 9,
-      "name": "BOSOM BOOST",
-      "manufacturer": null,
-      "basedOn": "Friedman Buxom Boost"
-    },
-    {
-      "value": 10,
-      "name": "BOX O\u0027CRUNCH",
-      "manufacturer": null,
-      "basedOn": "MI Audio Crunch Box V1"
-    },
-    {
-      "value": 11,
-      "name": "COLORTONE BOOSTER",
-      "manufacturer": null,
-      "basedOn": "Colorsound Power Boost"
-    },
-    {
-      "value": 12,
-      "name": "COLORTONE OD",
-      "manufacturer": null,
-      "basedOn": "Colorsound Overdriver"
-    },
-    {
-      "value": 13,
-      "name": "COMPULSION DISTORTION HP",
-      "manufacturer": null,
-      "basedOn": "Fulltone OCD"
-    },
-    {
-      "value": 14,
-      "name": "COMPULSION DISTORTION LP",
-      "manufacturer": null,
-      "basedOn": "Fulltone OCD"
-    },
-    {
-      "value": 15,
-      "name": "DS1 DISTORTION",
-      "manufacturer": null,
-      "basedOn": "BOSS DS-1 Distortion"
-    },
-    {
-      "value": 16,
-      "name": "DS1 DISTORTION MOD",
-      "manufacturer": null,
-      "basedOn": "modded BOSS DS-1 Distortion"
-    },
-    {
-      "value": 17,
-      "name": "ESOTERIC ACB",
-      "manufacturer": null,
-      "basedOn": "Xotic AC Booster"
-    },
-    {
-      "value": 18,
-      "name": "ESOTERIC BASS RCB",
-      "manufacturer": null,
-      "basedOn": "Xotic Bass RC Booster"
-    },
-    {
-      "value": 19,
-      "name": "ESOTERIC RCB",
-      "manufacturer": null,
-      "basedOn": "Xotic RC Booster v1"
-    },
-    {
-      "value": 20,
-      "name": "ETERNAL LOVE",
-      "manufacturer": null,
-      "basedOn": "Lovepedal Eternity"
-    },
-    {
-      "value": 21,
-      "name": "FACE FUZZ",
-      "manufacturer": null,
-      "basedOn": "Dallas-Arbiter Fuzz Face"
-    },
-    {
-      "value": 22,
-      "name": "FAS BOOST",
-      "manufacturer": null,
-      "basedOn": "custom model"
-    },
-    {
-      "value": 23,
-      "name": "FAS LED-DRIVE",
-      "manufacturer": null,
-      "basedOn": "custom model"
-    },
-    {
-      "value": 24,
-      "name": "FAT RAT",
-      "manufacturer": null,
-      "basedOn": "modded Pro Co RAT with LED clipping"
-    },
-    {
-      "value": 25,
-      "name": "FET BOOST",
-      "manufacturer": null,
-      "basedOn": "custom model"
-    },
-    {
-      "value": 26,
-      "name": "FET PREAMP",
-      "manufacturer": null,
-      "basedOn": "possibly based on the BOSS FA-1 FET Amplifier"
-    },
-    {
-      "value": 27,
-      "name": "FULL OD",
-      "manufacturer": null,
-      "basedOn": "Fulltone Full-Drive 2"
-    },
-    {
-      "value": 28,
-      "name": "GAUSS DRIVE",
-      "manufacturer": null,
-      "basedOn": "Mesa Flux-Drive"
-    },
-    {
-      "value": 29,
-      "name": "GRIDDLE CAKE",
-      "manufacturer": null,
-      "basedOn": "Crowther Hot Cake"
-    },
-    {
-      "value": 30,
-      "name": "GUARDIAN PHOTON SPEED",
-      "manufacturer": null,
-      "basedOn": "Greer Lightspeed"
-    },
-    {
-      "value": 31,
-      "name": "HARD FUZZ",
-      "manufacturer": null,
-      "basedOn": "custom model"
-    },
-    {
-      "value": 32,
-      "name": "HEARTPEDAL 11",
-      "manufacturer": null,
-      "basedOn": "Lovepedal OD11 / Amp Eleven"
-    },
-    {
-      "value": 33,
-      "name": "HOODOO DRIVE",
-      "manufacturer": null,
-      "basedOn": "Voodoo Lab Overdrive"
-    },
-    {
-      "value": 34,
-      "name": "HORIZON PRECISION DRIVE",
-      "manufacturer": null,
-      "basedOn": "Horizon Devices Precision Drive"
-    },
-    {
-      "value": 35,
-      "name": "INTEGRAL PRE",
-      "manufacturer": null,
-      "basedOn": "TC Electronics Integrated Preamp"
-    },
-    {
-      "value": 36,
-      "name": "JAM RAY",
-      "manufacturer": null,
-      "basedOn": "Venuram Jan Ray"
-    },
-    {
-      "value": 37,
-      "name": "KLONE CHIRON",
-      "manufacturer": null,
-      "basedOn": "Klon Centaur / KTR"
-    },
-    {
-      "value": 38,
-      "name": "M-ZONE DISTORTION",
-      "manufacturer": null,
-      "basedOn": "BOSS MT-2 Metal Zone"
-    },
-    {
-      "value": 39,
-      "name": "MASTER FUZZ",
-      "manufacturer": null,
-      "basedOn": "Gibson Maestro Fuzz-Tone FZ-1A"
-    },
-    {
-      "value": 40,
-      "name": "MAXOFF 808",
-      "manufacturer": null,
-      "basedOn": "Maxon OD-808"
-    },
-    {
-      "value": 41,
-      "name": "MCMLXXXI DRV",
-      "manufacturer": null,
-      "basedOn": "1981 Inventions DRV"
-    },
-    {
-      "value": 42,
-      "name": "MICRO BOOST",
-      "manufacturer": null,
-      "basedOn": "MXR Micro Amp"
-    },
-    {
-      "value": 43,
-      "name": "MID BOOST",
-      "manufacturer": null,
-      "basedOn": "custom model"
-    },
-    {
-      "value": 44,
-      "name": "MOSFET DISTORTION",
-      "manufacturer": null,
-      "basedOn": "Ibanez MT10 Mostortion"
-    },
-    {
-      "value": 45,
-      "name": "NO-AMP BASS DI",
-      "manufacturer": null,
-      "basedOn": "Tech 21 NYC Sansamp Bass Driver DI"
-    },
-    {
-      "value": 46,
-      "name": "NO-AMP BASS PRE",
-      "manufacturer": null,
-      "basedOn": "Tech 21 Sansamp SansAmp BassDriver DI"
-    },
-    {
-      "value": 47,
-      "name": "NOBELLIUM OVD-1",
-      "manufacturer": null,
-      "basedOn": "Nobels ODR-1 BC Natural Overdrive"
-    },
-    {
-      "value": 48,
-      "name": "OCTAVE DISTORTION",
-      "manufacturer": null,
-      "basedOn": "Tycobrahe Octavia"
-    },
-    {
-      "value": 49,
-      "name": "OD 250",
-      "manufacturer": null,
-      "basedOn": "DOD Overdrive Preamp 250: reissue"
-    },
-    {
-      "value": 50,
-      "name": "OD 250 GRAY",
-      "manufacturer": null,
-      "basedOn": "DOD Overdrive Preamp 250: original"
-    },
-    {
-      "value": 51,
-      "name": "OD-ONE OVERDRIVE",
-      "manufacturer": null,
-      "basedOn": "BOSS OD-1 Over Drive"
-    },
-    {
-      "value": 52,
-      "name": "PARADIGM SHIFTER",
-      "manufacturer": null,
-      "basedOn": "Barber Electronics Gain Changer"
-    },
-    {
-      "value": 53,
-      "name": "PI FUZZ",
-      "manufacturer": null,
-      "basedOn": "Electro-Harmonix Big Muff Pi, current"
-    },
-    {
-      "value": 54,
-      "name": "PI FUZZ - BASS",
-      "manufacturer": null,
-      "basedOn": "Electro-Harmonix Deluxe Bass Big Muff"
-    },
-    {
-      "value": 55,
-      "name": "PI FUZZ - TRIANGLE",
-      "manufacturer": null,
-      "basedOn": "Electro-Harmonix 1971 Big Muff Pi Triangle"
-    },
-    {
-      "value": 56,
-      "name": "PI FUZZ - RAM\u0027S HEAD",
-      "manufacturer": null,
-      "basedOn": "Electro-Harmonix \u002770s Big Muff Pi Ram\u0027s Head"
-    },
-    {
-      "value": 57,
-      "name": "PI FUZZ - RUSSIAN",
-      "manufacturer": null,
-      "basedOn": "Electro-Harmonix Russian Big Muff Pi"
-    },
-    {
-      "value": 58,
-      "name": "PLUS DISTORTION",
-      "manufacturer": null,
-      "basedOn": "Distortion \u002B"
-    },
-    {
-      "value": 59,
-      "name": "RAT DISTORTION",
+      "value": 0,
+      "name": "Rat Distortion",
       "manufacturer": null,
       "basedOn": "Pro Co RAT"
     },
     {
-      "value": 60,
-      "name": "ROYAL BASS DI",
+      "value": 1,
+      "name": "PI Fuzz",
       "manufacturer": null,
-      "basedOn": "Noble Bass Preamp DI"
+      "basedOn": "Electro-Harmonix Big Muff Pi, current"
     },
     {
-      "value": 61,
-      "name": "SDD PREAMP",
+      "value": 2,
+      "name": "Tube Drive 3-Knob",
       "manufacturer": null,
-      "basedOn": "Korg SDD-3000 preamp"
+      "basedOn": "Butler Tube Driver"
     },
     {
-      "value": 62,
-      "name": "SHIMMER DRIVE",
-      "manufacturer": null,
-      "basedOn": "custom model"
-    },
-    {
-      "value": 63,
-      "name": "SHRED DISTORTION",
-      "manufacturer": null,
-      "basedOn": "Marshall Shredmaster"
-    },
-    {
-      "value": 64,
-      "name": "SONIC DRIVE",
-      "manufacturer": null,
-      "basedOn": "Maxon/Ibanez SD-9 Sonic Distortion"
-    },
-    {
-      "value": 65,
-      "name": "SUHR RIOT GE",
-      "manufacturer": null,
-      "basedOn": "R) (Suhr Riot"
-    },
-    {
-      "value": 66,
-      "name": "SUHR RIOT LED",
-      "manufacturer": null,
-      "basedOn": "L) (Suhr Riot"
-    },
-    {
-      "value": 67,
-      "name": "SUHR RIOT LED/SI",
-      "manufacturer": null,
-      "basedOn": "M) (Suhr Riot"
-    },
-    {
-      "value": 68,
-      "name": "SUNRISE SPLENDOR",
-      "manufacturer": null,
-      "basedOn": "JHS Pedals Morning Glory V4"
-    },
-    {
-      "value": 69,
-      "name": "SUNRISE SPLENDOR HI-CUT",
-      "manufacturer": null,
-      "basedOn": null
-    },
-    {
-      "value": 70,
-      "name": "SUPER FUZZ",
-      "manufacturer": null,
-      "basedOn": "Univox Super-Fuzz"
-    },
-    {
-      "value": 71,
-      "name": "SUPER OD",
+      "value": 3,
+      "name": "Super OD",
       "manufacturer": null,
       "basedOn": "BOSS SD-1 Super OverDrive"
     },
     {
-      "value": 72,
-      "name": "SWEDISH METAL",
+      "value": 4,
+      "name": "Treble Boost",
       "manufacturer": null,
-      "basedOn": "BOSS Waza Craft HM-2W Heavy Metal"
+      "basedOn": "silicon treble booster circuit"
     },
     {
-      "value": 73,
+      "value": 5,
+      "name": "Mid Boost",
+      "manufacturer": null,
+      "basedOn": "custom model"
+    },
+    {
+      "value": 6,
       "name": "T808 OD",
       "manufacturer": null,
       "basedOn": "Ibanez TS-808 Tube Screamer"
     },
     {
-      "value": 74,
-      "name": "T808 MOD",
+      "value": 7,
+      "name": "Fat Rat",
+      "manufacturer": null,
+      "basedOn": "modded Pro Co RAT with LED clipping"
+    },
+    {
+      "value": 8,
+      "name": "T808 Mod",
       "manufacturer": null,
       "basedOn": "modded Ibanez TS-808 Tube Screamer"
     },
     {
-      "value": 75,
-      "name": "TAPE DISTORTION",
+      "value": 9,
+      "name": "Octave Distortion",
+      "manufacturer": null,
+      "basedOn": "Tycobrahe Octavia"
+    },
+    {
+      "value": 10,
+      "name": "Plus Distortion",
+      "manufacturer": null,
+      "basedOn": "Distortion +"
+    },
+    {
+      "value": 11,
+      "name": "Hard Fuzz",
+      "manufacturer": null,
+      "basedOn": "custom model"
+    },
+    {
+      "value": 12,
+      "name": "FET Boost",
+      "manufacturer": null,
+      "basedOn": "custom model"
+    },
+    {
+      "value": 13,
+      "name": "Tape Distortion",
       "manufacturer": null,
       "basedOn": "tape distortion"
     },
     {
-      "value": 76,
-      "name": "TIMOTHY DOWN",
+      "value": 14,
+      "name": "Full OD",
+      "manufacturer": null,
+      "basedOn": "Fulltone Full-Drive 2"
+    },
+    {
+      "value": 15,
+      "name": "Blues OD",
+      "manufacturer": null,
+      "basedOn": "Marshall Bluesbreaker Mk1"
+    },
+    {
+      "value": 16,
+      "name": "Shred Distortion",
+      "manufacturer": null,
+      "basedOn": "Marshall Shredmaster"
+    },
+    {
+      "value": 17,
+      "name": "M-Zone Distortion",
+      "manufacturer": null,
+      "basedOn": "BOSS MT-2 Metal Zone"
+    },
+    {
+      "value": 18,
+      "name": "Bender Fuzz",
+      "manufacturer": null,
+      "basedOn": "Sola Sound / Vox Tone Bender"
+    },
+    {
+      "value": 19,
+      "name": "BB Pre",
+      "manufacturer": null,
+      "basedOn": "Xotic BB preamp"
+    },
+    {
+      "value": 20,
+      "name": "Master Fuzz",
+      "manufacturer": null,
+      "basedOn": "Gibson Maestro Fuzz-Tone FZ-1A"
+    },
+    {
+      "value": 21,
+      "name": "Face Fuzz",
+      "manufacturer": null,
+      "basedOn": "Dallas-Arbiter Fuzz Face"
+    },
+    {
+      "value": 22,
+      "name": "Bit Crusher",
+      "manufacturer": null,
+      "basedOn": "custom model"
+    },
+    {
+      "value": 23,
+      "name": "Eternal Love",
+      "manufacturer": null,
+      "basedOn": "Lovepedal Eternity"
+    },
+    {
+      "value": 24,
+      "name": "Esoteric ACB",
+      "manufacturer": null,
+      "basedOn": "Xotic AC Booster"
+    },
+    {
+      "value": 25,
+      "name": "Esoteric RCB",
+      "manufacturer": null,
+      "basedOn": "Xotic RC Booster v1"
+    },
+    {
+      "value": 26,
+      "name": "Zen Master",
+      "manufacturer": null,
+      "basedOn": "Hermida Zendrive"
+    },
+    {
+      "value": 27,
+      "name": "Tube Drive 4-Knob",
+      "manufacturer": null,
+      "basedOn": "Butler Tube Driver"
+    },
+    {
+      "value": 28,
+      "name": "FAS LED-Drive",
+      "manufacturer": null,
+      "basedOn": "custom model"
+    },
+    {
+      "value": 29,
+      "name": "SDD Preamp",
+      "manufacturer": null,
+      "basedOn": "Korg SDD-3000 preamp"
+    },
+    {
+      "value": 30,
+      "name": "FET Preamp",
+      "manufacturer": null,
+      "basedOn": "possibly based on the BOSS FA-1 FET Amplifier"
+    },
+    {
+      "value": 31,
+      "name": "Suhr Riot Ge (R)",
+      "manufacturer": null,
+      "basedOn": "R) (Suhr Riot"
+    },
+    {
+      "value": 32,
+      "name": "Micro Boost",
+      "manufacturer": null,
+      "basedOn": "MXR Micro Amp"
+    },
+    {
+      "value": 33,
+      "name": "FAS Boost",
+      "manufacturer": null,
+      "basedOn": "custom model"
+    },
+    {
+      "value": 34,
+      "name": "Timothy Mid",
       "manufacturer": null,
       "basedOn": "Paul Cochrane Timmy V4"
     },
     {
-      "value": 77,
-      "name": "TIMOTHY MID",
+      "value": 35,
+      "name": "Shimmer Drive",
+      "manufacturer": null,
+      "basedOn": "custom model"
+    },
+    {
+      "value": 36,
+      "name": "Blackglass 7K",
+      "manufacturer": null,
+      "basedOn": "Darkglass Microtubes B7K"
+    },
+    {
+      "value": 37,
+      "name": "Suhr Riot LED (L)",
+      "manufacturer": null,
+      "basedOn": "L) (Suhr Riot"
+    },
+    {
+      "value": 38,
+      "name": "Timothy Up",
       "manufacturer": null,
       "basedOn": "Paul Cochrane Timmy V4"
     },
     {
-      "value": 78,
-      "name": "TIMOTHY UP",
-      "manufacturer": null,
-      "basedOn": "Paul Cochrane Timmy V4"
-    },
-    {
-      "value": 79,
-      "name": "TONE OF KINGS",
+      "value": 39,
+      "name": "Tone of Kings",
       "manufacturer": null,
       "basedOn": "Analog Man King of Tone"
     },
     {
-      "value": 80,
-      "name": "TREBLE BOOST",
+      "value": 40,
+      "name": "Heartpedal 11",
       "manufacturer": null,
-      "basedOn": "silicon treble booster circuit"
+      "basedOn": "Lovepedal OD11 / Amp Eleven"
     },
     {
-      "value": 81,
-      "name": "TS9DX \u002B",
+      "value": 41,
+      "name": "Jam Ray",
+      "manufacturer": null,
+      "basedOn": "Venuram Jan Ray"
+    },
+    {
+      "value": 42,
+      "name": "Suhr Riot LED/Si (M)",
+      "manufacturer": null,
+      "basedOn": "M) (Suhr Riot"
+    },
+    {
+      "value": 43,
+      "name": "OD 250",
+      "manufacturer": null,
+      "basedOn": "DOD Overdrive Preamp 250: reissue"
+    },
+    {
+      "value": 44,
+      "name": "Timothy Down",
+      "manufacturer": null,
+      "basedOn": "Paul Cochrane Timmy V4"
+    },
+    {
+      "value": 45,
+      "name": "TS9DX +",
       "manufacturer": null,
       "basedOn": "Ibanez TS9DX Turbo Tube Screamer"
     },
     {
-      "value": 82,
-      "name": "TS9DX HOT",
+      "value": 46,
+      "name": "Box o' Crunch",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 47,
+      "name": "OD 250 Gray",
+      "manufacturer": null,
+      "basedOn": "DOD Overdrive Preamp 250: original"
+    },
+    {
+      "value": 48,
+      "name": "Horizon Precision Drive",
+      "manufacturer": null,
+      "basedOn": "Horizon Devices Precision Drive"
+    },
+    {
+      "value": 49,
+      "name": "Compulsion Distortion LP",
+      "manufacturer": null,
+      "basedOn": "Fulltone OCD"
+    },
+    {
+      "value": 50,
+      "name": "Hoodoo Drive",
+      "manufacturer": null,
+      "basedOn": "Voodoo Lab Overdrive"
+    },
+    {
+      "value": 51,
+      "name": "Compulsion Distortion HP",
+      "manufacturer": null,
+      "basedOn": "Fulltone OCD"
+    },
+    {
+      "value": 52,
+      "name": "TS9DX Hot",
       "manufacturer": null,
       "basedOn": "Ibanez TS9DX Turbo Tube Screamer"
     },
     {
-      "value": 83,
-      "name": "TUBE DRIVE 3-KNOB",
+      "value": 53,
+      "name": "DS1 Distortion",
       "manufacturer": null,
-      "basedOn": "Butler Tube Driver"
+      "basedOn": "BOSS DS-1 Distortion"
     },
     {
-      "value": 84,
-      "name": "TUBE DRIVE 4-KNOB",
+      "value": 54,
+      "name": "DS1 Distortion Mod",
       "manufacturer": null,
-      "basedOn": "Butler Tube Driver"
+      "basedOn": "modded BOSS DS-1 Distortion"
     },
     {
-      "value": 85,
-      "name": "TUBE DRIVE 5-KNOB",
+      "value": 55,
+      "name": "MCMLXXXI Drive",
       "manufacturer": null,
-      "basedOn": "Butler Tube Driver / Dean Markley Overlord"
+      "basedOn": null
     },
     {
-      "value": 86,
-      "name": "VALVE SCREAMER VS9",
+      "value": 56,
+      "name": "Sonic Drive",
+      "manufacturer": null,
+      "basedOn": "Maxon/Ibanez SD-9 Sonic Distortion"
+    },
+    {
+      "value": 57,
+      "name": "Valve Screamer VS9",
       "manufacturer": null,
       "basedOn": "Ibanez TS9 Tube Screamer"
     },
     {
-      "value": 87,
-      "name": "ZEN MASTER",
+      "value": 58,
+      "name": "Maxoff 808",
       "manufacturer": null,
-      "basedOn": "Hermida Zendrive"
+      "basedOn": "Maxon OD-808"
+    },
+    {
+      "value": 59,
+      "name": "Klone Chiron",
+      "manufacturer": null,
+      "basedOn": "Klon Centaur / KTR"
+    },
+    {
+      "value": 60,
+      "name": "Esoteric Bass RCB",
+      "manufacturer": null,
+      "basedOn": "Xotic Bass RC Booster"
+    },
+    {
+      "value": 61,
+      "name": "BB Pre AT",
+      "manufacturer": null,
+      "basedOn": "Xotic BB preamp AT"
+    },
+    {
+      "value": 62,
+      "name": "Griddle Cake",
+      "manufacturer": null,
+      "basedOn": "Crowther Hot Cake"
+    },
+    {
+      "value": 63,
+      "name": "Bosom Boost",
+      "manufacturer": null,
+      "basedOn": "Friedman Buxom Boost"
+    },
+    {
+      "value": 64,
+      "name": "OD-One Overdrive",
+      "manufacturer": null,
+      "basedOn": "BOSS OD-1 Over Drive"
+    },
+    {
+      "value": 65,
+      "name": "Nobelium OVD-1",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 66,
+      "name": "Sunrise Splendor Hi-Cut",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 67,
+      "name": "Gauss Drive",
+      "manufacturer": null,
+      "basedOn": "Mesa Flux-Drive"
+    },
+    {
+      "value": 68,
+      "name": "Sunrise Splendor",
+      "manufacturer": null,
+      "basedOn": "JHS Pedals Morning Glory V4"
+    },
+    {
+      "value": 69,
+      "name": "Integral Pre",
+      "manufacturer": null,
+      "basedOn": "TC Electronics Integrated Preamp"
+    },
+    {
+      "value": 70,
+      "name": "PI Fuzz - Triangle",
+      "manufacturer": null,
+      "basedOn": "Electro-Harmonix 1971 Big Muff Pi Triangle"
+    },
+    {
+      "value": 71,
+      "name": "PI Fuzz - Ram's Head",
+      "manufacturer": null,
+      "basedOn": "Electro-Harmonix '70s Big Muff Pi Ram's Head"
+    },
+    {
+      "value": 72,
+      "name": "Colortone Booster",
+      "manufacturer": null,
+      "basedOn": "Colorsound Power Boost"
+    },
+    {
+      "value": 73,
+      "name": "Colortone OD",
+      "manufacturer": null,
+      "basedOn": "Colorsound Overdriver"
+    },
+    {
+      "value": 74,
+      "name": "MOSFET Distortion",
+      "manufacturer": null,
+      "basedOn": "Ibanez MT10 Mostortion"
+    },
+    {
+      "value": 75,
+      "name": "PI Fuzz - Russian",
+      "manufacturer": null,
+      "basedOn": "Electro-Harmonix Russian Big Muff Pi"
+    },
+    {
+      "value": 76,
+      "name": "Super Fuzz",
+      "manufacturer": null,
+      "basedOn": "Univox Super-Fuzz"
+    },
+    {
+      "value": 77,
+      "name": "Tube Drive 5-Knob",
+      "manufacturer": null,
+      "basedOn": "Butler Tube Driver / Dean Markley Overlord"
+    },
+    {
+      "value": 78,
+      "name": "77 Custom OD",
+      "manufacturer": null,
+      "basedOn": "MXR M77 Custom Badass Modified O.D."
+    },
+    {
+      "value": 79,
+      "name": "Angry Chuck",
+      "manufacturer": null,
+      "basedOn": "JHS Angry Charlie V3"
+    },
+    {
+      "value": 80,
+      "name": "Guardian Photon Speed",
+      "manufacturer": null,
+      "basedOn": "Greer Lightspeed"
+    },
+    {
+      "value": 81,
+      "name": "Paradigm Shifter",
+      "manufacturer": null,
+      "basedOn": "Barber Electronics Gain Changer"
+    },
+    {
+      "value": 82,
+      "name": "PI Fuzz - Bass",
+      "manufacturer": null,
+      "basedOn": "Electro-Harmonix Deluxe Bass Big Muff"
+    },
+    {
+      "value": 83,
+      "name": "NoAmp Bass DI",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 84,
+      "name": "NoAmp Bass Pre",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 85,
+      "name": "Royal Bass DI",
+      "manufacturer": null,
+      "basedOn": "Noble Bass Preamp DI"
     }
   ]
 }

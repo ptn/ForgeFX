@@ -1,0 +1,121 @@
+{
+  "block": "comp",
+  "source": "Fractal Audio FM3 (device dictionary) + wiki notes",
+  "count": 19,
+  "models": [
+    {
+      "value": 0,
+      "name": "Modern VCA Compressor",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 1,
+      "name": "Econo-Dyno-Comp",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 2,
+      "name": "Dynami-Comp Modern",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 3,
+      "name": "Dynamics Processor",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 4,
+      "name": "Optical Compressor",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 5,
+      "name": "Vari-Mu Tube Compressor",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 6,
+      "name": "Analog Compressor",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 7,
+      "name": "Dynami-Comp Classic",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 8,
+      "name": "JFET Studio Compressor",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 9,
+      "name": "VCA FF Sustainer",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 10,
+      "name": "VCA Bus Compressor",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 11,
+      "name": "VCA FB Sustainer",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 12,
+      "name": "Compander",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 13,
+      "name": "Classic VCA Compressor",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 14,
+      "name": "Analog Sustainer",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 15,
+      "name": "JFET Pedal Compressor",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 16,
+      "name": "Rockguy Compressor",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 17,
+      "name": "Dynami-Comp Soft",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 18,
+      "name": "Citrus Juicer",
+      "manufacturer": null,
+      "basedOn": null
+    }
+  ]
+}

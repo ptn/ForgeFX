@@ -1,0 +1,151 @@
+{
+  "block": "chorus",
+  "source": "Fractal Audio Wiki \u2014 Chorus models",
+  "count": 24,
+  "models": [
+    {
+      "value": 1,
+      "name": "Boss CE-1",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 2,
+      "name": "Boss CE-2",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 3,
+      "name": "MX234",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 4,
+      "name": "MX134 Stereo",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 5,
+      "name": "Small Copy",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 6,
+      "name": "Japan CH-1",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 7,
+      "name": "Rockguy",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 8,
+      "name": "Vintage tape",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 9,
+      "name": "Triangle Chorus",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 10,
+      "name": "Dimension",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 11,
+      "name": "BBD algorithm",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 12,
+      "name": "Vibrato",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 13,
+      "name": "Tri-Chorus",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 14,
+      "name": "Dual Chorus",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 15,
+      "name": "Using other blocks to create a chorus",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 16,
+      "name": "Arion chorus",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 17,
+      "name": "Voices",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 18,
+      "name": "LFO Type",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 19,
+      "name": "Stereo Spread",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 20,
+      "name": "Chorus vs Detune",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 21,
+      "name": "Factory presets",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 22,
+      "name": "Use a Flanger for chorus",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 23,
+      "name": "Double chorus",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 24,
+      "name": "More information about chorus",
+      "manufacturer": null,
+      "basedOn": null
+    }
+  ]
+}

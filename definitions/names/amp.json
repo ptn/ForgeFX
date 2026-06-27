@@ -1,0 +1,2023 @@
+{
+  "block": "amp",
+  "source": "Fractal Audio Wiki \u2014 Amp models",
+  "count": 336,
+  "models": [
+    {
+      "value": 1,
+      "name": "5F1 TWEED CHAMPLIFIER",
+      "manufacturer": "Fender",
+      "basedOn": "narrow-panel Fender Tweed Champ, 5F1"
+    },
+    {
+      "value": 2,
+      "name": "5F1 TWEED EC CHAMPLIFIER",
+      "manufacturer": "Fender",
+      "basedOn": "2011 Fender EC Vibro-Champ"
+    },
+    {
+      "value": 3,
+      "name": "5F8 TWEED BRIGHT",
+      "manufacturer": "Fender",
+      "basedOn": "Keith Urban\u0027s 1959 narrow-panel high-power Fender Tweed Twin, 5F8"
+    },
+    {
+      "value": 4,
+      "name": "5F8 TWEED JUMPED",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 5,
+      "name": "5F8 TWEED NORMAL",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 6,
+      "name": "6G4 SUPER",
+      "manufacturer": "Fender",
+      "basedOn": "1960 brownface Fender Super, 6G4"
+    },
+    {
+      "value": 7,
+      "name": "6G12 CONCERT",
+      "manufacturer": "Fender",
+      "basedOn": "1960 brownface Fender Concert, 6G12"
+    },
+    {
+      "value": 8,
+      "name": "59 BASSGUY BRIGHT",
+      "manufacturer": "Fender",
+      "basedOn": "1959 narrow-panel Fender Tweed Bassman, 5F6-A"
+    },
+    {
+      "value": 9,
+      "name": "59 BASSGUY JUMPED",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 10,
+      "name": "59 BASSGUY NORMAL",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 11,
+      "name": "59 BASSGUY RI JUMPED",
+      "manufacturer": "Fender",
+      "basedOn": "Fender 59 Bassman LTD Vintage Reissue"
+    },
+    {
+      "value": 12,
+      "name": "65 BASSGUY BASS",
+      "manufacturer": "Fender",
+      "basedOn": "1965 blackface Fender Bassman head, AB165"
+    },
+    {
+      "value": 13,
+      "name": "65 BASSGUY NORMAL",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 14,
+      "name": "1959SLP JUMPED",
+      "manufacturer": "Marshall",
+      "basedOn": "100W Marshall Super Lead Plexi 1959 reissue"
+    },
+    {
+      "value": 15,
+      "name": "1959SLP NORMAL",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 16,
+      "name": "1959SLP TREBLE",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 17,
+      "name": "1987X JUMPED",
+      "manufacturer": "Marshall",
+      "basedOn": "50W Marshall 1987X reissue"
+    },
+    {
+      "value": 18,
+      "name": "1987X NORMAL",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 19,
+      "name": "1987X TREBLE",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 20,
+      "name": "5153 100W BLUE",
+      "manufacturer": "EVH",
+      "basedOn": "EVH 5150-III"
+    },
+    {
+      "value": 21,
+      "name": "5153 100W GREEN",
+      "manufacturer": "EVH",
+      "basedOn": null
+    },
+    {
+      "value": 22,
+      "name": "5153 100W RED",
+      "manufacturer": "EVH",
+      "basedOn": null
+    },
+    {
+      "value": 23,
+      "name": "5153 100W STEALTH BLUE",
+      "manufacturer": "EVH",
+      "basedOn": "EVH 5150III 100S 100W"
+    },
+    {
+      "value": 24,
+      "name": "5153 100W STEALTH GREEN",
+      "manufacturer": "EVH",
+      "basedOn": null
+    },
+    {
+      "value": 25,
+      "name": "5153 100W STEALTH RED",
+      "manufacturer": "EVH",
+      "basedOn": null
+    },
+    {
+      "value": 26,
+      "name": "5153 50W BLUE",
+      "manufacturer": "EVH",
+      "basedOn": null
+    },
+    {
+      "value": 27,
+      "name": "AC-20 12AX7 BASS",
+      "manufacturer": "Morgan",
+      "basedOn": "Morgan AC20 Deluxe"
+    },
+    {
+      "value": 28,
+      "name": "AC-20 12AX7 TREBLE",
+      "manufacturer": "Morgan",
+      "basedOn": null
+    },
+    {
+      "value": 29,
+      "name": "AC-20 EF86 BASS",
+      "manufacturer": "Morgan",
+      "basedOn": null
+    },
+    {
+      "value": 30,
+      "name": "AC-20 EF86 TREBLE",
+      "manufacturer": "Morgan",
+      "basedOn": null
+    },
+    {
+      "value": 31,
+      "name": "ANGLE SEVERE 1",
+      "manufacturer": "Engl",
+      "basedOn": "Engl Savage 120"
+    },
+    {
+      "value": 32,
+      "name": "ANGLE SEVERE 2",
+      "manufacturer": "Engl",
+      "basedOn": null
+    },
+    {
+      "value": 33,
+      "name": "ARCHEAN",
+      "manufacturer": "PRS",
+      "basedOn": "100W PRS Archon"
+    },
+    {
+      "value": 34,
+      "name": "ARCHEAN BRIGHT",
+      "manufacturer": "PRS",
+      "basedOn": null
+    },
+    {
+      "value": 35,
+      "name": "ARCHEAN CLEAN",
+      "manufacturer": "PRS",
+      "basedOn": null
+    },
+    {
+      "value": 36,
+      "name": "ATOMICA HIGH",
+      "manufacturer": "Atomica",
+      "basedOn": "Cameron Atomica"
+    },
+    {
+      "value": 37,
+      "name": "ATOMICA LOW",
+      "manufacturer": "Atomica",
+      "basedOn": null
+    },
+    {
+      "value": 38,
+      "name": "BAND-COMMANDER",
+      "manufacturer": "Fender",
+      "basedOn": "1968 silverface/blackface Fender Bandmaster head, AB763"
+    },
+    {
+      "value": 39,
+      "name": "BIG HAIR",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 40,
+      "name": "BLANKENSHIP LEEDS",
+      "manufacturer": "Blankenship",
+      "basedOn": "Dweezil Zappa\u0027s Blankenship Leeds 21"
+    },
+    {
+      "value": 41,
+      "name": "BLUDOJAI CLEAN",
+      "manufacturer": "Bludotone",
+      "basedOn": "Bludotone Ojai"
+    },
+    {
+      "value": 42,
+      "name": "BLUDOJAI LEAD",
+      "manufacturer": "Bludotone",
+      "basedOn": null
+    },
+    {
+      "value": 43,
+      "name": "BLUDOJAI LEAD PAB",
+      "manufacturer": "Bludotone",
+      "basedOn": null
+    },
+    {
+      "value": 44,
+      "name": "BOGFISH BROWN",
+      "manufacturer": "Bogner",
+      "basedOn": "Bogner Fish preamp"
+    },
+    {
+      "value": 45,
+      "name": "BOGFISH STRATO",
+      "manufacturer": "Bogner",
+      "basedOn": null
+    },
+    {
+      "value": 46,
+      "name": "BRIT 800 2204 HIGH",
+      "manufacturer": "Marshall",
+      "basedOn": "50W Marshall JCM 800 2204"
+    },
+    {
+      "value": 47,
+      "name": "BRIT 800 2204 LOW",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 48,
+      "name": "BRIT 800 2203 HIGH",
+      "manufacturer": "Marshall",
+      "basedOn": "100W Marshall JCM 800 2203 JMP"
+    },
+    {
+      "value": 49,
+      "name": "BRIT 800 2203 LOW",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 50,
+      "name": "BRIT 800 #34",
+      "manufacturer": "Marshall",
+      "basedOn": "50W Marshall JCM 800 with Santiago #34 modifications"
+    },
+    {
+      "value": 51,
+      "name": "BRIT 800 MOD",
+      "manufacturer": "Marshall",
+      "basedOn": "50W Marshall JCM 800 with modifications"
+    },
+    {
+      "value": 52,
+      "name": "BRIT 800 STUDIO 20",
+      "manufacturer": "Marshall",
+      "basedOn": "Marshall Studio Classic SC20H"
+    },
+    {
+      "value": 53,
+      "name": "BRIT AFS100 1",
+      "manufacturer": "Marshall",
+      "basedOn": "Marshall AFD100SCE"
+    },
+    {
+      "value": 54,
+      "name": "BRIT AFS100 2",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 55,
+      "name": "BRIT BROWN",
+      "manufacturer": "Marshall",
+      "basedOn": "custom model: Plexi \u0022Brown Sound\u0022"
+    },
+    {
+      "value": 56,
+      "name": "BRIT JM45",
+      "manufacturer": "Marshall",
+      "basedOn": "Marshall JTM 45"
+    },
+    {
+      "value": 57,
+      "name": "BRIT JM45 JUMPED",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 58,
+      "name": "BRIT JVM CRUNCH GREEN",
+      "manufacturer": "Marshall",
+      "basedOn": "Marshall JVM410H"
+    },
+    {
+      "value": 59,
+      "name": "BRIT JVM CRUNCH ORANGE",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 60,
+      "name": "BRIT JVM CRUNCH RED",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 61,
+      "name": "BRIT JVM OD1 GREEN",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 62,
+      "name": "BRIT JVM OD1 ORANGE",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 63,
+      "name": "BRIT JVM OD1 RED",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 64,
+      "name": "BRIT JVM OD2 GREEN",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 65,
+      "name": "BRIT JVM OD2 ORANGE",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 66,
+      "name": "BRIT JVM OD2 RED",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 67,
+      "name": "BRIT PRE",
+      "manufacturer": "Marshall",
+      "basedOn": "Marshall JMP-1 preamp"
+    },
+    {
+      "value": 68,
+      "name": "BRIT SILVER",
+      "manufacturer": "Marshall",
+      "basedOn": "Marshall Silver Jubilee, previously: Lerxst Omega"
+    },
+    {
+      "value": 69,
+      "name": "BRIT SUPER",
+      "manufacturer": "Marshall",
+      "basedOn": "Marshall AFD100 schematics"
+    },
+    {
+      "value": 70,
+      "name": "BUDDAH DUOMASTER",
+      "manufacturer": "Budda",
+      "basedOn": "Budda Twinmaster"
+    },
+    {
+      "value": 71,
+      "name": "CA3\u002B CLEAN",
+      "manufacturer": "Custom Audio Amplifiers",
+      "basedOn": "Custom Audio Amplifiers 3\u002B SE preamp"
+    },
+    {
+      "value": 72,
+      "name": "CA3\u002B LEAD",
+      "manufacturer": "Custom Audio Amplifiers",
+      "basedOn": null
+    },
+    {
+      "value": 73,
+      "name": "CA3\u002B RHYTHM",
+      "manufacturer": "Custom Audio Amplifiers",
+      "basedOn": null
+    },
+    {
+      "value": 74,
+      "name": "CAMERON CCV 1A",
+      "manufacturer": "Cameron",
+      "basedOn": "Cameron CCV-100"
+    },
+    {
+      "value": 75,
+      "name": "CAMERON CCV 1B",
+      "manufacturer": "Cameron",
+      "basedOn": null
+    },
+    {
+      "value": 76,
+      "name": "CAMERON CCV 2A",
+      "manufacturer": "Cameron",
+      "basedOn": null
+    },
+    {
+      "value": 77,
+      "name": "CAMERON CCV 2B",
+      "manufacturer": "Cameron",
+      "basedOn": null
+    },
+    {
+      "value": 78,
+      "name": "CAMERON CCV 2C",
+      "manufacturer": "Cameron",
+      "basedOn": null
+    },
+    {
+      "value": 79,
+      "name": "CAMERON CCV 2D",
+      "manufacturer": "Cameron",
+      "basedOn": null
+    },
+    {
+      "value": 80,
+      "name": "CAPT HOOK 1A",
+      "manufacturer": "Hook",
+      "basedOn": "Hook Captain 34"
+    },
+    {
+      "value": 81,
+      "name": "CAPT HOOK 1B",
+      "manufacturer": "Hook",
+      "basedOn": null
+    },
+    {
+      "value": 82,
+      "name": "CAPT HOOK 2A",
+      "manufacturer": "Hook",
+      "basedOn": null
+    },
+    {
+      "value": 83,
+      "name": "CAPT HOOK 2B",
+      "manufacturer": "Hook",
+      "basedOn": null
+    },
+    {
+      "value": 84,
+      "name": "CAPT HOOK 3A",
+      "manufacturer": "Hook",
+      "basedOn": null
+    },
+    {
+      "value": 85,
+      "name": "CAPT HOOK 3B",
+      "manufacturer": "Hook",
+      "basedOn": null
+    },
+    {
+      "value": 86,
+      "name": "CAR AMBLER",
+      "manufacturer": "Carr",
+      "basedOn": "Carr Rambler"
+    },
+    {
+      "value": 87,
+      "name": "CAROL-ANN OD-2",
+      "manufacturer": "Carol-Ann",
+      "basedOn": "Carol-Ann OD-2"
+    },
+    {
+      "value": 88,
+      "name": "CAROL-ANN TRIPTIK CLASSIC",
+      "manufacturer": "Carol-Ann",
+      "basedOn": "Carol-Ann Triptik"
+    },
+    {
+      "value": 89,
+      "name": "CAROL-ANN TRIPTIK CLEAN",
+      "manufacturer": "Carol-Ann",
+      "basedOn": null
+    },
+    {
+      "value": 90,
+      "name": "CAROL-ANN TRIPTIK MODERN",
+      "manufacturer": "Carol-Ann",
+      "basedOn": null
+    },
+    {
+      "value": 91,
+      "name": "CAROL-ANN TUCANA CLEAN",
+      "manufacturer": "Carol-Ann",
+      "basedOn": "Carol-Ann Tucana 3"
+    },
+    {
+      "value": 92,
+      "name": "CAROL-ANN TUCANA LEAD",
+      "manufacturer": "Carol-Ann",
+      "basedOn": null
+    },
+    {
+      "value": 93,
+      "name": "CITRUS A30 CLEAN",
+      "manufacturer": "Orange",
+      "basedOn": "Orange AD30HTC"
+    },
+    {
+      "value": 94,
+      "name": "CITRUS A30 DIRTY",
+      "manufacturer": "Orange",
+      "basedOn": null
+    },
+    {
+      "value": 95,
+      "name": "CITRUS BASS 200",
+      "manufacturer": "Orange",
+      "basedOn": "Orange AD200B bass amp"
+    },
+    {
+      "value": 96,
+      "name": "CITRUS RV50",
+      "manufacturer": "Orange",
+      "basedOn": "Orange Rockerverb 50 MK II"
+    },
+    {
+      "value": 97,
+      "name": "CITRUS TERRIER",
+      "manufacturer": "Orange",
+      "basedOn": "Orange Tiny Terror"
+    },
+    {
+      "value": 98,
+      "name": "CLASS-A 15W TB",
+      "manufacturer": "Vox",
+      "basedOn": "Vox AC15 Top Boost"
+    },
+    {
+      "value": 99,
+      "name": "CLASS-A 30W",
+      "manufacturer": "Vox",
+      "basedOn": "Vox AC30"
+    },
+    {
+      "value": 100,
+      "name": "CLASS-A 30W BRIGHT",
+      "manufacturer": "Vox",
+      "basedOn": null
+    },
+    {
+      "value": 101,
+      "name": "CLASS-A 30W BRILLIANT",
+      "manufacturer": "Vox",
+      "basedOn": null
+    },
+    {
+      "value": 102,
+      "name": "CLASS-A 30W HOT",
+      "manufacturer": "Vox",
+      "basedOn": null
+    },
+    {
+      "value": 103,
+      "name": "CLASS-A 30W TB",
+      "manufacturer": "Vox",
+      "basedOn": null
+    },
+    {
+      "value": 104,
+      "name": "COMET 60",
+      "manufacturer": "Komet",
+      "basedOn": "Komet 60"
+    },
+    {
+      "value": 105,
+      "name": "COMET CONCOURSE",
+      "manufacturer": "Komet",
+      "basedOn": "Komet Concorde"
+    },
+    {
+      "value": 106,
+      "name": "CORNFED M50",
+      "manufacturer": "Cornford",
+      "basedOn": "Cornford MK50 II"
+    },
+    {
+      "value": 107,
+      "name": "DAS METALL",
+      "manufacturer": "Diezel",
+      "basedOn": "Diezel VH4 schematics"
+    },
+    {
+      "value": 108,
+      "name": "DELUXE 6G3",
+      "manufacturer": "Fender",
+      "basedOn": "brownface Fender Deluxe, 6G3"
+    },
+    {
+      "value": 109,
+      "name": "DELUXE TWEED BRIGHT",
+      "manufacturer": "Fender",
+      "basedOn": "1957 narrow-panel Fender Tweed Deluxe, 5E3"
+    },
+    {
+      "value": 110,
+      "name": "DELUXE TWEED NORMAL",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 111,
+      "name": "DELUXE TWEED JUMPED",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 112,
+      "name": "DELUXE VERB NORMAL",
+      "manufacturer": "Fender",
+      "basedOn": "1965 blackface Fender Deluxe Reverb, AB763"
+    },
+    {
+      "value": 113,
+      "name": "DELUXE VERB VIBRATO",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 114,
+      "name": "DIAMANTE FIRE",
+      "manufacturer": "Diamond",
+      "basedOn": "22W Diamond Del Fuego"
+    },
+    {
+      "value": 115,
+      "name": "DIRTY SHIRLEY 1",
+      "manufacturer": "Friedman",
+      "basedOn": "40W Friedman Dirty Shirley"
+    },
+    {
+      "value": 116,
+      "name": "DIRTY SHIRLEY 2",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 117,
+      "name": "DIV/13 CJ",
+      "manufacturer": "Divided By 13",
+      "basedOn": "Divided By 13 CJ 11"
+    },
+    {
+      "value": 118,
+      "name": "DIV/13 CJ BOOST",
+      "manufacturer": "Divided By 13",
+      "basedOn": null
+    },
+    {
+      "value": 119,
+      "name": "DIV/13 FT37 HIGH",
+      "manufacturer": "Divided By 13",
+      "basedOn": "Divided By 13 FTR 37"
+    },
+    {
+      "value": 120,
+      "name": "DIV/13 FT37 LOW",
+      "manufacturer": "Divided By 13",
+      "basedOn": null
+    },
+    {
+      "value": 121,
+      "name": "DIZZY V4 BLUE 2",
+      "manufacturer": "Diezel",
+      "basedOn": "Diezel VH4"
+    },
+    {
+      "value": 122,
+      "name": "DIZZY V4 BLUE 3",
+      "manufacturer": "Diezel",
+      "basedOn": null
+    },
+    {
+      "value": 123,
+      "name": "DIZZY V4 BLUE 4",
+      "manufacturer": "Diezel",
+      "basedOn": null
+    },
+    {
+      "value": 124,
+      "name": "DIZZY V4 SILVER 2",
+      "manufacturer": "Diezel",
+      "basedOn": null
+    },
+    {
+      "value": 125,
+      "name": "DIZZY V4 SILVER 3",
+      "manufacturer": "Diezel",
+      "basedOn": null
+    },
+    {
+      "value": 126,
+      "name": "DIZZY V4 SILVER 4",
+      "manufacturer": "Diezel",
+      "basedOn": null
+    },
+    {
+      "value": 127,
+      "name": "DOUBLE VERB NORMAL",
+      "manufacturer": "Fender",
+      "basedOn": "1966 blackface Fender Twin Reverb"
+    },
+    {
+      "value": 128,
+      "name": "DOUBLE VERB SILVERFACE",
+      "manufacturer": "Fender",
+      "basedOn": "1971 silverface Fender Twin Reverb"
+    },
+    {
+      "value": 129,
+      "name": "DOUBLE VERB VIBRATO",
+      "manufacturer": "Fender",
+      "basedOn": "1966 blackface Fender Twin Reverb"
+    },
+    {
+      "value": 130,
+      "name": "DWEEZIL\u0027S BASSGUY",
+      "manufacturer": "Fender",
+      "basedOn": "Dweezil Zappa\u0027s 1965 blackface Fender Bassman, AB165"
+    },
+    {
+      "value": 131,
+      "name": "ENERGYBALL",
+      "manufacturer": "Engl",
+      "basedOn": "Engl Powerball"
+    },
+    {
+      "value": 132,
+      "name": "EURO BLUE",
+      "manufacturer": "Bogner",
+      "basedOn": "Bogner Ecstasy 20th Anniversary"
+    },
+    {
+      "value": 133,
+      "name": "EURO BLUE MODERN",
+      "manufacturer": "Bogner",
+      "basedOn": null
+    },
+    {
+      "value": 134,
+      "name": "EURO RED",
+      "manufacturer": "Bogner",
+      "basedOn": null
+    },
+    {
+      "value": 135,
+      "name": "EURO RED MODERN",
+      "manufacturer": "Bogner",
+      "basedOn": null
+    },
+    {
+      "value": 136,
+      "name": "EURO UBER",
+      "manufacturer": "Bogner",
+      "basedOn": "Bogner Uberschall"
+    },
+    {
+      "value": 137,
+      "name": "FAS 6160",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 138,
+      "name": "FAS BASS",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 139,
+      "name": "FAS BROOTALZ",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 140,
+      "name": "FAS BROWN",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 141,
+      "name": "FAS BUTTERY",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 142,
+      "name": "FAS CLASS-A",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 143,
+      "name": "FAS CRUNCH",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 144,
+      "name": "FAS EXPRESS",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 145,
+      "name": "FAS HOT ROD",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 146,
+      "name": "FAS LEAD 1",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 147,
+      "name": "FAS LEAD 2",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 148,
+      "name": "FAS MODERN",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 149,
+      "name": "FAS MODERN II",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 150,
+      "name": "FAS MODERN III",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 151,
+      "name": "FAS RHYTHM",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 152,
+      "name": "FAS SKULL CRUSHER",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 153,
+      "name": "FAS STEALTH BLUE",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 154,
+      "name": "FAS WRECK",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 155,
+      "name": "FOX ODS",
+      "manufacturer": "Fuchs",
+      "basedOn": "Fuchs Overdrive Supreme 50"
+    },
+    {
+      "value": 156,
+      "name": "FOX ODS DEEP",
+      "manufacturer": "Fuchs",
+      "basedOn": null
+    },
+    {
+      "value": 157,
+      "name": "FRIEDMAN BE 2010",
+      "manufacturer": "Friedman",
+      "basedOn": "Friedman BE"
+    },
+    {
+      "value": 158,
+      "name": "FRIEDMAN BE C45",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 159,
+      "name": "FRIEDMAN BE V1",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 160,
+      "name": "FRIEDMAN BE V1 FAT",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 161,
+      "name": "FRIEDMAN BE V2",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 162,
+      "name": "FRIEDMAN BE V3",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 163,
+      "name": "FRIEDMAN HBE 2010",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 164,
+      "name": "FRIEDMAN HBE C45",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 165,
+      "name": "FRIEDMAN HBE V1",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 166,
+      "name": "FRIEDMAN HBE V1 FAT",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 167,
+      "name": "FRIEDMAN HBE V2",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 168,
+      "name": "FRIEDMAN HBE V3",
+      "manufacturer": "Friedman",
+      "basedOn": null
+    },
+    {
+      "value": 169,
+      "name": "FRIEDMAN SMALL BOX",
+      "manufacturer": "Friedman",
+      "basedOn": "Friedman Smallbox"
+    },
+    {
+      "value": 170,
+      "name": "FRYETTE D60 LESS",
+      "manufacturer": "Fryette",
+      "basedOn": "Fryette Deliverance 60 Series II"
+    },
+    {
+      "value": 171,
+      "name": "FRYETTE D60 MORE",
+      "manufacturer": "Fryette",
+      "basedOn": null
+    },
+    {
+      "value": 172,
+      "name": "GIBTONE SCOUT",
+      "manufacturer": "Gibson",
+      "basedOn": "Gibson GA17RVT Scout"
+    },
+    {
+      "value": 173,
+      "name": "HERBIE CH2\u002B",
+      "manufacturer": "Diezel",
+      "basedOn": "Diezel Herbert"
+    },
+    {
+      "value": 174,
+      "name": "HERBIE CH2-",
+      "manufacturer": "Diezel",
+      "basedOn": null
+    },
+    {
+      "value": 175,
+      "name": "HERBIE CH3",
+      "manufacturer": "Diezel",
+      "basedOn": null
+    },
+    {
+      "value": 176,
+      "name": "HERBIE MK3",
+      "manufacturer": "Diezel",
+      "basedOn": "Diezel Herbert MKIII"
+    },
+    {
+      "value": 177,
+      "name": "HIPOWER BRILLIANT",
+      "manufacturer": "Hiwatt",
+      "basedOn": "Hiwatt DR103"
+    },
+    {
+      "value": 178,
+      "name": "HIPOWER JUMPED",
+      "manufacturer": "Hiwatt",
+      "basedOn": null
+    },
+    {
+      "value": 179,
+      "name": "HIPOWER NORMAL",
+      "manufacturer": "Hiwatt",
+      "basedOn": null
+    },
+    {
+      "value": 180,
+      "name": "HOT KITTY",
+      "manufacturer": "Bad Cat",
+      "basedOn": "Bad Cat Hot Cat 30"
+    },
+    {
+      "value": 181,
+      "name": "JAZZ 120",
+      "manufacturer": "Roland",
+      "basedOn": "Roland Jazz Chorus 120"
+    },
+    {
+      "value": 182,
+      "name": "JMPRE-1 CLEAN 1",
+      "manufacturer": "Marshall",
+      "basedOn": "Marshall JMP-1 preamp"
+    },
+    {
+      "value": 183,
+      "name": "JMPRE-1 CLEAN 1 BASS SHIFT",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 184,
+      "name": "JMPRE-1 CLEAN 2",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 185,
+      "name": "JMPRE-1 CLEAN 2 BASS SHIFT",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 186,
+      "name": "JMPRE-1 OD1",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 187,
+      "name": "JMPRE-1 OD1 BASS SHIFT",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 188,
+      "name": "JMPRE-1 OD2",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 189,
+      "name": "JMPRE-1 OD2 BASS SHIFT",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 190,
+      "name": "JR BLUES",
+      "manufacturer": "Fender",
+      "basedOn": "Fender Blues Junior"
+    },
+    {
+      "value": 191,
+      "name": "JR BLUES FAT",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 192,
+      "name": "JS410 CRUNCH ORANGE",
+      "manufacturer": "Marshall",
+      "basedOn": "Joe Satriani\u0027s Marshall JVM410HJS"
+    },
+    {
+      "value": 193,
+      "name": "JS410 CRUNCH RED",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 194,
+      "name": "JS410 LEAD GREEN",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 195,
+      "name": "JS410 LEAD ORANGE",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 196,
+      "name": "JS410 LEAD RED",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 197,
+      "name": "LEGEND 100",
+      "manufacturer": "Carvin",
+      "basedOn": "Steve Vai\u0027s Carvin Legacy VL100"
+    },
+    {
+      "value": 198,
+      "name": "LEGEND 100 II",
+      "manufacturer": "Carvin",
+      "basedOn": "Carvin Legacy VL300"
+    },
+    {
+      "value": 199,
+      "name": "MATCHBOX CHIEFTAIN 1",
+      "manufacturer": "Matchless",
+      "basedOn": "Matchless Chieftain"
+    },
+    {
+      "value": 200,
+      "name": "MATCHBOX CHIEFTAIN 2",
+      "manufacturer": "Matchless",
+      "basedOn": null
+    },
+    {
+      "value": 201,
+      "name": "MATCHBOX D-30",
+      "manufacturer": "Matchless",
+      "basedOn": "Matchless DC-30"
+    },
+    {
+      "value": 202,
+      "name": "MATCHBOX D-30 EF86",
+      "manufacturer": "Matchless",
+      "basedOn": null
+    },
+    {
+      "value": 203,
+      "name": "MR Z HWY 66",
+      "manufacturer": "Dr. Z",
+      "basedOn": "Dr. Z Route 66"
+    },
+    {
+      "value": 204,
+      "name": "MR Z MZ-38",
+      "manufacturer": "Dr. Z",
+      "basedOn": "Dr. Z Maz 38 SR"
+    },
+    {
+      "value": 205,
+      "name": "MR Z MZ-8",
+      "manufacturer": "Dr. Z",
+      "basedOn": "Dr. Z Maz 8"
+    },
+    {
+      "value": 206,
+      "name": "NUCLEAR-TONE",
+      "manufacturer": "Swart",
+      "basedOn": "Swart Atomic Space Tone"
+    },
+    {
+      "value": 207,
+      "name": "ODS-100 CLEAN",
+      "manufacturer": "Dumble",
+      "basedOn": "Dumble Overdrive Special"
+    },
+    {
+      "value": 208,
+      "name": "ODS-100 FORD",
+      "manufacturer": "Dumble",
+      "basedOn": null
+    },
+    {
+      "value": 209,
+      "name": "ODS-100 FORD PAB",
+      "manufacturer": "Dumble",
+      "basedOn": null
+    },
+    {
+      "value": 210,
+      "name": "ODS-100 FORD PAB MID",
+      "manufacturer": "Dumble",
+      "basedOn": null
+    },
+    {
+      "value": 211,
+      "name": "ODS-100 HRM",
+      "manufacturer": "Dumble",
+      "basedOn": null
+    },
+    {
+      "value": 212,
+      "name": "ODS-100 HRM MID",
+      "manufacturer": "Dumble",
+      "basedOn": null
+    },
+    {
+      "value": 213,
+      "name": "PLEXI 100W 1970",
+      "manufacturer": "Marshall",
+      "basedOn": "1970 100W Marshall Plexi"
+    },
+    {
+      "value": 214,
+      "name": "PLEXI 100W HIGH",
+      "manufacturer": "Marshall",
+      "basedOn": "1969 100W Marshall Plexi"
+    },
+    {
+      "value": 215,
+      "name": "PLEXI 100W JUMPED",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 216,
+      "name": "PLEXI 100W NORMAL",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 217,
+      "name": "PLEXI 2204",
+      "manufacturer": "Marshall",
+      "basedOn": "1981 50W Marshall JMP 2204"
+    },
+    {
+      "value": 218,
+      "name": "PLEXI 50W 6550",
+      "manufacturer": "Marshall",
+      "basedOn": "1972 50W Marshall Plexi"
+    },
+    {
+      "value": 219,
+      "name": "PLEXI 50W 6CA7",
+      "manufacturer": "Marshall",
+      "basedOn": "50W Marshall Plexi"
+    },
+    {
+      "value": 220,
+      "name": "PLEXI 50W 6CA7 JUMPED",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 221,
+      "name": "PLEXI 50W HIGH 1",
+      "manufacturer": "Marshall",
+      "basedOn": "1967 50W Marshall Plexi"
+    },
+    {
+      "value": 222,
+      "name": "PLEXI 50W HIGH 2",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 223,
+      "name": "PLEXI 50W JUMPED",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 224,
+      "name": "PLEXI 50W NORMAL",
+      "manufacturer": "Marshall",
+      "basedOn": null
+    },
+    {
+      "value": 225,
+      "name": "PLEXI STUDIO 20",
+      "manufacturer": "Marshall",
+      "basedOn": "Marshall SV20H"
+    },
+    {
+      "value": 226,
+      "name": "PORTA-BASS",
+      "manufacturer": "Ampeg",
+      "basedOn": "Ampeg Portaflex bass amp"
+    },
+    {
+      "value": 227,
+      "name": "PRINCETONE 5F2",
+      "manufacturer": "Fender",
+      "basedOn": "Fender Tweed Princeton, 5F2-A"
+    },
+    {
+      "value": 228,
+      "name": "PRINCETONE AA964",
+      "manufacturer": "Fender",
+      "basedOn": "silverface Fender Princeton without reverb, AA964"
+    },
+    {
+      "value": 229,
+      "name": "PRINCETONE REVERB",
+      "manufacturer": "Fender",
+      "basedOn": "1966 blackface Fender Princeton with reverb, AA964"
+    },
+    {
+      "value": 230,
+      "name": "PVH 6160 BLOCK",
+      "manufacturer": "Peavey",
+      "basedOn": "Peavey \u0022Block Letter\u0022 EVH 5150"
+    },
+    {
+      "value": 231,
+      "name": "PVH 6160 BLOCK CLEAN",
+      "manufacturer": "Peavey",
+      "basedOn": null
+    },
+    {
+      "value": 232,
+      "name": "PVH 6160 BLOCK CRUNCH",
+      "manufacturer": "Peavey",
+      "basedOn": null
+    },
+    {
+      "value": 233,
+      "name": "PVH 6160\u002B CLEAN",
+      "manufacturer": "Peavey",
+      "basedOn": "Peavey 6505\u002B / EVH 5150-II"
+    },
+    {
+      "value": 234,
+      "name": "PVH 6160\u002B CLEAN BRIGHT",
+      "manufacturer": "Peavey",
+      "basedOn": null
+    },
+    {
+      "value": 235,
+      "name": "PVH 6160\u002B CRUNCH",
+      "manufacturer": "Peavey",
+      "basedOn": null
+    },
+    {
+      "value": 236,
+      "name": "PVH 6160\u002B CRUNCH BRIGHT",
+      "manufacturer": "Peavey",
+      "basedOn": null
+    },
+    {
+      "value": 237,
+      "name": "PVH 6160\u002B LEAD",
+      "manufacturer": "Peavey",
+      "basedOn": null
+    },
+    {
+      "value": 238,
+      "name": "RECTO1 ORANGE MODERN",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA Dual Rectifier, 2 channels"
+    },
+    {
+      "value": 239,
+      "name": "RECTO1 ORANGE NORMAL",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 240,
+      "name": "RECTO1 RED",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 241,
+      "name": "RECTO2 ORANGE MODERN",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA Dual Rectifier, 3 channels"
+    },
+    {
+      "value": 242,
+      "name": "RECTO2 ORANGE VINTAGE",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 243,
+      "name": "RECTO2 RED MODERN",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 244,
+      "name": "RECTO2 RED VINTAGE",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 245,
+      "name": "REVV GEN GREEN 1",
+      "manufacturer": "Revv",
+      "basedOn": "REVV GENERATOR 120 MKIII"
+    },
+    {
+      "value": 246,
+      "name": "REVV GEN GREEN 2",
+      "manufacturer": "Revv",
+      "basedOn": null
+    },
+    {
+      "value": 247,
+      "name": "REVV GEN GREEN 3",
+      "manufacturer": "Revv",
+      "basedOn": null
+    },
+    {
+      "value": 248,
+      "name": "REVV GEN PURPLE 1",
+      "manufacturer": "Revv",
+      "basedOn": null
+    },
+    {
+      "value": 249,
+      "name": "REVV GEN PURPLE 2",
+      "manufacturer": "Revv",
+      "basedOn": null
+    },
+    {
+      "value": 250,
+      "name": "REVV GEN PURPLE 3",
+      "manufacturer": "Revv",
+      "basedOn": null
+    },
+    {
+      "value": 251,
+      "name": "REVV GEN RED 1",
+      "manufacturer": "Revv",
+      "basedOn": null
+    },
+    {
+      "value": 252,
+      "name": "REVV GEN RED 2",
+      "manufacturer": "Revv",
+      "basedOn": null
+    },
+    {
+      "value": 253,
+      "name": "REVV GEN RED 3",
+      "manufacturer": "Revv",
+      "basedOn": null
+    },
+    {
+      "value": 254,
+      "name": "RUBY ROCKET",
+      "manufacturer": "Ruby",
+      "basedOn": "Paul Ruby Rocket"
+    },
+    {
+      "value": 255,
+      "name": "RUBY ROCKET BRIGHT",
+      "manufacturer": "Ruby",
+      "basedOn": null
+    },
+    {
+      "value": 256,
+      "name": "SHIVER CLEAN",
+      "manufacturer": "Bogner",
+      "basedOn": "Bogner Shiva 20th Anniversary"
+    },
+    {
+      "value": 257,
+      "name": "SHIVER LEAD",
+      "manufacturer": "Bogner",
+      "basedOn": null
+    },
+    {
+      "value": 258,
+      "name": "SOLO 88 CLEAN",
+      "manufacturer": "Soldano",
+      "basedOn": "Soldano X88R preamp"
+    },
+    {
+      "value": 259,
+      "name": "SOLO 88 LEAD",
+      "manufacturer": "Soldano",
+      "basedOn": null
+    },
+    {
+      "value": 260,
+      "name": "SOLO 88 RHYTHM",
+      "manufacturer": "Soldano",
+      "basedOn": null
+    },
+    {
+      "value": 261,
+      "name": "SOLO 99 CLEAN",
+      "manufacturer": "Soldano",
+      "basedOn": "Soldano/Caswell X99 preamp"
+    },
+    {
+      "value": 262,
+      "name": "SOLO 99 LEAD",
+      "manufacturer": "Soldano",
+      "basedOn": null
+    },
+    {
+      "value": 263,
+      "name": "SOLO 99 LEAD BRIGHT",
+      "manufacturer": "Soldano",
+      "basedOn": null
+    },
+    {
+      "value": 264,
+      "name": "SOLO 100 CLEAN",
+      "manufacturer": "Soldano",
+      "basedOn": "Soldano SLO-100"
+    },
+    {
+      "value": 265,
+      "name": "SOLO 100 LEAD",
+      "manufacturer": "Soldano",
+      "basedOn": null
+    },
+    {
+      "value": 266,
+      "name": "SOLO 100 RHYTHM",
+      "manufacturer": "Soldano",
+      "basedOn": null
+    },
+    {
+      "value": 267,
+      "name": "SPAWN NITROUS 1",
+      "manufacturer": "Splawn",
+      "basedOn": "Splawn Nitro"
+    },
+    {
+      "value": 268,
+      "name": "SPAWN NITROUS 2",
+      "manufacturer": "Splawn",
+      "basedOn": null
+    },
+    {
+      "value": 269,
+      "name": "SPAWN Q-ROD OD1-1",
+      "manufacturer": "Splawn",
+      "basedOn": "Splawn Quickrod"
+    },
+    {
+      "value": 270,
+      "name": "SPAWN Q-ROD OD1-2",
+      "manufacturer": "Splawn",
+      "basedOn": null
+    },
+    {
+      "value": 271,
+      "name": "SPAWN Q-ROD OD1-3",
+      "manufacturer": "Splawn",
+      "basedOn": null
+    },
+    {
+      "value": 272,
+      "name": "SPAWN Q-ROD OD2-1",
+      "manufacturer": "Splawn",
+      "basedOn": null
+    },
+    {
+      "value": 273,
+      "name": "SPAWN Q-ROD OD2-2",
+      "manufacturer": "Splawn",
+      "basedOn": null
+    },
+    {
+      "value": 274,
+      "name": "SPAWN Q-ROD OD2-3",
+      "manufacturer": "Splawn",
+      "basedOn": null
+    },
+    {
+      "value": 275,
+      "name": "SUHR BADGER 18",
+      "manufacturer": "Suhr",
+      "basedOn": "Suhr Badger 18"
+    },
+    {
+      "value": 276,
+      "name": "SUHR BADGER 30",
+      "manufacturer": "Suhr",
+      "basedOn": "Suhr Badger 30"
+    },
+    {
+      "value": 277,
+      "name": "SUPER VERB NORMAL",
+      "manufacturer": "Fender",
+      "basedOn": "1964 Fender Super Reverb, AB763"
+    },
+    {
+      "value": 278,
+      "name": "SUPER VERB VIBRATO",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 279,
+      "name": "SUPERTWEED",
+      "manufacturer": "FAS",
+      "basedOn": "custom model"
+    },
+    {
+      "value": 280,
+      "name": "SUPREMO TREM",
+      "manufacturer": "Supro",
+      "basedOn": "Supro 1964T"
+    },
+    {
+      "value": 281,
+      "name": "SUPRO BLACK MAGICK",
+      "manufacturer": "Supro",
+      "basedOn": "Supro 1695T Black Magick"
+    },
+    {
+      "value": 282,
+      "name": "SV BASS 1",
+      "manufacturer": "Ampeg",
+      "basedOn": "Ampeg SVT bass amp"
+    },
+    {
+      "value": 283,
+      "name": "SV BASS 2",
+      "manufacturer": "Ampeg",
+      "basedOn": null
+    },
+    {
+      "value": 284,
+      "name": "TEXAS STAR CLEAN",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA Lone Star Classic"
+    },
+    {
+      "value": 285,
+      "name": "TEXAS STAR LEAD",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 286,
+      "name": "THORDENDAL MODERN",
+      "manufacturer": "FAS",
+      "basedOn": "custom model of MESA Dual Rectifier"
+    },
+    {
+      "value": 287,
+      "name": "THORDENDAL VINTAGE",
+      "manufacturer": "FAS",
+      "basedOn": null
+    },
+    {
+      "value": 288,
+      "name": "TREMOLO LUX",
+      "manufacturer": "Fender",
+      "basedOn": "blackface Fender Tremolux, AA763"
+    },
+    {
+      "value": 289,
+      "name": "TRIPLE CREST 2",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA Triple Crown TC-100"
+    },
+    {
+      "value": 290,
+      "name": "TRIPLE CREST 3",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 291,
+      "name": "TUBE PRE",
+      "manufacturer": "FAS",
+      "basedOn": "generic tube preamp model"
+    },
+    {
+      "value": 292,
+      "name": "TWO STONE J35",
+      "manufacturer": "Two-Rock",
+      "basedOn": "Two-Rock Jet 35"
+    },
+    {
+      "value": 293,
+      "name": "TWO STONE J35 PAB",
+      "manufacturer": "Two-Rock",
+      "basedOn": null
+    },
+    {
+      "value": 294,
+      "name": "USA BASS 400 1",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA Bass 400 bass amp"
+    },
+    {
+      "value": 295,
+      "name": "USA BASS 400 2",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 296,
+      "name": "USA JP IIC\u002B GREEN",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA/Boogie JP-2C"
+    },
+    {
+      "value": 297,
+      "name": "USA JP IIC\u002B RED",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 298,
+      "name": "USA JP IIC\u002B RED SHRED",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 299,
+      "name": "USA JP IIC\u002B YELLOW",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 300,
+      "name": "USA JP IIC\u002B YELLOW SHRED",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 301,
+      "name": "USA METRO BLUES",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA Subway Blues"
+    },
+    {
+      "value": 302,
+      "name": "USA MK IIC\u002B",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA/Boogie Mark IIC\u002B"
+    },
+    {
+      "value": 303,
+      "name": "USA MK IIC\u002B BRIGHT",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 304,
+      "name": "USA MK IIC\u002B DEEP",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 305,
+      "name": "USA MK IIC\u002B DEEP BRIGHT",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 306,
+      "name": "USA MK IIC\u002B\u002B",
+      "manufacturer": "Mesa",
+      "basedOn": "custom model of MESA/Boogie IIC\u002B"
+    },
+    {
+      "value": 307,
+      "name": "USA MK IV LEAD / RHYTHM",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA/Boogie Mark IV"
+    },
+    {
+      "value": 308,
+      "name": "USA MK IV LEAD BRIGHT",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 309,
+      "name": "USA MK IV LEAD MID GAIN",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 310,
+      "name": "USA MK IV LEAD MID GAIN BRIGHT",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 311,
+      "name": "USA MK IV RHYTHM 1",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 312,
+      "name": "USA MK IV RHYTHM 2",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 313,
+      "name": "USA MK V GREEN",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA/Boogie Mark V"
+    },
+    {
+      "value": 314,
+      "name": "USA MK V RED IIC\u002B",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 315,
+      "name": "USA MK V RED IIC\u002B Bright",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 316,
+      "name": "USA MK V RED MKIV",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 317,
+      "name": "USA MK V RED MKIV Bright",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 318,
+      "name": "USA MK V RED XT",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 319,
+      "name": "USA MK V RED XT Bright",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 320,
+      "name": "USA PRE CLEAN",
+      "manufacturer": "Mesa",
+      "basedOn": "MESA TriAxis preamp"
+    },
+    {
+      "value": 321,
+      "name": "USA PRE LD1 RED",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 312,
+      "name": "USA PRE LD2 GREEN",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 323,
+      "name": "USA PRE LD2 RED",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 324,
+      "name": "USA PRE LD2 YELLOW",
+      "manufacturer": "Mesa",
+      "basedOn": null
+    },
+    {
+      "value": 325,
+      "name": "VIBRA-KING",
+      "manufacturer": "Fender",
+      "basedOn": "custom Fender Vibro-King"
+    },
+    {
+      "value": 326,
+      "name": "VIBRA-KING FAT",
+      "manufacturer": "Fender",
+      "basedOn": null
+    },
+    {
+      "value": 327,
+      "name": "VIBRATO LUX",
+      "manufacturer": "Fender",
+      "basedOn": "1962/1963 brownface Fender Vibrolux, 6G11"
+    },
+    {
+      "value": 328,
+      "name": "VIBRATO VERB",
+      "manufacturer": "Fender",
+      "basedOn": "Fender Vibroverb, old model"
+    },
+    {
+      "value": 329,
+      "name": "VIBRATO VERB AA",
+      "manufacturer": "Fender",
+      "basedOn": "1964 blackface Fender Vibroverb, AA763"
+    },
+    {
+      "value": 330,
+      "name": "VIBRATO VERB AB",
+      "manufacturer": "Fender",
+      "basedOn": "Fender Vibroverb, AB763"
+    },
+    {
+      "value": 331,
+      "name": "VIBRATO VERB SRV",
+      "manufacturer": "Fender",
+      "basedOn": "Fender Vibroverb Custom Reissue"
+    },
+    {
+      "value": 332,
+      "name": "WRECKER EXPRESS",
+      "manufacturer": "Trainwreck",
+      "basedOn": "Trainwreck Express"
+    },
+    {
+      "value": 333,
+      "name": "WRECKER EXPRESS BRIGHT",
+      "manufacturer": "Trainwreck",
+      "basedOn": null
+    },
+    {
+      "value": 334,
+      "name": "WRECKER LIVERPOOL",
+      "manufacturer": "Trainwreck",
+      "basedOn": "Trainwreck Liverpool"
+    },
+    {
+      "value": 335,
+      "name": "WRECKER LIVERPOOL BRIGHT",
+      "manufacturer": "Trainwreck",
+      "basedOn": null
+    },
+    {
+      "value": 336,
+      "name": "WRECKER ROCKET",
+      "manufacturer": "Trainwreck",
+      "basedOn": "Trainwreck Rocket"
+    }
+  ]
+}

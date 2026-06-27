@@ -196,6 +196,184 @@ public sealed class Fm3Device : IDisposable
     /// The 0x77 header's id field selects the slot (0x7F7F = edit buffer).</summary>
     public void SendPreset(ReadOnlySpan<byte> syx) => _port.Write(syx.ToArray(), 0, syx.Length);
 
+    // ====================================================================
+    //  gen-3 write layer (FM3-confirmed frames)
+    //
+    //  A write is ACCEPTED unless the device answers with a 0x64
+    //  MULTIPURPOSE_RESPONSE rejection [echoedFn, resultCode] for the
+    //  function we sent — there is no echo on accept. Frame layouts are the
+    //  gen-3 family ops (set param fn01 sub09/sub52, bypass fn0A, channel
+    //  fn0B, grid insert sub32, grid routing sub35, switch sub27, store sub26),
+    //  with the FM3 4-row routing formula. See docs/write-protocol.md.
+    // ====================================================================
+
+    /// <summary>Result of a write: accepted, or rejected with a device result code.</summary>
+    public readonly record struct WriteResult(bool Accepted, int ResultCode, string? Error)
+    {
+        public static WriteResult Ok => new(true, -1, null);
+    }
+
+    /// <summary>14-bit value as two little-endian 7-bit bytes (septet pair).</summary>
+    private static byte[] Enc14(int v) => new[] { (byte)(v & 0x7F), (byte)((v >> 7) & 0x7F) };
+
+    /// <summary>Build a gen-3 write frame WITHOUT sending it (dry-run / tests).</summary>
+    public static byte[] BuildFrame(byte func, ReadOnlySpan<byte> body) => FractalSysex.BuildFrame(func, body);
+
+    /// <summary>Send a write frame and watch ~<paramref name="verifyMs"/> for a 0x64
+    /// rejection of <paramref name="func"/>. No rejection in the window ⇒ accepted.</summary>
+    public WriteResult SendWrite(byte func, ReadOnlySpan<byte> body, int verifyMs = 250)
+    {
+        bool IsReject(FractalSysex.Frame fr) =>
+            fr.Func == 0x64 && fr.Body.Length is >= 2 and <= 4 && (fr.Body[0] & 0x7F) == func;
+        _port.DiscardInBuffer();
+        Send(func, body);
+        foreach (var f in ReadUntil(IsReject, verifyMs))
+            if (IsReject(f))
+            {
+                int code = f.Body[1] & 0x7F;
+                return new WriteResult(false, code, DescribeResultCode(code));
+            }
+        return WriteResult.Ok;
+    }
+
+    // ---- pure body builders (no I/O — unit-testable) -------------------
+
+    /// <summary>SET-parameter body (fn 0x01). continuous ⇒ sub 0x52 (knob; value normalized
+    /// 0..1); typed ⇒ sub 0x09 (model/type select; value = roster ordinal). 5-septet float32.</summary>
+    public static byte[] ParamBody(int effectId, int paramId, float value, bool continuous)
+    {
+        var body = new byte[15];
+        body[0] = continuous ? (byte)0x52 : (byte)0x09;
+        Enc14(effectId).CopyTo(body, 2);
+        Enc14(paramId).CopyTo(body, 4);
+        FractalSysex.PackFloat(value).CopyTo(body, 6); // float32 @ 6..10; 11..14 zero
+        return body;
+    }
+
+    /// <summary>Bypass body (fn 0x0A): [eid14, dd].</summary>
+    public static byte[] BypassBody(int effectId, bool bypassed) =>
+        new[] { (byte)(effectId & 0x7F), (byte)((effectId >> 7) & 0x7F), (byte)(bypassed ? 1 : 0) };
+
+    /// <summary>Channel body (fn 0x0B): [eid14, ch] (0..3 = A..D).</summary>
+    public static byte[] ChannelBody(int effectId, int channel) =>
+        new[] { (byte)(effectId & 0x7F), (byte)((effectId >> 7) & 0x7F), (byte)(channel & 0x7F) };
+
+    /// <summary>Grid-cell insert/clear body (fn 0x01 sub 0x32). gridPos=(col-1)*rows+(row-1).</summary>
+    public static byte[] GridCellBody(int row, int col, int blockId, int rows = 4)
+    {
+        int gridPos = (col - 1) * rows + (row - 1);
+        var body = new byte[15];
+        body[0] = 0x32;
+        Enc14(blockId).CopyTo(body, 2); // 2..3 ; 4..5 zero
+        Enc14(gridPos).CopyTo(body, 6); // 6..7 ; 8..14 zero
+        return body;
+    }
+
+    /// <summary>Grid-routing body (fn 0x01 sub 0x35), (srcRow,srcCol)→(destRow,srcCol+1).
+    /// FM3 = 4-row formula (byte-confirmed); 6-row for III/FM9.</summary>
+    public static byte[] GridRoutingBody(int srcRow, int srcCol, int destRow, bool connect, int rows = 4)
+    {
+        int op = connect ? 0x01 : 0x02;
+        int srcGp = (srcCol - 1) * rows + (srcRow - 1);
+        int b21 = srcGp >> 1, b22, b23;
+        if (rows == 4)
+        {
+            b22 = ((srcGp & 1) << 6) | srcCol; // FM3: colTerm = srcCol, no destSign
+            b23 = (destRow - 1) << 5;          // linear 1-indexed
+        }
+        else
+        {
+            int colTerm = (3 * (srcCol - 1)) / 2 + 1;
+            int destSign = destRow >= 3 ? 1 : 0;
+            b22 = ((srcGp & 1) << 6) | (colTerm + destSign);
+            b23 = ((Math.Abs(destRow - 3) + (srcCol % 2 == 0 ? 2 : 0)) % 4) << 5;
+        }
+        return new byte[]
+        {
+            0x35, 0, 0, 0, 0, 0, (byte)op, 0, 0, 0, 0, 0, 0, 0x02, 0,
+            (byte)b21, (byte)b22, (byte)b23,
+        };
+    }
+
+    /// <summary>Switch-preset body (fn 0x01 sub 0x27): preset @ 6..7.</summary>
+    public static byte[] SwitchPresetBody(int n)
+    {
+        var body = new byte[15];
+        body[0] = 0x27;
+        Enc14(n).CopyTo(body, 6);
+        return body;
+    }
+
+    /// <summary>Store-preset body (fn 0x01 sub 0x26): preset @ 6..7.</summary>
+    public static byte[] StoreBody(int n)
+    {
+        var body = new byte[15];
+        body[0] = 0x26;
+        Enc14(n).CopyTo(body, 6);
+        return body;
+    }
+
+    // ---- write ops (build + send + verify) -----------------------------
+
+    /// <summary>SET a parameter. continuous ⇒ knob (normalized 0..1); typed ⇒ model select (ordinal).</summary>
+    public WriteResult SetParamValue(int effectId, int paramId, float value, bool continuous = true)
+        => SendWrite(0x01, ParamBody(effectId, paramId, value, continuous));
+
+    /// <summary>Engage/bypass a block (fn 0x0A).</summary>
+    public WriteResult SetBypass(int effectId, bool bypassed) => SendWrite(0x0A, BypassBody(effectId, bypassed));
+
+    /// <summary>Select a block channel (fn 0x0B). 0..3 = A..D.</summary>
+    public WriteResult SetChannel(int effectId, int channel) => SendWrite(0x0B, ChannelBody(effectId, channel));
+
+    /// <summary>Place a block in a cell, or clear it (blockId=0). 1-indexed row/col; FM3 rows=4.</summary>
+    public WriteResult SetGridCell(int row, int col, int blockId, int rows = 4)
+        => SendWrite(0x01, GridCellBody(row, col, blockId, rows));
+
+    /// <summary>Cable (srcRow,srcCol)→(destRow,srcCol+1). FM3 rows=4. 1-indexed.</summary>
+    public WriteResult SetGridRouting(int srcRow, int srcCol, int destRow, bool connect, int rows = 4)
+        => SendWrite(0x01, GridRoutingBody(srcRow, srcCol, destRow, connect, rows));
+
+    /// <summary>Switch the active preset via SysEx (fn 0x01 sub 0x27) — FM3-confirmed.</summary>
+    public WriteResult SwitchPresetSysEx(int n) => SendWrite(0x01, SwitchPresetBody(n), 400);
+
+    /// <summary>Persist the working buffer to a slot (fn 0x01 sub 0x26).
+    /// ⚠ persistence is NOT hardware-verified on FM3 — confirm on the device.</summary>
+    public WriteResult StorePreset(int n) => SendWrite(0x01, StoreBody(n), 600);
+
+    /// <summary>Human label for a 0x64 result code (AxeEdit MIDI_ERROR_* table, 0x00..0x1b).</summary>
+    public static string? DescribeResultCode(int code) => (code & 0x7F) switch
+    {
+        0x00 => "bad checksum",
+        0x01 => "wrong SysEx manufacturer ID",
+        0x02 => "wrong model number",
+        0x03 => "bad argument",
+        0x04 => "message not recognized",
+        0x05 => "invalid effect ID",
+        0x06 => "invalid parameter ID",
+        0x07 => "effect not in use in this preset",
+        0x08 => "no modifier slots left",
+        0x09 => "wrong count",
+        0x0a => "effect not routable here",
+        0x0b => "bad grid position",
+        0x0c => "DSP overload",
+        0x0d => "function failed",
+        0x0e => "invalid patch number",
+        0x0f => "illegal message",
+        0x10 => "bad message length",
+        0x11 => "image size incorrect",
+        0x12 => "bad image checksum",
+        0x13 => "not ready for firmware update",
+        0x14 => "buffer overrun",
+        0x15 => "invalid cab number",
+        0x16 => "invalid modifier ID",
+        0x17 => "invalid bank number",
+        0x18 => "firmware already current",
+        0x19 => "command not supported",
+        0x1a => "null data",
+        0x1b => "flash write failed",
+        _ => null,
+    };
+
     // ---- framing read loop ----
 
     /// Collect raw SysEx frames whose func is in <paramref name="keep"/>, until one with

@@ -1,17 +1,18 @@
 // High-level FM3 device service: owns the serial transport and exposes typed ops
 // built on the fractal-midi codec. Endpoints call this; it never touches HTTP.
-import {
-  buildRequestGridLayout,
-  parseGen3GridLayout,
-  buildQueryPatchName,
-  isQueryPatchNameResponse,
-  parseQueryPatchNameResponse
-} from 'fractal-midi/gen3/axe-fx-iii';
+import { buildQueryPatchName, isQueryPatchNameResponse, parseQueryPatchNameResponse } from 'fractal-midi/gen3/axe-fx-iii';
+import { fractalChecksum } from 'fractal-midi/shared';
 import { FractalSerial, autoDetectPath } from './transport/serial.js';
+import { decodePresetDump } from './codec/fm3PresetGrid.js';
 
 const MODEL_FM3 = 0x11;
-const FM3_ROWS = 4;
-const FM3_COLS = 14;
+const FN_REQUEST_EDIT_BUFFER_DUMP = 0x43; // not re-exported by the barrel; build inline
+
+/** F0 00 01 74 <model> 0x43 <cksum> F7 — request the live edit-buffer dump. */
+function editBufferDumpReq(model: number): number[] {
+  const body = [0xf0, 0x00, 0x01, 0x74, model, FN_REQUEST_EDIT_BUFFER_DUMP];
+  return [...body, fractalChecksum(body), 0xf7];
+}
 
 export interface GridCellDTO {
   row: number;
@@ -28,7 +29,7 @@ export interface PresetGridDTO {
   name: string;
   model: string;
   crcValid: boolean;
-  source: 'live-2e';
+  source: 'dump';
 }
 
 class Device {
@@ -61,29 +62,29 @@ class Device {
     return f ? parseQueryPatchNameResponse(f).name : null;
   }
 
-  /** Live routing grid via fn=0x01 sub=0x2E. BETA on FM3 (see probes/grid-read.ts). */
+  /**
+   * Routing grid via the preset dump (request edit buffer → reassemble → Huffman → grid).
+   * Hardware-validated decoder (crcValid on FM3). The live sub=0x2E path is a future
+   * optimization (FM3 format still being calibrated — see probes/grid-read.ts).
+   */
   async grid(): Promise<PresetGridDTO> {
     const dev = await this.#conn();
-    const frames = await dev.request(buildRequestGridLayout(MODEL_FM3), { timeoutMs: 2000 });
-    const resp = frames.find((f) => f[5] === 0x01 && f[6] === 0x2e) ?? frames.sort((a, b) => b.length - a.length)[0];
-    if (!resp) throw new Error('no grid-layout response');
-    const raw = parseGen3GridLayout(resp, MODEL_FM3);
-    const cells: GridCellDTO[] = raw.map((c) => ({
+    const frames = await dev.request(editBufferDumpReq(MODEL_FM3), {
+      timeoutMs: 5000,
+      quietMs: 150,
+      match: (fs) => fs.some((f) => f[5] === 0x79) // 0x79 = dump terminator
+    });
+    const d = decodePresetDump(frames, MODEL_FM3);
+    const cells: GridCellDTO[] = d.grid.map((c) => ({
       row: c.row,
       col: c.col,
-      effectId: c.effectId ?? -1,
-      name: c.isShunt ? `Shunt ${c.shuntIndex ?? ''}`.trim() : `eid ${c.effectId}`,
+      effectId: c.effectId,
+      name: c.name,
       isShunt: c.isShunt,
-      fromRows: maskToRows(c.cableInputMask)
+      fromRows: c.fromRows
     }));
-    return { cells, rows: FM3_ROWS, cols: FM3_COLS, name: '', model: 'fm3', crcValid: true, source: 'live-2e' };
+    return { cells, rows: d.rows, cols: d.cols, name: d.name, model: 'fm3', crcValid: d.crcValid, source: 'dump' };
   }
-}
-
-function maskToRows(mask: number): number[] {
-  const rows: number[] = [];
-  for (let r = 0; r < FM3_ROWS; r++) if (mask & (1 << r)) rows.push(r);
-  return rows;
 }
 
 export const device = new Device();

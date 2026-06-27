@@ -22,4 +22,8 @@
     <ProjectReference Include="..\..\src\ForgeFX.Core\ForgeFX.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="fixtures\*.syx" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

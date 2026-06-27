@@ -25,6 +25,39 @@ public sealed class Fm3Device : IDisposable
 
     public void Dispose() => _port.Dispose();
 
+    /// <summary>The serial path this instance opened.</summary>
+    public string PortName => _port.PortName;
+
+    /// <summary>Best-effort auto-detection of a connected Fractal serial port.
+    /// On Linux, prefers the stable <c>/dev/serial/by-id/…Fractal…</c> symlink (the FM3
+    /// exposes its control serial on USB interface <c>if03</c>) — that survives the device
+    /// hopping between <c>ttyACM0</c>/<c>ttyACM1</c>. Falls back to a lone <c>ttyACM*</c>,
+    /// then to the first system COM port. Returns null if nothing plausible is present.</summary>
+    public static string? AutoDetectPort()
+    {
+        try
+        {
+            const string byId = "/dev/serial/by-id";
+            if (Directory.Exists(byId))
+            {
+                var fractal = Directory.GetFileSystemEntries(byId)
+                    .Where(l => Path.GetFileName(l).Contains("Fractal", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                var best = Array.Find(fractal, l => Path.GetFileName(l).Contains("if03", StringComparison.OrdinalIgnoreCase))
+                           ?? (fractal.Length > 0 ? fractal[0] : null);
+                if (best != null) return best;
+            }
+            if (Directory.Exists("/dev"))
+            {
+                var acm = Directory.GetFiles("/dev", "ttyACM*");
+                if (acm.Length > 0) { Array.Sort(acm); return acm[0]; }
+            }
+        }
+        catch { /* fall through to port-name scan */ }
+        try { var n = SerialPort.GetPortNames(); if (n.Length > 0) return n[0]; } catch { }
+        return null;
+    }
+
     /// <summary>Optional tap for a live monitor: (isTx, func, body) per frame.</summary>
     public Action<bool, byte, byte[]>? FrameLog;
 
@@ -77,16 +110,20 @@ public sealed class Fm3Device : IDisposable
         return new FirmwareInfo($"{b[0]}.{b[1]}", date);
     }
 
-    /// <summary>Query a preset's number + name (func 0x0D). n=null → the current preset.</summary>
+    /// <summary>Query a preset's number + name (func 0x0D). n=null → the current preset.
+    /// 0x0D is occasionally dropped (status stream / busy edit buffer), so retry once.</summary>
     public (int Number, string Name) QueryPreset(int? n = null)
     {
         int num = n ?? 0x3FFF; // 7F 7F = current
         byte[] body = { (byte)(num & 0x7F), (byte)((num >> 7) & 0x7F) };
-        if (Request(0x0D, body) is { } r && r.Body.Length >= 2)
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            int number = r.Body[0] | (r.Body[1] << 7);
-            var name = Encoding.ASCII.GetString(r.Body, 2, r.Body.Length - 2).Split('\0')[0].TrimEnd();
-            return (number, name);
+            if (Request(0x0D, body) is { } r && r.Body.Length >= 2)
+            {
+                int number = r.Body[0] | (r.Body[1] << 7);
+                var name = Encoding.ASCII.GetString(r.Body, 2, r.Body.Length - 2).Split('\0')[0].TrimEnd();
+                return (number, name);
+            }
         }
         return (-1, "");
     }

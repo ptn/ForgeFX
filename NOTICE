@@ -1,0 +1,27 @@
+ForgeFX
+Copyright (c) 2026 sKuhLight
+Licensed under the MIT License (see LICENSE).
+
+This product includes software derived from third-party work:
+
+----------------------------------------------------------------------
+Gen-3 Fractal preset codec (src/ForgeFX.Core/Fm3PresetCodec.cs)
+----------------------------------------------------------------------
+The FM3/gen-3 preset wire format and decode algorithm (0x77/0x78/0x79
+dump framing, 3-byte-per-uint16 septet packing, dynamic-Huffman body
+compression, CRC-16/CCITT validation, and the routing-grid layout) is
+reimplemented from:
+
+  * mcp-midi-control — Apache License 2.0
+    https://github.com/TheAndrewStaker/mcp-midi-control
+    (packages/fractal-gen3/src/presetDump.ts, presetHuffman.ts,
+     presetBody.ts, configs/fm3.ts)
+
+  which in turn credits the format specification of:
+
+  * fractal-syx-codec by Andrew Mercurio / BoodieTraps — Apache License 2.0
+    (FORMAT.md)
+
+ForgeFX's implementation is an independent C# port of the format
+described by those projects. A copy of the Apache License 2.0 is
+available at https://www.apache.org/licenses/LICENSE-2.0.

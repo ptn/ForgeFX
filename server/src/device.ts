@@ -48,10 +48,16 @@ class Device {
     return this.#serial;
   }
 
-  /** Send a write frame; treat any 0x64 MULTIPURPOSE_RESPONSE as a rejection. */
+  /** Fire-and-forget write — no wait. For high-frequency / instant ops (knobs, bypass, channel). */
+  async #send(bytes: number[]): Promise<{ ok: boolean }> {
+    (await this.#conn()).send(bytes);
+    return { ok: true };
+  }
+
+  /** Write + watch a short window for a 0x64 rejection. For structural ops where a reject matters. */
   async #write(bytes: number[]): Promise<{ ok: boolean }> {
     const dev = await this.#conn();
-    const frames = await dev.request(bytes, { timeoutMs: 200, quietMs: 70, match: (fs) => fs.some((f) => f[5] === 0x64) });
+    const frames = await dev.request(bytes, { timeoutMs: 120, quietMs: 60, match: (fs) => fs.some((f) => f[5] === 0x64) });
     return { ok: !frames.some((f) => f[5] === 0x64) };
   }
 
@@ -110,13 +116,11 @@ class Device {
     };
   }
 
-  async #grid(): Promise<PresetGridDTO> {
-    return this.grid();
-  }
-
-  /** Effect id of the placed instance for a slug (first match in the current grid). */
+  /** Effect id of the placed instance for a slug. Uses the last known grid (effect ids
+   * are stable until a structural edit, which invalidates the cache) so high-frequency
+   * writes never trigger a fresh dump mid-drag. */
   async #effectIdForSlug(slug: string): Promise<number | null> {
-    const g = await this.#grid();
+    const g = this.#gridCache?.grid ?? (await this.grid());
     const cell = g.cells.find((c) => !c.isShunt && slugForEffectId(c.effectId) === slug.toLowerCase());
     return cell?.effectId ?? null;
   }
@@ -213,19 +217,21 @@ class Device {
     const eid = await this.#effectIdForSlug(slug);
     const pid = paramIndex(slug, param);
     if (eid == null || pid == null) return { ok: false };
-    const frame = continuous ? buildSetParameterContinuous(eid, pid, clamp01(value), MODEL_FM3) : buildSetParameter(eid, pid, value, MODEL_FM3);
-    return this.#write(frame);
+    // continuous knob writes stream at high frequency → fire-and-forget (instant, like the C#);
+    // a typed/discrete write (retype) is rare + worth confirming, so reject-watch it.
+    if (continuous) return this.#send(buildSetParameterContinuous(eid, pid, clamp01(value), MODEL_FM3));
+    return this.#write(buildSetParameter(eid, pid, value, MODEL_FM3));
   }
   async setBypass(slug: string, bypassed: boolean) {
     const eid = await this.#effectIdForSlug(slug);
     if (eid == null) return { ok: false };
-    return this.#write(buildSetBypass(eid, bypassed, MODEL_FM3));
+    return this.#send(buildSetBypass(eid, bypassed, MODEL_FM3)); // instant toggle
   }
   async setChannel(slug: string, channel: string) {
     const eid = await this.#effectIdForSlug(slug);
     const idx = CH_LETTERS.indexOf(channel.toUpperCase());
     if (eid == null || idx < 0 || idx > 3) return { ok: false };
-    return this.#write(buildSetChannel(eid, idx as 0 | 1 | 2 | 3, MODEL_FM3));
+    return this.#send(buildSetChannel(eid, idx as 0 | 1 | 2 | 3, MODEL_FM3)); // instant
   }
   async placeCell(row: number, col: number, blockId: number) {
     // FM3 needs a cell-select (sub 0x30) before the insert (sub 0x32), or the block

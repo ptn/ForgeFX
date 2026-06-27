@@ -1,0 +1,33 @@
+{
+  "name": "forgefx-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ForgeFX — open HTTP API for Fractal devices. Node backend powered by fractal-midi.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "probe:grid": "tsx src/probes/grid-read.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "fastify": "^5.1.0",
+    "fractal-midi": "^0.5.1",
+    "serialport": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "allowScripts": {
+    "@serialport/bindings-cpp@12.0.1": true,
+    "esbuild@0.28.1": true
+  }
+}

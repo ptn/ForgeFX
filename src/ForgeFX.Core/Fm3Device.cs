@@ -63,6 +63,14 @@ public sealed class Fm3Device : IDisposable
         return (-1, "");
     }
 
+    /// <summary>Debug/RE: send a raw func+body and collect every reply frame until timeout.</summary>
+    public List<FractalSysex.Frame> Exchange(byte func, ReadOnlySpan<byte> body, int timeoutMs = 1500)
+    {
+        _port.DiscardInBuffer();
+        Send(func, body);
+        return ReadUntil(_ => false, timeoutMs).ToList();
+    }
+
     /// <summary>Write a parameter. addr = 5-byte param address. Returns the device's stored value.</summary>
     public float? SetParam(byte effect, ReadOnlySpan<byte> addr5, float value)
     {

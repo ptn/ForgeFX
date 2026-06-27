@@ -25,6 +25,14 @@ app.MapGet("/preset/current", () => Locked(() =>
     return Results.Ok(new { number = p.Number, name = p.Name });
 }));
 
+// Debug/RE: send a raw func (+ optional hex body) and return every reply frame's hex.
+app.MapGet("/debug/raw/{func:int}", (int func, string? body) => Locked(() =>
+{
+    byte[] b = string.IsNullOrEmpty(body) ? Array.Empty<byte>() : Convert.FromHexString(body);
+    var frames = Dev().Exchange((byte)func, b);
+    return Results.Ok(frames.Select(f => new { func = f.Func, len = f.Body.Length, hex = Convert.ToHexString(f.Body) }));
+}));
+
 app.MapPost("/preset", (PresetRequest r) => Locked(() =>
 {
     Dev().SelectPreset(r.N);

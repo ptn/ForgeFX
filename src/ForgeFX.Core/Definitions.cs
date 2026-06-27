@@ -6,9 +6,13 @@ namespace ForgeFX.Core;
 public enum Scale { Linear, Log, Raw }
 
 /// <summary>One parameter's definition: its dump index, human name, and how the wire
-/// value (normalized 0..1, or raw for Scale.Raw) maps to engineering units.</summary>
+/// value (normalized 0..1, or raw for Scale.Raw) maps to engineering units.
+/// <para>Optional UX metadata (Type/Options/Role/Tier/Group) is carried through from the
+/// JSON pack for the catalog API; e.g. a "Type" param exposes its model list via Options.</para></summary>
 public record ParamDef(int Index, string Name, string Unit = "", double Min = 0, double Max = 1,
-                       Scale Scale = Scale.Linear);
+                       Scale Scale = Scale.Linear, string? Type = null,
+                       Dictionary<string, string>? Options = null,
+                       string? Role = null, string? Tier = null, string? Group = null);
 
 /// <summary>A block's parameter map: name, dump page id, and its parameters.
 /// Authored from docs and verified against the device (correlate.py).</summary>

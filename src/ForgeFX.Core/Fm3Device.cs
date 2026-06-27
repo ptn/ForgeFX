@@ -25,10 +25,71 @@ public sealed class Fm3Device : IDisposable
 
     public void Dispose() => _port.Dispose();
 
+    /// <summary>The serial path this instance opened.</summary>
+    public string PortName => _port.PortName;
+
+    /// <summary>Best-effort auto-detection of a connected Fractal serial port.
+    /// On Linux, prefers the stable <c>/dev/serial/by-id/…Fractal…</c> symlink (the FM3
+    /// exposes its control serial on USB interface <c>if03</c>) — that survives the device
+    /// hopping between <c>ttyACM0</c>/<c>ttyACM1</c>. Falls back to a lone <c>ttyACM*</c>,
+    /// then to the first system COM port. Returns null if nothing plausible is present.</summary>
+    public static string? AutoDetectPort()
+    {
+        try
+        {
+            const string byId = "/dev/serial/by-id";
+            if (Directory.Exists(byId))
+            {
+                var fractal = Directory.GetFileSystemEntries(byId)
+                    .Where(l => Path.GetFileName(l).Contains("Fractal", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                var best = Array.Find(fractal, l => Path.GetFileName(l).Contains("if03", StringComparison.OrdinalIgnoreCase))
+                           ?? (fractal.Length > 0 ? fractal[0] : null);
+                if (best != null) return best;
+            }
+            if (Directory.Exists("/dev"))
+            {
+                var acm = Directory.GetFiles("/dev", "ttyACM*");
+                if (acm.Length > 0) { Array.Sort(acm); return acm[0]; }
+            }
+        }
+        catch { /* fall through to port-name scan */ }
+        try { var n = SerialPort.GetPortNames(); if (n.Length > 0) return n[0]; } catch { }
+        return null;
+    }
+
+    /// <summary>Optional tap for a live monitor: (isTx, func, body) per frame.</summary>
+    public Action<bool, byte, byte[]>? FrameLog;
+
     public void Send(byte func, ReadOnlySpan<byte> body = default)
     {
         var f = FractalSysex.BuildFrame(func, body);
+        FrameLog?.Invoke(true, func, body.ToArray());
         _port.Write(f, 0, f.Length);
+    }
+
+    private readonly List<byte> _monBuf = new();
+    /// <summary>Read any buffered incoming bytes and emit complete frames via FrameLog (for the monitor).</summary>
+    public void DrainIncoming()
+    {
+        int n = _port.BytesToRead;
+        if (n > 0)
+        {
+            var tmp = new byte[n];
+            int r = _port.Read(tmp, 0, n);
+            for (int i = 0; i < r; i++) _monBuf.Add(tmp[i]);
+        }
+        while (true)
+        {
+            int s = _monBuf.IndexOf(0xF0);
+            if (s < 0) { _monBuf.Clear(); break; }
+            if (s > 0) _monBuf.RemoveRange(0, s);
+            int e = _monBuf.IndexOf(0xF7);
+            if (e < 0) break; // partial frame; wait for more
+            var msg = _monBuf.GetRange(0, e + 1).ToArray();
+            _monBuf.RemoveRange(0, e + 1);
+            if (FractalSysex.ParseFrame(msg) is { } fr) FrameLog?.Invoke(false, fr.Func, fr.Body);
+        }
     }
 
     /// <summary>Send a command and return the first reply that isn't the status stream.</summary>
@@ -47,6 +108,47 @@ public sealed class Fm3Device : IDisposable
         var b = r.Body;
         var date = Encoding.ASCII.GetString(b, 4, Math.Max(0, Math.Min(20, b.Length - 4))).Split('\0')[0];
         return new FirmwareInfo($"{b[0]}.{b[1]}", date);
+    }
+
+    /// <summary>Query a preset's number + name (func 0x0D). n=null → the current preset.
+    /// 0x0D is occasionally dropped (status stream / busy edit buffer), so retry once.</summary>
+    public (int Number, string Name) QueryPreset(int? n = null)
+    {
+        int num = n ?? 0x3FFF; // 7F 7F = current
+        byte[] body = { (byte)(num & 0x7F), (byte)((num >> 7) & 0x7F) };
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            if (Request(0x0D, body) is { } r && r.Body.Length >= 2)
+            {
+                int number = r.Body[0] | (r.Body[1] << 7);
+                var name = Encoding.ASCII.GetString(r.Body, 2, r.Body.Length - 2).Split('\0')[0].TrimEnd();
+                return (number, name);
+            }
+        }
+        return (-1, "");
+    }
+
+    /// <summary>Status dump (func 0x13): the effects in the current preset, with bypass + channel.</summary>
+    public List<(int Id, bool Bypassed, int Channel)> StatusDump(int timeoutMs = 1500)
+    {
+        var list = new List<(int, bool, int)>();
+        if (Request(0x13, default, timeoutMs) is not { } r) return list;
+        var b = r.Body;
+        for (int i = 0; i + 2 < b.Length; i += 3)
+        {
+            int id = b[i] | (b[i + 1] << 7);
+            byte flags = b[i + 2];
+            list.Add((id, (flags & 0x01) != 0, (flags >> 1) & 0x07));
+        }
+        return list;
+    }
+
+    /// <summary>Debug/RE: send a raw func+body and collect every reply frame until timeout.</summary>
+    public List<FractalSysex.Frame> Exchange(byte func, ReadOnlySpan<byte> body, int timeoutMs = 1500)
+    {
+        _port.DiscardInBuffer();
+        Send(func, body);
+        return ReadUntil(_ => false, timeoutMs).ToList();
     }
 
     /// <summary>Write a parameter. addr = 5-byte param address. Returns the device's stored value.</summary>

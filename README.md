@@ -134,6 +134,8 @@ The gen-3 preset/grid format was a wall until these open projects lit the way �
   layout. ForgeFX's `Fm3PresetCodec` is an independent C# reimplementation of that format.
 - **fractal-syx-codec** by Andrew Mercurio / BoodieTraps (Apache-2.0) — the published
   `FORMAT.md` those decoders are built from.
+- **[Fractal Audio Wiki](https://wiki.fractalaudio.com)** — the real-world model-name data
+  (which amp/pedal each Fractal model is based on), used as factual reference with attribution.
 
 See [`NOTICE`](./NOTICE) for attribution details.
 

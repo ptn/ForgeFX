@@ -47,6 +47,20 @@ may enumerate as `ttyACM0` or `ttyACM1`; the `/dev/serial/by-id/...` path is sta
 - **Respect third-party licenses.** Reused format knowledge is credited in `NOTICE` and the
   relevant docs.
 
+## Refreshing real-world model names
+
+`definitions/names/<slug>.json` maps Fractal model names to the real amps/pedals they're based
+on (served at `GET /blocks/{slug}/types`). The data comes from the Fractal wiki, which is
+Cloudflare-gated — so it is **not** fetched automatically. To refresh:
+
+1. Open a models page in a browser (it passes Cloudflare), e.g. **Amp models → Edit source**
+   (or `?action=raw`), and save the wikitext as `amp_models` / `drive_models` / `chorus_models`.
+2. Run the parser:
+   ```sh
+   dotnet run --project tools/ForgeFX.NameSync -- <folder-with-saved-files> definitions/names
+   ```
+3. Commit the regenerated JSON. Attribution lives in `NOTICE`.
+
 ## Adding parameter / enum data
 
 The definition packs (`definitions/fm3-*.json`) map a block's parameters to names, and

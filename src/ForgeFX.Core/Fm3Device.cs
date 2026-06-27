@@ -63,6 +63,21 @@ public sealed class Fm3Device : IDisposable
         return (-1, "");
     }
 
+    /// <summary>Status dump (func 0x13): the effects in the current preset, with bypass + channel.</summary>
+    public List<(int Id, bool Bypassed, int Channel)> StatusDump(int timeoutMs = 1500)
+    {
+        var list = new List<(int, bool, int)>();
+        if (Request(0x13, default, timeoutMs) is not { } r) return list;
+        var b = r.Body;
+        for (int i = 0; i + 2 < b.Length; i += 3)
+        {
+            int id = b[i] | (b[i + 1] << 7);
+            byte flags = b[i + 2];
+            list.Add((id, (flags & 0x01) != 0, (flags >> 1) & 0x07));
+        }
+        return list;
+    }
+
     /// <summary>Debug/RE: send a raw func+body and collect every reply frame until timeout.</summary>
     public List<FractalSysex.Frame> Exchange(byte func, ReadOnlySpan<byte> body, int timeoutMs = 1500)
     {

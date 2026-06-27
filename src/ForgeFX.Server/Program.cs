@@ -1,4 +1,5 @@
 using ForgeFX.Core;
+using System.Text.Json;
 
 // ForgeFX.Server — HTTP API over the FM3 SDK. Run this on the box the FM3 is plugged into
 // (PC or Raspberry Pi); a web frontend talks to it. It owns the serial port, so it can't
@@ -8,7 +9,18 @@ var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
 var devicePath = app.Configuration["device"] ?? "/dev/ttyACM0";
-var packs = Definitions.LoadDirectory(app.Configuration["definitions"] ?? "definitions");
+var defsDir = app.Configuration["definitions"] ?? "definitions";
+var packs = Definitions.LoadDirectory(defsDir);
+// block id -> display name (for the status dump), from fm3-blocks.json
+var blockNames = new Dictionary<int, string>();
+try
+{
+    var bj = Path.Combine(defsDir, "fm3-blocks.json");
+    if (File.Exists(bj))
+        foreach (var el in JsonDocument.Parse(File.ReadAllText(bj)).RootElement.GetProperty("blocks").EnumerateArray())
+            blockNames[el.GetProperty("id").GetInt32()] = el.GetProperty("name").GetString() ?? "";
+}
+catch { /* names are best-effort */ }
 var gate = new object();
 Fm3Device? device = null;
 Fm3Device Dev() { lock (gate) { return device ??= new Fm3Device(devicePath); } }
@@ -24,6 +36,16 @@ app.MapGet("/preset/current", () => Locked(() =>
     var p = Dev().QueryPreset();
     return Results.Ok(new { number = p.Number, name = p.Name });
 }));
+
+// Effects in the current preset (func 0x13): id, name, bypass, channel (A-D).
+app.MapGet("/status", () => Locked(() =>
+    Results.Ok(Dev().StatusDump().Select(s => new
+    {
+        id = s.Id,
+        name = blockNames.TryGetValue(s.Id, out var nm) ? nm : $"Block {s.Id}",
+        bypassed = s.Bypassed,
+        channel = (char)('A' + s.Channel)
+    }))));
 
 // Debug/RE: send a raw func (+ optional hex body) and return every reply frame's hex.
 app.MapGet("/debug/raw/{func:int}", (int func, string? body) => Locked(() =>

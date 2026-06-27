@@ -43,6 +43,15 @@ public class Fm3WriteTests
     }
 
     [Fact]
+    public void SelectCellBody_PutsGridPosAsSeptet32AtValue32()
+    {
+        // row 3, col 3 on 4-row grid -> gridPos = (3-1)*4 + (3-1) = 10
+        var body = Fm3Device.SelectCellBody(row: 3, col: 3, rows: 4);
+        Assert.Equal(0x30, body[0]);
+        Assert.Equal(new byte[] { 10, 0, 0, 0, 0 }, body[6..11]); // value32 5-septet
+    }
+
+    [Fact]
     public void GridCellBody_EncodesColumnMajorGridPos()
     {
         // row 2, col 3 on a 4-row grid -> gridPos = (3-1)*4 + (2-1) = 9

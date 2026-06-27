@@ -258,6 +258,26 @@ public sealed class Fm3Device : IDisposable
     public static byte[] ChannelBody(int effectId, int channel) =>
         new[] { (byte)(effectId & 0x7F), (byte)((effectId >> 7) & 0x7F), (byte)(channel & 0x7F) };
 
+    /// <summary>5-septet little-endian raw uint32 (NOT float) — for value32 fields like gridPos.</summary>
+    private static byte[] Sept5(int v)
+    {
+        var b = new byte[5];
+        for (int i = 0; i < 5; i++) b[i] = (byte)((v >> (7 * i)) & 0x7F);
+        return b;
+    }
+
+    /// <summary>Cell-select body (fn 0x01 sub 0x30): moves the edit cursor to a cell.
+    /// gridPos rides as a 5-septet uint32 at the value32 field (pos 6). FM3 needs this
+    /// sent BEFORE a sub 0x32 insert or the block lands at the default cell (live-confirmed).</summary>
+    public static byte[] SelectCellBody(int row, int col, int rows = 4)
+    {
+        int gridPos = (col - 1) * rows + (row - 1);
+        var body = new byte[15];
+        body[0] = 0x30;
+        Sept5(gridPos).CopyTo(body, 6); // value32 @ 6..10
+        return body;
+    }
+
     /// <summary>Grid-cell insert/clear body (fn 0x01 sub 0x32). gridPos=(col-1)*rows+(row-1).</summary>
     public static byte[] GridCellBody(int row, int col, int blockId, int rows = 4)
     {
@@ -325,9 +345,15 @@ public sealed class Fm3Device : IDisposable
     /// <summary>Select a block channel (fn 0x0B). 0..3 = A..D.</summary>
     public WriteResult SetChannel(int effectId, int channel) => SendWrite(0x0B, ChannelBody(effectId, channel));
 
-    /// <summary>Place a block in a cell, or clear it (blockId=0). 1-indexed row/col; FM3 rows=4.</summary>
+    /// <summary>Place a block in a cell, or clear it (blockId=0). 1-indexed row/col; FM3 rows=4.
+    /// Sends the cell-select (sub 0x30) cursor move first, then the insert (sub 0x32) — the FM3
+    /// ignores the insert's position without a prior select (live-confirmed 2026-06-27).</summary>
     public WriteResult SetGridCell(int row, int col, int blockId, int rows = 4)
-        => SendWrite(0x01, GridCellBody(row, col, blockId, rows));
+    {
+        Send(0x01, SelectCellBody(row, col, rows)); // cursor select (no state change / no reply)
+        Thread.Sleep(15);
+        return SendWrite(0x01, GridCellBody(row, col, blockId, rows));
+    }
 
     /// <summary>Cable (srcRow,srcCol)→(destRow,srcCol+1). FM3 rows=4. 1-indexed.</summary>
     public WriteResult SetGridRouting(int srcRow, int srcCol, int destRow, bool connect, int rows = 4)

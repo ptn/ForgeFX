@@ -297,9 +297,28 @@ app.MapPut("/preset/grid/cell", (GridCellRequest r, bool dryRun = false) =>
 {
     int blockId = r.BlockId
         ?? (r.Block is { Length: > 0 } s && packBySlug.TryGetValue(s, out var d) ? d.Page : 0);
-    return DoWrite(0x01, Fm3Device.GridCellBody(r.Row, r.Col, blockId), dryRun);
+    if (!writesEnabled)
+        return Results.Json(new { ok = false, error = "writes are disabled (start without `--writes false`)" }, statusCode: 403);
+    if (dryRun)
+        return Results.Ok(new
+        {
+            ok = true,
+            dryRun = true,
+            frames = new[] // FM3 needs select (sub30) then insert (sub32)
+            {
+                Convert.ToHexString(Fm3Device.BuildFrame(0x01, Fm3Device.SelectCellBody(r.Row, r.Col))),
+                Convert.ToHexString(Fm3Device.BuildFrame(0x01, Fm3Device.GridCellBody(r.Row, r.Col, blockId))),
+            },
+        });
+    return Locked(() =>
+    {
+        var res = Dev().SetGridCell(r.Row, r.Col, blockId);
+        return res.Accepted
+            ? Results.Ok(new { ok = true })
+            : Results.Json(new { ok = false, resultCode = res.ResultCode, error = res.Error }, statusCode: 422);
+    });
 })
-    .WithTags("Grid").WithSummary("⚠ BETA: place a block at (row,col) — body {row,col,block?|blockId?}; omit both or blockId=0 to clear.");
+    .WithTags("Grid").WithSummary("⚠ BETA: place a block at (row,col) — body {row,col,block?|blockId?}; omit both or blockId=0 to clear. Sends select+insert.");
 
 app.MapPost("/preset/grid/cable", (CableRequest r, bool dryRun = false) =>
     DoWrite(0x01, Fm3Device.GridRoutingBody(r.SrcRow, r.SrcCol, r.DestRow, r.Connect ?? true), dryRun))

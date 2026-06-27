@@ -55,6 +55,24 @@ curl localhost:5056/blocks/amp/params      # named parameter catalog for the Amp
 > (`fuser -v /dev/ttyACM0` shows who holds it). Use the stable `/dev/serial/by-id/...` path so
 > it survives the device hopping between `ttyACM0`/`ttyACM1`.
 
+## Docker (recommended for deployment)
+
+The easiest way to run ForgeFX on a Raspberry Pi (or any host), behind a reverse proxy:
+
+```sh
+docker compose up -d --build
+docker compose logs -f
+```
+
+The image is multi-arch (amd64 + arm64), so it builds natively on a Pi. The FM3 is passed
+through in [`docker-compose.yml`](./docker-compose.yml): the host's stable `by-id` symlink is
+mapped to a fixed `/dev/fm3` inside the container, so the device name stays put across
+`ttyACM0`/`ttyACM1` re-enumeration. Adjust the mapping for your unit, and uncomment the
+`group_add`/`privileged` line if the container can't open the serial device.
+
+The compose file also has commented **Traefik** labels for putting ForgeFX behind a reverse
+proxy with TLS (or just proxy `http://forgefx:5056` from Caddy/nginx).
+
 ## The API
 
 Resource-oriented and named. Full, always-current reference at `/scalar`; the shape:

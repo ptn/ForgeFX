@@ -174,7 +174,13 @@ class Device {
     return rosterBySlug(slug);
   }
 
-  /** Read a placed block's params (bulk read), mapped through its definition pack. */
+  /**
+   * Read a placed block's params via the fn=0x1F bulk read. The 0x75 body is
+   * CHANNEL-BLOCKED: index = channel*stride + paramId, stride = paramCount,
+   * channelCount = values.length/stride (per-block, NOT always 4). Wire values are
+   * raw 0..65534 → normalized = raw/65534. (Display units via param ranges = TODO,
+   * sourced from the FM3-Edit cache.)
+   */
   async blockParams(slug: string): Promise<{ block: string; slug: string; page: number; named: NamedParam[] }> {
     const pack = packBySlug(slug);
     if (!pack) throw new Error(`unknown block ${slug}`);
@@ -183,12 +189,16 @@ class Device {
     if (eid != null) {
       const dev = await this.#conn();
       try {
+        const activeCh = (await this.#statusByEffectId()).get(eid)?.channel ?? 0;
         const frames = await dev.request(buildBlockBulkReadPoll(eid, MODEL_FM3), { timeoutMs: 2500, quietMs: 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
         const bulk = assembleGen3BlockBulkRead(frames, MODEL_FM3);
+        const stride = Math.max(...pack.params.map((p) => p.index)) + 1;
+        const channelCount = Math.max(1, Math.floor(bulk.values.length / stride));
+        const base = Math.min(activeCh, channelCount - 1) * stride;
         for (const p of pack.params) {
           if (p.name.toLowerCase() === 'type') continue;
-          const raw = bulk.values[p.index] ?? 0;
-          named.push({ name: p.name, value: raw, norm: clamp01(raw / 65535), unit: p.unit });
+          const raw = bulk.values[base + p.index] ?? 0;
+          named.push({ name: p.name, value: raw, norm: clamp01(raw / 65534), unit: p.unit });
         }
       } catch {
         // fall back to a structural list (names only) so the editor still renders

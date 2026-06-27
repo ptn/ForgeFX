@@ -1,0 +1,50 @@
+# ForgeFX — Docker Compose deployment (great for a Raspberry Pi appliance).
+#
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# The FM3 must be passed through to the container (see `devices:` below).
+
+services:
+  forgefx:
+    build:
+      context: .
+      target: runtime
+    # Or pull a prebuilt image instead of building locally:
+    # image: ghcr.io/skuhlight/forgefx:latest
+    container_name: forgefx
+    restart: unless-stopped
+    ports:
+      - "5056:5056"
+
+    # --- device passthrough ---------------------------------------------------
+    # The host's stable by-id symlink is resolved to the real tty and exposed at a
+    # fixed path (/dev/fm3) inside the container, so the device name is stable
+    # regardless of whether the host enumerated it as ttyACM0 or ttyACM1.
+    # Adjust the left-hand path for your unit (FM9/Axe-Fx III have their own id).
+    devices:
+      - "/dev/serial/by-id/usb-Fractal_Audio_Systems_FM3-if03:/dev/fm3"
+    command: ["--device", "/dev/fm3"]
+
+    # If the container user can't open the serial device, grant the host's serial
+    # group (find it with `getent group dialout uucp`), or as a last resort run
+    # privileged. Try group_add first.
+    # group_add:
+    #   - "dialout"
+    # privileged: true
+
+    # --- reverse proxy (optional) ---------------------------------------------
+    # Example Traefik labels — uncomment and join the proxy's network to expose
+    # ForgeFX at https://forgefx.example.com. For Caddy/nginx, just proxy to
+    # http://forgefx:5056 from your proxy config instead.
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.forgefx.rule=Host(`forgefx.example.com`)"
+    #   - "traefik.http.routers.forgefx.entrypoints=websecure"
+    #   - "traefik.http.routers.forgefx.tls.certresolver=le"
+    #   - "traefik.http.services.forgefx.loadbalancer.server.port=5056"
+    # networks: [proxy]
+
+# networks:
+#   proxy:
+#     external: true

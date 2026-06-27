@@ -113,6 +113,11 @@ dotnet publish src/ForgeFX.Server -c Release -r linux-arm64 --self-contained -p:
 On Windows the FM3 is a COM port via Fractal's USB driver; on Linux it's native CDC
 (`/dev/ttyACM0`), no driver needed.
 
+## Roadmap
+
+See [`ROADMAP.md`](./ROADMAP.md) for what's shipped and what's planned, or browse the
+[issues](https://github.com/sKuhLight/ForgeFX/issues) (filter by the `epic` label).
+
 ## Documentation
 
 - [Preset & routing-grid codec](docs/preset-grid-codec.md) — how a live preset is decoded.

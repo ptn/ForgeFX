@@ -6,6 +6,7 @@ import {
   buildStatusDump,
   isStatusDumpResponse,
   parseStatusDumpResponse,
+  buildRequestPresetDump,
   buildBlockBulkReadPoll,
   assembleGen3BlockBulkRead,
   buildSetParameter,
@@ -19,20 +20,14 @@ import {
   ROUTING_OP_CONNECT,
   ROUTING_OP_DISCONNECT
 } from 'fractal-midi/gen3/axe-fx-iii';
-import { fractalChecksum } from 'fractal-midi/shared';
 import { FractalSerial, autoDetectPath } from './transport/serial.js';
 import { decodePresetDump } from './codec/fm3PresetGrid.js';
 import { allPacks, packBySlug, rosterBySlug, slugForEffectId, paramIndex, type TypeModel } from './defs.js';
 
 const MODEL_FM3 = 0x11;
 const FM3_ROWS = 4;
-const FN_REQUEST_EDIT_BUFFER_DUMP = 0x43;
+const EDIT_BUFFER = 0x3fff; // preset number sentinel = current edit buffer
 const CH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-
-function editBufferDumpReq(model: number): number[] {
-  const body = [0xf0, 0x00, 0x01, 0x74, model, FN_REQUEST_EDIT_BUFFER_DUMP];
-  return [...body, fractalChecksum(body), 0xf7];
-}
 
 export interface GridCellDTO { row: number; col: number; effectId: number; name: string; isShunt: boolean; routeFlag: number; fromRows: number[]; }
 export interface PresetGridDTO { model: string; name: string; crcValid: boolean; rows: number; cols: number; scenes: string[]; cells: GridCellDTO[]; source: 'dump'; }
@@ -72,21 +67,21 @@ class Device {
     const dev = await this.#conn();
     const frames = await dev.request(buildQueryPatchName('current', MODEL_FM3), {
       timeoutMs: 1200,
-      match: (fs) => fs.some((f) => isQueryPatchNameResponse(f))
+      match: (fs) => fs.some((f) => isQueryPatchNameResponse(f, MODEL_FM3))
     });
-    const f = frames.find((x) => isQueryPatchNameResponse(x));
+    const f = frames.find((x) => isQueryPatchNameResponse(x, MODEL_FM3));
     if (!f) return { number: -1, name: '' };
-    const r = parseQueryPatchNameResponse(f);
+    const r = parseQueryPatchNameResponse(f, MODEL_FM3);
     return { number: r.presetNumber, name: r.name };
   }
 
   /** Routing grid via the hardware-validated dump decoder. */
   async grid(): Promise<PresetGridDTO> {
     const dev = await this.#conn();
-    const frames = await dev.request(editBufferDumpReq(MODEL_FM3), {
+    const frames = await dev.request(buildRequestPresetDump(EDIT_BUFFER, MODEL_FM3), {
       timeoutMs: 5000,
       quietMs: 150,
-      match: (fs) => fs.some((f) => f[5] === 0x79)
+      match: (fs) => fs.some((f) => f[5] === 0x79) // 0x79 = dump terminator
     });
     const d = decodePresetDump(frames, MODEL_FM3);
     const grid: PresetGridDTO = {

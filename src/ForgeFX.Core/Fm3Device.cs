@@ -16,8 +16,13 @@ public sealed class Fm3Device : IDisposable
     private const byte StatusFunc = 0x64; // continuous tuner/tempo stream — skip
     private readonly SerialPort _port;
 
-    public Fm3Device(string portName = "/dev/ttyACM0")
+    /// <summary>SysEx model byte used for every frame this client sends (FM3=0x11 default,
+    /// FM9=0x12, Axe-Fx III=0x10). gen-3 siblings share this client; only the byte differs.</summary>
+    public byte Model { get; }
+
+    public Fm3Device(string portName = "/dev/ttyACM0", byte model = FractalSysex.ModelFm3)
     {
+        Model = model;
         _port = new SerialPort(portName, 115200) { ReadTimeout = 200, WriteTimeout = 500 };
         _port.Open();
         _port.DiscardInBuffer();
@@ -63,7 +68,7 @@ public sealed class Fm3Device : IDisposable
 
     public void Send(byte func, ReadOnlySpan<byte> body = default)
     {
-        var f = FractalSysex.BuildFrame(func, body);
+        var f = FractalSysex.BuildFrame(func, body, Model);
         FrameLog?.Invoke(true, func, body.ToArray());
         _port.Write(f, 0, f.Length);
     }

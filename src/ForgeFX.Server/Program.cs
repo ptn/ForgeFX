@@ -38,6 +38,9 @@ string ResolveDevice() => configuredDevice ?? Fm3Device.AutoDetectPort() ?? "/de
 var defsDir = app.Configuration["definitions"] ?? "definitions";
 // Writes are enabled by default; start with `--writes false` to make the API read-only.
 var writesEnabled = app.Configuration.GetValue("writes", true);
+// Device profile (model byte, grid dims, channels, scenes). FM3 today; `--model fm9|axefx3`
+// selects a gen-3 sibling. The decoder also auto-detects the model from each preset dump.
+var profile = FractalDevices.Resolve(app.Configuration["model"]);
 var packs = Definitions.LoadDirectory(defsDir);
 
 // slug ("amp", "vol-pan") -> block definition pack
@@ -97,7 +100,7 @@ Fm3Device Dev()
     lock (gate)
     {
         if (device != null) return device;
-        device = new Fm3Device(ResolveDevice()) { FrameLog = LogFrame };
+        device = new Fm3Device(ResolveDevice(), profile.ModelByte) { FrameLog = LogFrame };
         return device;
     }
 }
@@ -171,7 +174,9 @@ app.MapGet("/device", () => Locked(() =>
 {
     var dev = Dev();
     var fw = dev.Firmware();
-    return Results.Ok(new DeviceInfo("FM3", "0x11", fw is { } f ? new FirmwareDto(f.Version, f.Build) : null, dev.PortName));
+    return Results.Ok(new DeviceInfo(profile.Name, $"0x{profile.ModelByte:x2}",
+        fw is { } f ? new FirmwareDto(f.Version, f.Build) : null, dev.PortName,
+        new GridDims(profile.GridRows, profile.GridCols), profile.Channels, profile.Scenes));
 }))
     .WithTags("System").WithSummary("Device identity + firmware (auto-detected port).");
 
@@ -306,13 +311,13 @@ app.MapPut("/preset/grid/cell", (GridCellRequest r, bool dryRun = false) =>
             dryRun = true,
             frames = new[] // FM3 needs select (sub30) then insert (sub32)
             {
-                Convert.ToHexString(Fm3Device.BuildFrame(0x01, Fm3Device.SelectCellBody(r.Row, r.Col))),
-                Convert.ToHexString(Fm3Device.BuildFrame(0x01, Fm3Device.GridCellBody(r.Row, r.Col, blockId))),
+                Convert.ToHexString(Fm3Device.BuildFrame(0x01, Fm3Device.SelectCellBody(r.Row, r.Col, profile.GridRows))),
+                Convert.ToHexString(Fm3Device.BuildFrame(0x01, Fm3Device.GridCellBody(r.Row, r.Col, blockId, profile.GridRows))),
             },
         });
     return Locked(() =>
     {
-        var res = Dev().SetGridCell(r.Row, r.Col, blockId);
+        var res = Dev().SetGridCell(r.Row, r.Col, blockId, profile.GridRows);
         return res.Accepted
             ? Results.Ok(new { ok = true })
             : Results.Json(new { ok = false, resultCode = res.ResultCode, error = res.Error }, statusCode: 422);
@@ -321,7 +326,7 @@ app.MapPut("/preset/grid/cell", (GridCellRequest r, bool dryRun = false) =>
     .WithTags("Grid").WithSummary("⚠ BETA: place a block at (row,col) — body {row,col,block?|blockId?}; omit both or blockId=0 to clear. Sends select+insert.");
 
 app.MapPost("/preset/grid/cable", (CableRequest r, bool dryRun = false) =>
-    DoWrite(0x01, Fm3Device.GridRoutingBody(r.SrcRow, r.SrcCol, r.DestRow, r.Connect ?? true), dryRun))
+    DoWrite(0x01, Fm3Device.GridRoutingBody(r.SrcRow, r.SrcCol, r.DestRow, r.Connect ?? true, profile.GridRows), dryRun))
     .WithTags("Grid").WithSummary("⚠ BETA: cable (srcRow,srcCol)→(destRow,srcCol+1). connect=false removes it.");
 
 // =====================================================================
@@ -423,7 +428,9 @@ app.Run();
 // =====================================================================
 record MonEntry(long Seq, string Ts, string Dir, byte Func, int Len, string Hex);
 record FirmwareDto(string Version, string Build);
-record DeviceInfo(string Model, string ModelByte, FirmwareDto? Firmware, string Port);
+record DeviceInfo(string Model, string ModelByte, FirmwareDto? Firmware, string Port,
+                  GridDims Grid, int Channels, int Scenes);
+record GridDims(int Rows, int Cols);
 record ParamInfo(int Index, string Name, string Unit, double Min, double Max, string Scale,
                  string? Type, string? Role, string? Tier, string? Group, Dictionary<string, string>? Options);
 record BlockSummary(string Slug, string Name, int Page, int ParamCount, int TypeCount);

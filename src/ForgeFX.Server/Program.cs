@@ -36,6 +36,8 @@ var app = builder.Build();
 var configuredDevice = app.Configuration["device"];
 string ResolveDevice() => configuredDevice ?? Fm3Device.AutoDetectPort() ?? "/dev/ttyACM0";
 var defsDir = app.Configuration["definitions"] ?? "definitions";
+// Writes are enabled by default; start with `--writes false` to make the API read-only.
+var writesEnabled = app.Configuration.GetValue("writes", true);
 var packs = Definitions.LoadDirectory(defsDir);
 
 // slug ("amp", "vol-pan") -> block definition pack
@@ -114,6 +116,32 @@ T Locked<T>(Func<T> f)
             throw;
         }
     }
+}
+
+// Resolve a block's effect id: explicit wins; else the pack's base page (+ instance offset).
+int Eid(string slug, int? instance, int? explicitEid)
+{
+    if (explicitEid is int e) return e;
+    if (!packBySlug.TryGetValue(slug, out var def))
+        throw new KeyNotFoundException($"no block '{slug}'");
+    return def.Page + Math.Max(0, (instance ?? 1) - 1);
+}
+
+// Run a write: refuse if writes are disabled; on ?dryRun, return the frame hex without
+// sending; otherwise send + report the device's accept/reject result.
+IResult DoWrite(byte func, byte[] body, bool dryRun, object? extra = null)
+{
+    if (!writesEnabled)
+        return Results.Json(new { ok = false, error = "writes are disabled on this server (start without `--writes false`)" }, statusCode: 403);
+    if (dryRun)
+        return Results.Ok(new { ok = true, dryRun = true, func, frame = Convert.ToHexString(Fm3Device.BuildFrame(func, body)) });
+    return Locked(() =>
+    {
+        var r = Dev().SendWrite(func, body);
+        return r.Accepted
+            ? Results.Ok(new { ok = true, extra })
+            : Results.Json(new { ok = false, resultCode = r.ResultCode, error = r.Error ?? $"rejected (0x{r.ResultCode:x2})" }, statusCode: 422);
+    });
 }
 
 // background loop: drain the device's unsolicited push frames into the monitor
@@ -249,12 +277,52 @@ app.MapGet("/preset/blocks", () => Locked(() =>
 }))
     .WithTags("Preset").WithSummary("Blocks placed in the current preset, with position, routing, bypass, channel.");
 
-app.MapPost("/preset/select", (SelectRequest r) => Locked(() =>
+app.MapPost("/preset/select", (SelectRequest r, bool dryRun = false) =>
+    DoWrite(0x01, Fm3Device.SwitchPresetBody(r.Number), dryRun))
+    .WithTags("Preset").WithSummary("Switch the device to a preset by number (SysEx sub=0x27).");
+
+// Persist the working buffer. ⚠ beta: save persistence is not hardware-verified on FM3.
+app.MapPost("/preset/store", (SelectRequest r, bool dryRun = false) =>
 {
-    Dev().SelectPreset(r.Number);
-    return Results.Ok(new { ok = true, number = r.Number });
-}))
-    .WithTags("Preset").WithSummary("Switch the device to a preset by number.");
+    var res = DoWrite(0x01, Fm3Device.StoreBody(r.Number), dryRun);
+    return res; // body carries ok/result; warning documented in the summary
+})
+    .WithTags("Preset").WithSummary("⚠ BETA: store the working buffer to a slot (persistence unverified on FM3 — confirm on the device).");
+
+// =====================================================================
+//  Grid editing (live) — ⚠ beta
+// =====================================================================
+
+app.MapPut("/preset/grid/cell", (GridCellRequest r, bool dryRun = false) =>
+{
+    int blockId = r.BlockId
+        ?? (r.Block is { Length: > 0 } s && packBySlug.TryGetValue(s, out var d) ? d.Page : 0);
+    if (!writesEnabled)
+        return Results.Json(new { ok = false, error = "writes are disabled (start without `--writes false`)" }, statusCode: 403);
+    if (dryRun)
+        return Results.Ok(new
+        {
+            ok = true,
+            dryRun = true,
+            frames = new[] // FM3 needs select (sub30) then insert (sub32)
+            {
+                Convert.ToHexString(Fm3Device.BuildFrame(0x01, Fm3Device.SelectCellBody(r.Row, r.Col))),
+                Convert.ToHexString(Fm3Device.BuildFrame(0x01, Fm3Device.GridCellBody(r.Row, r.Col, blockId))),
+            },
+        });
+    return Locked(() =>
+    {
+        var res = Dev().SetGridCell(r.Row, r.Col, blockId);
+        return res.Accepted
+            ? Results.Ok(new { ok = true })
+            : Results.Json(new { ok = false, resultCode = res.ResultCode, error = res.Error }, statusCode: 422);
+    });
+})
+    .WithTags("Grid").WithSummary("⚠ BETA: place a block at (row,col) — body {row,col,block?|blockId?}; omit both or blockId=0 to clear. Sends select+insert.");
+
+app.MapPost("/preset/grid/cable", (CableRequest r, bool dryRun = false) =>
+    DoWrite(0x01, Fm3Device.GridRoutingBody(r.SrcRow, r.SrcCol, r.DestRow, r.Connect ?? true), dryRun))
+    .WithTags("Grid").WithSummary("⚠ BETA: cable (srcRow,srcCol)→(destRow,srcCol+1). connect=false removes it.");
 
 // =====================================================================
 //  Live block parameters (named)
@@ -268,17 +336,33 @@ app.MapGet("/preset/blocks/{slug}/params", (string slug) => Locked(() =>
 }))
     .WithTags("Parameters").WithSummary("Live, named parameter values for a placed block.");
 
-app.MapPut("/preset/blocks/{slug}/params/{param}", (string slug, string param, SetValue body) => Locked(() =>
+app.MapPut("/preset/blocks/{slug}/params/{param}", (string slug, string param, SetValue body, bool dryRun = false) =>
 {
     if (!packBySlug.TryGetValue(slug, out var def)) return Results.NotFound(new { error = $"no block '{slug}'" });
     var pd = Array.Find(def.Params, p => string.Equals(p.Name, param, StringComparison.OrdinalIgnoreCase));
     if (pd is null) return Results.NotFound(new { error = $"no param '{param}' on '{slug}'" });
-    // effect == page; address = [0, page, 0, index, 0]
-    var addr = new byte[] { 0, (byte)def.Page, 0, (byte)pd.Index, 0 };
-    var stored = Dev().SetParam((byte)def.Page, addr, (float)body.Value);
-    return Results.Ok(new { ok = true, block = def.Name, param = pd.Name, stored });
-}))
-    .WithTags("Parameters").WithSummary("Set one parameter on a block by name (returns the device-stored value).");
+    int eid = Eid(slug, body.Instance, body.EffectId);
+    // continuous (default) = knob, value normalized 0..1; typed = model/type select, value = ordinal
+    var frameBody = Fm3Device.ParamBody(eid, pd.Index, (float)body.Value, body.Continuous ?? true);
+    return DoWrite(0x01, frameBody, dryRun);
+})
+    .WithTags("Parameters").WithSummary("Set one parameter by name. Body: {value, continuous?, instance?, effectId?}; ?dryRun=true previews the frame.");
+
+app.MapPost("/preset/blocks/{slug}/bypass", (string slug, BypassRequest r, bool dryRun = false) =>
+{
+    if (!packBySlug.ContainsKey(slug) && r.EffectId is null) return Results.NotFound(new { error = $"no block '{slug}'" });
+    return DoWrite(0x0A, Fm3Device.BypassBody(Eid(slug, r.Instance, r.EffectId), r.Bypassed), dryRun);
+})
+    .WithTags("Parameters").WithSummary("Engage/bypass a block. Body: {bypassed, instance?, effectId?}.");
+
+app.MapPost("/preset/blocks/{slug}/channel", (string slug, ChannelRequest r, bool dryRun = false) =>
+{
+    if (!packBySlug.ContainsKey(slug) && r.EffectId is null) return Results.NotFound(new { error = $"no block '{slug}'" });
+    int ch = char.ToUpperInvariant(r.Channel.Length > 0 ? r.Channel[0] : 'A') - 'A';
+    if (ch is < 0 or > 3) return Results.BadRequest(new { error = "channel must be A, B, C or D" });
+    return DoWrite(0x0B, Fm3Device.ChannelBody(Eid(slug, r.Instance, r.EffectId), ch), dryRun);
+})
+    .WithTags("Parameters").WithSummary("Select a block channel A–D. Body: {channel, instance?, effectId?}.");
 
 // =====================================================================
 //  Backup / restore
@@ -355,6 +439,10 @@ record GridDto(string Model, string Name, bool CrcValid, int Rows, int Cols,
 record PlacedBlock(string Slug, string Name, int EffectId, int Row, int Col, int[] FromRows,
                    bool? Bypassed, string? Channel);
 record SelectRequest(int Number);
-record SetValue(double Value);
+record SetValue(double Value, bool? Continuous, int? Instance, int? EffectId);
+record BypassRequest(bool Bypassed, int? Instance, int? EffectId);
+record ChannelRequest(string Channel, int? Instance, int? EffectId);
+record GridCellRequest(int Row, int Col, string? Block, int? BlockId);
+record CableRequest(int SrcRow, int SrcCol, int DestRow, bool? Connect);
 
 public partial class Program { }

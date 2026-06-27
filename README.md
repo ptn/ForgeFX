@@ -89,8 +89,15 @@ Resource-oriented and named. Full, always-current reference at `/scalar`; the sh
 | Preset | `POST /preset/select` | switch preset by number |
 | Parameters | `GET /preset/blocks/{slug}/params` | live, named parameter values |
 | Parameters | `PUT /preset/blocks/{slug}/params/{param}` | set a parameter by name |
+| Parameters | `POST /preset/blocks/{slug}/bypass` · `…/channel` | engage/bypass · select channel A–D |
+| Grid | `PUT /preset/grid/cell` · `POST /preset/grid/cable` | place/clear a block · wire/unwire a cable (beta) |
+| Preset | `POST /preset/select` · `POST /preset/store` | switch preset · store working buffer (beta) |
 | Backup | `GET /presets/{n}/backup` · `POST /presets/restore` | `.syx` download / upload |
 | Debug | `GET /debug/...` | raw frame tap + page dump (advanced / unstable) |
+
+**Writes** are safe by default: append **`?dryRun=true`** to any write to get the exact frame
+back *without sending it*, and start the server with **`--writes false`** to make it read-only.
+See [`docs/write-protocol.md`](docs/write-protocol.md).
 
 ## Architecture
 
@@ -121,6 +128,7 @@ See [`ROADMAP.md`](./ROADMAP.md) for what's shipped and what's planned, or brows
 ## Documentation
 
 - [Preset & routing-grid codec](docs/preset-grid-codec.md) — how a live preset is decoded.
+- [Write protocol](docs/write-protocol.md) — param/bypass/channel/grid/store frames + safety.
 - [Definition packs](docs/definitions.md) — the block/parameter catalog format.
 - [ADR 0001 — transport](docs/api-design.md) — REST + WebSockets design decision.
 - [Contributing](CONTRIBUTING.md).

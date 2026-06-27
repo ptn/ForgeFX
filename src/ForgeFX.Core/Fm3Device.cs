@@ -49,6 +49,20 @@ public sealed class Fm3Device : IDisposable
         return new FirmwareInfo($"{b[0]}.{b[1]}", date);
     }
 
+    /// <summary>Query a preset's number + name (func 0x0D). n=null → the current preset.</summary>
+    public (int Number, string Name) QueryPreset(int? n = null)
+    {
+        int num = n ?? 0x3FFF; // 7F 7F = current
+        byte[] body = { (byte)(num & 0x7F), (byte)((num >> 7) & 0x7F) };
+        if (Request(0x0D, body) is { } r && r.Body.Length >= 2)
+        {
+            int number = r.Body[0] | (r.Body[1] << 7);
+            var name = Encoding.ASCII.GetString(r.Body, 2, r.Body.Length - 2).Split('\0')[0].TrimEnd();
+            return (number, name);
+        }
+        return (-1, "");
+    }
+
     /// <summary>Write a parameter. addr = 5-byte param address. Returns the device's stored value.</summary>
     public float? SetParam(byte effect, ReadOnlySpan<byte> addr5, float value)
     {

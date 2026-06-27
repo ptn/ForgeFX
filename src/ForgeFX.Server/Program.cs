@@ -19,6 +19,12 @@ app.MapGet("/healthz", () => Results.Ok(new { ok = true, device = devicePath }))
 app.MapGet("/firmware", () => Locked(() =>
     Dev().Firmware() is { } fw ? Results.Ok(fw) : Results.Problem("no reply from device")));
 
+app.MapGet("/preset/current", () => Locked(() =>
+{
+    var p = Dev().QueryPreset();
+    return Results.Ok(new { number = p.Number, name = p.Name });
+}));
+
 app.MapPost("/preset", (PresetRequest r) => Locked(() =>
 {
     Dev().SelectPreset(r.N);

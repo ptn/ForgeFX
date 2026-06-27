@@ -36,7 +36,9 @@ export interface NamedParam { name: string; value: number; norm: number; unit?: 
 
 class Device {
   #serial: FractalSerial | null = null;
-  #gridCache: PresetGridDTO | null = null;
+  #gridCache: { grid: PresetGridDTO; at: number } | null = null;
+  #gridInflight: Promise<PresetGridDTO> | null = null;
+  static GRID_TTL_MS = 500; // coalesce the grid()+presetBlocks() burst on a single load
 
   get port() { return this.#serial?.path ?? autoDetectPath(); }
 
@@ -75,16 +77,29 @@ class Device {
     return { number: r.presetNumber, name: r.name };
   }
 
-  /** Routing grid via the hardware-validated dump decoder. */
+  /** Routing grid via the hardware-validated dump decoder. Deduped + short-TTL cached. */
   async grid(): Promise<PresetGridDTO> {
+    if (this.#gridInflight) return this.#gridInflight; // coalesce concurrent callers
+    if (this.#gridCache && Date.now() - this.#gridCache.at < Device.GRID_TTL_MS) return this.#gridCache.grid;
+    this.#gridInflight = this.#dumpGrid();
+    try {
+      const g = await this.#gridInflight;
+      this.#gridCache = { grid: g, at: Date.now() };
+      return g;
+    } finally {
+      this.#gridInflight = null;
+    }
+  }
+
+  async #dumpGrid(): Promise<PresetGridDTO> {
     const dev = await this.#conn();
     const frames = await dev.request(buildRequestPresetDump(EDIT_BUFFER, MODEL_FM3), {
       timeoutMs: 5000,
-      quietMs: 150,
+      quietMs: 180,
       match: (fs) => fs.some((f) => f[5] === 0x79) // 0x79 = dump terminator
     });
     const d = decodePresetDump(frames, MODEL_FM3);
-    const grid: PresetGridDTO = {
+    return {
       model: 'fm3',
       name: d.name,
       crcValid: d.crcValid,
@@ -94,12 +109,10 @@ class Device {
       cells: d.grid.map((c) => ({ row: c.row, col: c.col, effectId: c.effectId, name: c.name, isShunt: c.isShunt, routeFlag: c.routeFlag, fromRows: c.fromRows })),
       source: 'dump'
     };
-    this.#gridCache = grid;
-    return grid;
   }
 
   async #grid(): Promise<PresetGridDTO> {
-    return this.#gridCache ?? (await this.grid());
+    return this.grid();
   }
 
   /** Effect id of the placed instance for a slug (first match in the current grid). */

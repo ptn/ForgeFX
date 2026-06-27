@@ -83,15 +83,33 @@ export class FractalSerial {
     this.#port.write(Buffer.from(bytes));
   }
 
+  // serial is a single shared stream — requests MUST run one at a time, or reply
+  // frames from concurrent requests interleave and corrupt each other.
+  #chain: Promise<unknown> = Promise.resolve();
+
   /**
-   * Send a request and collect reply frames. Resolves once a quiet gap (`quietMs`)
-   * passes after the last frame, or `match` is satisfied, or `timeoutMs` elapses.
-   * Handles both single-frame replies and multi-frame dumps.
+   * Send a request and collect reply frames. Serialized against all other requests.
+   * Resolves once a quiet gap (`quietMs`) passes after the last frame, or `match` is
+   * satisfied, or `timeoutMs` elapses. Handles single-frame replies and multi-frame dumps.
    */
   request(
     bytes: readonly number[],
+    opts: { timeoutMs?: number; quietMs?: number; match?: (frames: number[][]) => boolean } = {}
+  ): Promise<number[][]> {
+    const task = () => this.#once(bytes, opts);
+    const p = this.#chain.then(task, task);
+    this.#chain = p.then(
+      () => {},
+      () => {}
+    );
+    return p;
+  }
+
+  #once(
+    bytes: readonly number[],
     { timeoutMs = 1500, quietMs = 90, match }: { timeoutMs?: number; quietMs?: number; match?: (frames: number[][]) => boolean } = {}
   ): Promise<number[][]> {
+    this.#rx = []; // drop any stale partial frame before a fresh exchange
     return new Promise((resolve) => {
       const frames: number[][] = [];
       let quietTimer: ReturnType<typeof setTimeout> | null = null;

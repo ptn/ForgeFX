@@ -129,6 +129,7 @@ See [`ROADMAP.md`](./ROADMAP.md) for what's shipped and what's planned, or brows
 
 - [Preset & routing-grid codec](docs/preset-grid-codec.md) — how a live preset is decoded.
 - [Write protocol](docs/write-protocol.md) — param/bypass/channel/grid/store frames + safety.
+- [Devices & families](docs/devices.md) — multi-device design (gen-3 today; FM9/III via profile).
 - [Definition packs](docs/definitions.md) — the block/parameter catalog format.
 - [ADR 0001 — transport](docs/api-design.md) — REST + WebSockets design decision.
 - [Contributing](CONTRIBUTING.md).

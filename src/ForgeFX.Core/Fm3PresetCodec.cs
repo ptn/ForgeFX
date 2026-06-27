@@ -233,13 +233,11 @@ public static class Fm3PresetCodec
 
     // ---- helpers ----
 
-    private static (int rows, int cols) GridDims(int modelId) => modelId switch
+    private static (int rows, int cols) GridDims(int modelId)
     {
-        ModelFm3 => (4, 12),
-        ModelFm9 => (6, 14),
-        ModelAxeFxIII => (6, 14),
-        _ => (4, 12),
-    };
+        var p = FractalDevices.ByModel(modelId);
+        return (p.GridRows, p.GridCols);
+    }
 
     private static string ModelName(int modelId) => modelId switch
     {

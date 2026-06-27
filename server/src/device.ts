@@ -242,6 +242,11 @@ class Device {
     this.#gridCache = null;
     return r;
   }
+  /** Move the device's edit cursor to a cell (sub 0x30) so the FM3 screen follows the UI.
+   * Non-destructive: this is the cursor-select frame (no companion = no clear). */
+  async selectCell(row: number, col: number) {
+    return this.#send(buildClearBlock({ row, col, rows: FM3_ROWS }, MODEL_FM3));
+  }
   async cable(srcRow: number, srcCol: number, destRow: number, connect: boolean) {
     const r = await this.#write(buildSetGridRouting({ srcRow, srcCol, destRow, rows: FM3_ROWS, op: connect ? ROUTING_OP_CONNECT : ROUTING_OP_DISCONNECT }, MODEL_FM3));
     this.#gridCache = null;

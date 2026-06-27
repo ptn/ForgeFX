@@ -59,6 +59,7 @@ app.put<{ Body: { row: number; col: number; blockId: number } }>('/preset/grid/c
 app.post<{ Body: { srcRow: number; srcCol: number; destRow: number; connect?: boolean } }>('/preset/grid/cable', (req) =>
   device.cable(req.body.srcRow, req.body.srcCol, req.body.destRow, req.body.connect ?? true)
 );
+app.post<{ Body: { row: number; col: number } }>('/preset/grid/select', (req) => device.selectCell(req.body.row, req.body.col));
 
 app
   .listen({ port: PORT, host: '0.0.0.0' })

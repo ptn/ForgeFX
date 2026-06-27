@@ -52,7 +52,7 @@ const KNOB_UNITS = new Set([
 export interface GridCellDTO { row: number; col: number; effectId: number; name: string; isShunt: boolean; routeFlag: number; fromRows: number[]; }
 export interface PresetGridDTO { model: string; name: string; crcValid: boolean; rows: number; cols: number; scenes: string[]; cells: GridCellDTO[]; source: 'dump'; }
 export interface PresetBlockDTO { slug: string; name: string; effectId: number; row: number; col: number; fromRows: number[]; bypassed: boolean | null; channel: string | null; }
-export interface NamedParam { name: string; value: number; norm: number; unit?: string; min?: number; max?: number; }
+export interface NamedParam { name: string; value: number; norm: number; unit?: string; min?: number; max?: number; log?: boolean; }
 
 class Device {
   #serial: FractalSerial | null = null;
@@ -245,14 +245,17 @@ class Device {
     return { block: blockName, slug, page, named };
   }
 
-  /** Map a raw 0..65534 wire value to {value, norm, unit, min, max} via the device-true FM3 range. */
-  #display(family: string | undefined, paramId: number, raw: number): { value: number; norm: number; unit?: string; min?: number; max?: number } {
+  /** Map a raw 0..65534 wire value to {value, norm, unit, min, max, log} via the device-true FM3 range.
+   * Taper from typecode: middle nibble 4/5 = log10 (e.g. freq cuts), else linear. */
+  #display(family: string | undefined, paramId: number, raw: number): { value: number; norm: number; unit?: string; min?: number; max?: number; log?: boolean } {
     const norm = clamp01(raw / 65534);
     const range = family ? FM3_RANGES[family]?.[paramId] : undefined;
     if (range && range.kind === 'float' && Number.isFinite(range.displayMin) && Number.isFinite(range.displayMax)) {
-      const v = wireToDisplay(raw, { displayMin: range.displayMin, displayMax: range.displayMax, displayScale: 'linear' });
+      const taperNib = (range.typecode >> 4) & 0xf;
+      const log = (taperNib === 4 || taperNib === 5) && range.displayMin > 0;
+      const v = wireToDisplay(raw, { displayMin: range.displayMin, displayMax: range.displayMax, displayScale: log ? 'log10' : 'linear' });
       const unitCode = family ? FM3_PARAMS_BY_FAMILY[family]?.find((x) => x.paramId === paramId)?.unit : undefined;
-      return { value: round3(v), norm, unit: (unitCode && UNIT_LABEL[unitCode]) || undefined, min: range.displayMin, max: range.displayMax };
+      return { value: round3(v), norm, unit: (unitCode && UNIT_LABEL[unitCode]) || undefined, min: range.displayMin, max: range.displayMax, log: log || undefined };
     }
     return { value: Math.round(norm * 1000) / 100, norm }; // 0..10 fallback
   }

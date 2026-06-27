@@ -13,7 +13,8 @@
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "probe:grid": "tsx src/probes/grid-read.ts"
+    "probe:grid": "tsx src/probes/grid-read.ts",
+    "probe:grid2e": "tsx src/probes/grid-2e.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

@@ -1,0 +1,115 @@
+{
+  "block": "geq",
+  "source": "Fractal Audio FM3 (device dictionary) + wiki notes",
+  "count": 18,
+  "models": [
+    {
+      "value": 0,
+      "name": "10 Band Constant Q",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 1,
+      "name": "8 Band Constant Q",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 2,
+      "name": "7 Band Constant Q",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 3,
+      "name": "5 Band Constant Q",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 4,
+      "name": "10 Band Variable Q",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 5,
+      "name": "8 Band Variable Q",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 6,
+      "name": "7 Band Variable Q",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 7,
+      "name": "5 Band Variable Q",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 8,
+      "name": "5 Band Passive",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 9,
+      "name": "4 Band Passive",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 10,
+      "name": "3 Band Passive",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 11,
+      "name": "3 Band Console",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 12,
+      "name": "10 Band 2/3 Oct Const Q",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 13,
+      "name": "10 Band 2/3 Oct Var Q",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 14,
+      "name": "5 Band Mark",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 15,
+      "name": "4 Band JMPRE-1",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 16,
+      "name": "7 Band Pedal",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 17,
+      "name": "7 Band Bass Pedal",
+      "manufacturer": null,
+      "basedOn": null
+    }
+  ]
+}

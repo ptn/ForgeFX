@@ -1,0 +1,277 @@
+{
+  "block": "cab",
+  "source": "Fractal Audio FM3 (device dictionary) + wiki notes",
+  "count": 45,
+  "models": [
+    {
+      "value": 0,
+      "name": "1x8 5F1 TWEED",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 1,
+      "name": "1x8 PRINCETONE",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 2,
+      "name": "1x10 BF PRINCETONE",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 3,
+      "name": "1x10 METRO BLUES",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 4,
+      "name": "1x10 SF PRINCETONE",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 5,
+      "name": "1x12 AC20",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 6,
+      "name": "1x12 BLACK MAGICK",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 7,
+      "name": "1x12 CAR AMBLER",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 8,
+      "name": "1x12 DELUXE TWEED",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 9,
+      "name": "1x12 DELUXE VERB",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 10,
+      "name": "1x12 DIV13 CJ11",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 11,
+      "name": "1x12 G12T-100",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 12,
+      "name": "1x12 HOT KITTY",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 13,
+      "name": "1x12 JR BLUES",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 14,
+      "name": "1x12 NUCLEAR TONE",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 15,
+      "name": "1x12 SCHOLZ",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 16,
+      "name": "1x12 TWEED 20112",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 17,
+      "name": "1x12 VIBRATO LUX",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 18,
+      "name": "1x15 HEART KEY",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 19,
+      "name": "1x15 PORTABASS",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 20,
+      "name": "1x15 VIBROVERB",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 21,
+      "name": "2x10 HEART KEY",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 22,
+      "name": "2x10 SUPER 6G4",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 23,
+      "name": "2x12 5153 STEALTH",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 24,
+      "name": "2x12 65 BASSGUY",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 25,
+      "name": "2x12 CHIEFMAN",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 26,
+      "name": "2x12 CLASS-A 30W",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 27,
+      "name": "2x12 DOUBLE VERB",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 28,
+      "name": "2x12 LEAD 80",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 29,
+      "name": "2x12 TEXAS STAR",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 30,
+      "name": "4x10 BASSGUY RI",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 31,
+      "name": "4x12 1960TV",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 32,
+      "name": "4x12 5153",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 33,
+      "name": "4x12 5153 STEALTH",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 34,
+      "name": "4x12 CITRUS",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 35,
+      "name": "4x12 FRIEDMAN GB",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 36,
+      "name": "4x12 FRIEDMAN V30",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 37,
+      "name": "4x12 LERXST",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 38,
+      "name": "4x12 RECTO SLANT",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 39,
+      "name": "4x12 RECTO STRAIGHT",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 40,
+      "name": "4x12 RUMBLE EV12L",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 41,
+      "name": "4x12 RUMBLE EV12S",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 42,
+      "name": "4x12 SOLO 100",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 43,
+      "name": "4x12 USA MC90",
+      "manufacturer": null,
+      "basedOn": null
+    },
+    {
+      "value": 44,
+      "name": "8x10 SV BASS",
+      "manufacturer": null,
+      "basedOn": null
+    }
+  ]
+}

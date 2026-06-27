@@ -23,8 +23,32 @@ try
 catch { /* names are best-effort */ }
 var gate = new object();
 Fm3Device? device = null;
-Fm3Device Dev() { lock (gate) { return device ??= new Fm3Device(devicePath); } }
+
+// ---- live traffic monitor (ring buffer + file) ----
+var monLog = new System.Collections.Concurrent.ConcurrentQueue<MonEntry>();
+long monSeq = 0;
+var monPath = app.Configuration["monlog"] ?? "forgefx-monitor.log";
+void LogFrame(bool tx, byte func, byte[] body)
+{
+    var e = new MonEntry(System.Threading.Interlocked.Increment(ref monSeq),
+        DateTime.Now.ToString("HH:mm:ss.fff"), tx ? "TX" : "RX", func, body.Length, Convert.ToHexString(body));
+    monLog.Enqueue(e);
+    while (monLog.Count > 4000) monLog.TryDequeue(out _);
+    try { File.AppendAllText(monPath, $"{e.Ts} {e.Dir} f=0x{func:x2} {e.Hex}\n"); } catch { }
+}
+
+Fm3Device Dev() { lock (gate) { if (device == null) { device = new Fm3Device(devicePath); device.FrameLog = LogFrame; } return device; } }
 T Locked<T>(Func<T> f) { lock (gate) return f(); }
+
+// background loop: drain the device's unsolicited push frames into the monitor
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        try { lock (gate) { Dev().DrainIncoming(); } } catch { /* device not ready */ }
+        await Task.Delay(20);
+    }
+});
 
 app.MapGet("/healthz", () => Results.Ok(new { ok = true, device = devicePath }));
 
@@ -46,6 +70,10 @@ app.MapGet("/status", () => Locked(() =>
         bypassed = s.Bypassed,
         channel = (char)('A' + s.Channel)
     }))));
+
+// Live traffic monitor: all frames to/from the device since ?since=<seq> (TX + RX).
+app.MapGet("/debug/monitor", (long? since) =>
+    Results.Ok(monLog.Where(e => e.Seq > (since ?? 0)).ToArray()));
 
 // Debug/RE: send a raw func (+ optional hex body) and return every reply frame's hex.
 app.MapGet("/debug/raw/{func:int}", (int func, string? body) => Locked(() =>
@@ -114,5 +142,6 @@ app.MapGet("/block/{name}/params", (string name) => Locked(() =>
 app.Run();
 
 // request DTOs (minimal-API model binding from JSON body)
+record MonEntry(long Seq, string Ts, string Dir, byte Func, int Len, string Hex);
 record PresetRequest(int N);
 record ParamRequest(byte Effect, byte[] Addr, float Value);

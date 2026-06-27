@@ -25,10 +25,38 @@ public sealed class Fm3Device : IDisposable
 
     public void Dispose() => _port.Dispose();
 
+    /// <summary>Optional tap for a live monitor: (isTx, func, body) per frame.</summary>
+    public Action<bool, byte, byte[]>? FrameLog;
+
     public void Send(byte func, ReadOnlySpan<byte> body = default)
     {
         var f = FractalSysex.BuildFrame(func, body);
+        FrameLog?.Invoke(true, func, body.ToArray());
         _port.Write(f, 0, f.Length);
+    }
+
+    private readonly List<byte> _monBuf = new();
+    /// <summary>Read any buffered incoming bytes and emit complete frames via FrameLog (for the monitor).</summary>
+    public void DrainIncoming()
+    {
+        int n = _port.BytesToRead;
+        if (n > 0)
+        {
+            var tmp = new byte[n];
+            int r = _port.Read(tmp, 0, n);
+            for (int i = 0; i < r; i++) _monBuf.Add(tmp[i]);
+        }
+        while (true)
+        {
+            int s = _monBuf.IndexOf(0xF0);
+            if (s < 0) { _monBuf.Clear(); break; }
+            if (s > 0) _monBuf.RemoveRange(0, s);
+            int e = _monBuf.IndexOf(0xF7);
+            if (e < 0) break; // partial frame; wait for more
+            var msg = _monBuf.GetRange(0, e + 1).ToArray();
+            _monBuf.RemoveRange(0, e + 1);
+            if (FractalSysex.ParseFrame(msg) is { } fr) FrameLog?.Invoke(false, fr.Func, fr.Body);
+        }
     }
 
     /// <summary>Send a command and return the first reply that isn't the status stream.</summary>

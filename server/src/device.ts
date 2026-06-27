@@ -14,6 +14,7 @@ import {
   buildSetBypass,
   buildSetChannel,
   buildSetGridCell,
+  buildClearBlock,
   buildSetGridRouting,
   buildSwitchPresetSysEx,
   buildStorePreset,
@@ -210,6 +211,10 @@ class Device {
     return this.#write(buildSetChannel(eid, idx as 0 | 1 | 2 | 3, MODEL_FM3));
   }
   async placeCell(row: number, col: number, blockId: number) {
+    // FM3 needs a cell-select (sub 0x30) before the insert (sub 0x32), or the block
+    // lands at the default cell. buildClearBlock IS that select frame (no-op on an
+    // empty cell). For blockId 0 this becomes select + insert-0 = clear, like the C#.
+    await this.#write(buildClearBlock({ row, col, rows: FM3_ROWS }, MODEL_FM3));
     const r = await this.#write(buildSetGridCell({ row, col, blockId, rows: FM3_ROWS }, MODEL_FM3));
     this.#gridCache = null;
     return r;

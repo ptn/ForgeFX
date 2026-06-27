@@ -4,8 +4,6 @@ import {
   isQueryPatchNameResponse,
   parseQueryPatchNameResponse,
   buildStatusDump,
-  isStatusDumpResponse,
-  parseStatusDumpResponse,
   buildRequestPresetDump,
   buildBlockBulkReadPoll,
   assembleGen3BlockBulkRead,
@@ -127,9 +125,18 @@ class Device {
     const dev = await this.#conn();
     const map = new Map<number, { bypassed: boolean; channel: number }>();
     try {
-      const frames = await dev.request(buildStatusDump(MODEL_FM3), { timeoutMs: 1500, match: (fs) => fs.some((f) => isStatusDumpResponse(f)) });
-      const f = frames.find((x) => isStatusDumpResponse(x));
-      if (f) for (const e of parseStatusDumpResponse(f)) map.set(e.effectId, { bypassed: e.bypassed, channel: e.channel });
+      // fractal-midi's isStatusDumpResponse is locked to model 0x10 (III), so match the
+      // 0x13 frame ourselves (any model) and parse the id-id-dd triples inline.
+      const frames = await dev.request(buildStatusDump(MODEL_FM3), { timeoutMs: 1500, match: (fs) => fs.some((f) => f[5] === 0x13) });
+      const f = frames.find((x) => x[5] === 0x13);
+      if (f) {
+        const payload = f.slice(6, f.length - 2);
+        for (let i = 0; i + 2 < payload.length; i += 3) {
+          const effectId = (payload[i]! & 0x7f) | ((payload[i + 1]! & 0x7f) << 7);
+          const dd = payload[i + 2]! & 0x7f;
+          map.set(effectId, { bypassed: (dd & 0x01) !== 0, channel: (dd >> 1) & 0x07 });
+        }
+      }
     } catch {
       /* status optional */
     }

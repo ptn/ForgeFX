@@ -130,10 +130,21 @@ if (STATIC) {
   });
 }
 
-app
-  .listen({ port: PORT, host: '0.0.0.0' })
-  .then(() => app.log.info(`ForgeFX (node) on http://localhost:${PORT}`))
-  .catch((e) => {
+// Auto port allocation: try PORT; if it's taken, let the OS assign a free one (port 0).
+// The actual bound port is logged (and the desktop app picks a free port up front anyway).
+async function listen(port: number, fellBack = false): Promise<void> {
+  try {
+    await app.listen({ port, host: '0.0.0.0' });
+    const addr = app.server.address();
+    const actual = addr && typeof addr === 'object' ? addr.port : port;
+    app.log.info(`ForgeFX (node) on http://localhost:${actual}`);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code === 'EADDRINUSE' && !fellBack) {
+      app.log.warn(`port ${port} in use — falling back to an OS-assigned free port`);
+      return listen(0, true);
+    }
     app.log.error(e);
     process.exit(1);
-  });
+  }
+}
+listen(PORT);

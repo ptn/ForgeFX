@@ -23,30 +23,17 @@ import {
   ROUTING_OP_CONNECT,
   ROUTING_OP_DISCONNECT
 } from 'fractal-midi/gen3/axe-fx-iii';
-import { FM3_RANGES, FM3_PARAMS_BY_FAMILY } from 'fractal-midi/gen3/fm3';
 import { resolveEnumValues } from 'fractal-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'fractal-midi/shared';
 import { FractalSerial, autoDetectPath } from './transport/serial.js';
 import { decodePresetDump, slugForEffectId, effectRoster } from './codec/fm3PresetGrid.js';
-import { packBySlug, rosterBySlug, enumLabelsFor, cabIrBanks, type TypeModel } from './defs.js';
+import { packBySlug, cabIrBanks, type TypeModel } from './defs.js';
 import { DEVICE_MODELS, MODEL_BROADCAST } from './models.js';
+import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile } from './devices.js';
 
-const MODEL_FM3 = 0x11;
-const FM3_ROWS = 4;
 const EDIT_BUFFER = 0x3fff; // preset number sentinel = current edit buffer
 const CH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
-// pack slug → FM3 catalog family (for device-true ranges/units from fractal-midi)
-const SLUG_FAMILY: Record<string, string> = {
-  amp: 'DISTORT', cab: 'CABINET', drive: 'FUZZ', comp: 'COMP', multicomp: 'MULTICOMP',
-  peq: 'PEQ', geq: 'GEQ', reverb: 'REVERB', delay: 'DELAY', multitap: 'MULTITAP',
-  chorus: 'CHORUS', flanger: 'FLANGER', phaser: 'PHASER', rotary: 'ROTARY', tremolo: 'TREMOLO',
-  pitch: 'PITCH', wah: 'WAH', filter: 'FILTER', formant: 'FORMANT', enhancer: 'ENHANCER',
-  mixer: 'MIXER', volume: 'VOLUME', input: 'INPUT', output: 'OUTPUT', gate: 'GATE',
-  synth: 'SYNTH', ringmod: 'RINGMOD', looper: 'LOOPER', resonator: 'RESONATOR',
-  megatap: 'MEGATAP', tentap: 'TENTAP', plex: 'PLEX', send: 'FDBKSEND', return: 'FDBKRET',
-  multiplexer: 'MULTIPLEXER'
-};
 // catalog unit code → display label (blank = show the bare number)
 const UNIT_LABEL: Record<string, string> = {
   db: 'dB', hz: 'Hz', ms: 'ms', seconds: 's', percent: '%', bipolar_percent: '%',
@@ -115,6 +102,11 @@ function paramLabel(p: { displayLabel?: string; name: string }): string {
 class Device {
   #serial: FractalSerial | null = null;
   #connecting: Promise<FractalSerial> | null = null;
+  // active device profile (model byte, grid size, params, ranges, rosters). Starts from FORGEFX_DEVICE
+  // if set, otherwise FM3, and is corrected to the real unit on the first detect.
+  #prof: DeviceProfile = (process.env.FORGEFX_DEVICE ? profileForKey(process.env.FORGEFX_DEVICE) : undefined) ?? DEFAULT_PROFILE;
+  #detected = false;
+  get profile() { return this.#prof; }
   #gridCache: { grid: PresetGridDTO; at: number } | null = null;
   #gridInflight: Promise<PresetGridDTO> | null = null;
   static GRID_TTL_MS = 500; // coalesce the grid()+presetBlocks() burst on a single load
@@ -159,7 +151,7 @@ class Device {
   /** Build a Fractal SysEx frame: F0 00 01 74 <model> <fn> <data…> <cs> F7. cs = XOR of all
    * preceding bytes & 0x7f (verified against captured frames). */
   #envelope(fn: number, data: number[]): number[] {
-    const body = [0xf0, 0x00, 0x01, 0x74, MODEL_FM3, fn, ...data];
+    const body = [0xf0, 0x00, 0x01, 0x74, this.#prof.model, fn, ...data];
     let cs = 0;
     for (const b of body) cs ^= b;
     return [...body, cs & 0x7f, 0xf7];
@@ -204,10 +196,22 @@ class Device {
 
   async health() {
     const path = autoDetectPath();
-    return { ok: !!path, device: 'FM3' };
+    return { ok: !!path, device: this.#prof.name };
   }
   async deviceInfo() {
-    return { model: 'FM3', modelByte: '0x11', firmware: null as null | { version: string; build: string }, port: this.port };
+    return { model: this.#prof.name, modelByte: `0x${this.#prof.model.toString(16)}`, firmware: null as null | { version: string; build: string }, port: this.port };
+  }
+
+  /** Ensure the active profile matches the attached unit — runs detect once, lazily, so direct API
+   * use (not just the Axis client) still adapts to an FM9 vs FM3 without an explicit detect call. */
+  async #ready() {
+    if (this.#detected) return;
+    this.#detected = true;
+    try {
+      await this.detect();
+    } catch {
+      /* keep the default/env profile if detection fails */
+    }
   }
 
   /** Auto-detect the connected Fractal unit. Broadcasts the fn 0x00 handshake to the wildcard
@@ -227,13 +231,18 @@ class Device {
       const f = frames.find(hdr);
       const modelId = f ? f[4]! : -1;
       const m = DEVICE_MODELS[modelId];
+      // adopt the detected unit's profile so all reads/writes use its model byte, grid + ranges
+      // (profileForModel falls back to FM3, so only switch when there's a real profile for this model)
+      const p = profileForModel(modelId);
+      if (p.model === modelId) this.#prof = p;
+      this.#detected = true;
       return {
         connected: modelId >= 0,
         modelId,
         name: m?.name ?? (modelId >= 0 ? `Unknown (0x${modelId.toString(16).padStart(2, '0')})` : 'No device'),
         short: m?.short ?? (modelId >= 0 ? `0x${modelId.toString(16)}` : '—'),
         gen: m?.gen ?? 0,
-        supported: m?.codec === 'fm3',
+        supported: !!m?.codec,
         port
       };
     } catch {
@@ -243,19 +252,21 @@ class Device {
 
   /** Current preset number + name (one query). */
   async presetRef(): Promise<{ number: number; name: string }> {
+    await this.#ready();
     const dev = await this.#conn();
-    const frames = await dev.request(buildQueryPatchName('current', MODEL_FM3), {
+    const frames = await dev.request(buildQueryPatchName('current', this.#prof.model), {
       timeoutMs: 1200,
-      match: (fs) => fs.some((f) => isQueryPatchNameResponse(f, MODEL_FM3))
+      match: (fs) => fs.some((f) => isQueryPatchNameResponse(f, this.#prof.model))
     });
-    const f = frames.find((x) => isQueryPatchNameResponse(x, MODEL_FM3));
+    const f = frames.find((x) => isQueryPatchNameResponse(x, this.#prof.model));
     if (!f) return { number: -1, name: '' };
-    const r = parseQueryPatchNameResponse(f, MODEL_FM3);
+    const r = parseQueryPatchNameResponse(f, this.#prof.model);
     return { number: r.presetNumber, name: r.name };
   }
 
   /** Routing grid via the hardware-validated dump decoder. Deduped + short-TTL cached. */
   async grid(): Promise<PresetGridDTO> {
+    await this.#ready();
     if (this.#gridInflight) return this.#gridInflight; // coalesce concurrent callers
     if (this.#gridCache && Date.now() - this.#gridCache.at < Device.GRID_TTL_MS) return this.#gridCache.grid;
     this.#gridInflight = this.#dumpGrid();
@@ -270,12 +281,12 @@ class Device {
 
   async #dumpGrid(): Promise<PresetGridDTO> {
     const dev = await this.#conn();
-    const frames = await dev.request(buildRequestPresetDump(EDIT_BUFFER, MODEL_FM3), {
+    const frames = await dev.request(buildRequestPresetDump(EDIT_BUFFER, this.#prof.model), {
       timeoutMs: 5000,
       quietMs: 180,
       match: (fs) => fs.some((f) => f[5] === 0x79) // 0x79 = dump terminator
     });
-    const d = decodePresetDump(frames, MODEL_FM3);
+    const d = decodePresetDump(frames, this.#prof.model);
     return {
       model: 'fm3',
       name: d.name,
@@ -294,7 +305,7 @@ class Device {
     try {
       // fractal-midi's isStatusDumpResponse is locked to model 0x10 (III), so match the
       // 0x13 frame ourselves (any model) and parse the id-id-dd triples inline.
-      const frames = await dev.request(buildStatusDump(MODEL_FM3), { timeoutMs: 1500, match: (fs) => fs.some((f) => f[5] === 0x13) });
+      const frames = await dev.request(buildStatusDump(this.#prof.model), { timeoutMs: 1500, match: (fs) => fs.some((f) => f[5] === 0x13) });
       const f = frames.find((x) => x[5] === 0x13);
       if (f) {
         const payload = f.slice(6, f.length - 2);
@@ -339,22 +350,23 @@ class Device {
   blocksCatalog() {
     return effectRoster().map((e) => {
       const fam = SLUG_FAMILY[e.slug];
-      const paramCount = fam ? (FM3_PARAMS_BY_FAMILY[fam]?.length ?? 0) : (packBySlug(e.slug)?.params.length ?? 0);
-      return { slug: e.slug, name: e.name, page: e.page, paramCount, typeCount: rosterBySlug(e.slug).length };
+      const paramCount = fam ? (this.#prof.params[fam]?.length ?? 0) : (packBySlug(e.slug)?.params.length ?? 0);
+      return { slug: e.slug, name: e.name, page: e.page, paramCount, typeCount: this.#prof.rosterFor(e.slug).length };
     });
   }
   blockTypes(slug: string): TypeModel[] {
-    return rosterBySlug(slug);
+    return this.#prof.rosterFor(slug);
   }
 
   /**
    * Read a placed block's params via the fn=0x1F bulk read. The 0x75 body is
    * CHANNEL-BLOCKED: index = channel*stride + paramId, stride = paramCount,
    * channelCount = values.length/stride (per-block, NOT always 4). `norm` = raw/65534
-   * (knob position); `value`/`unit` are the device-true DISPLAY reading via FM3_RANGES
+   * (knob position); `value`/`unit` are the device-true DISPLAY reading via this.#prof.ranges
    * (e.g. 1.2k Hz, -12 dB) where the cache has a range, else the 0..10 position.
    */
   async blockParams(eid: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null }> {
+    await this.#ready();
     const slug = slugForEffectId(eid) ?? ''; // address the EXACT placed instance, not the first of its family
     const pack = packBySlug(slug);
     const family = SLUG_FAMILY[slug.toLowerCase()];
@@ -363,14 +375,14 @@ class Device {
     if (!family) {
       return { block: blockName, slug, page, named: [], enums: [], type: null }; // no device-true param family mapped
     }
-    const defs = FM3_PARAMS_BY_FAMILY[family] ?? [];
+    const defs = this.#prof.params[family] ?? [];
     // knob params = continuous, musician-facing: a float range + a real display unit
     // (drops enum selectors, internal 'numeric'/'unverified' params, and bypass flags).
     // knobs = every continuous param with a usable range. We expose ALL real controls (the UI
     // organizes them); only genuinely-dead params are dropped: no range (min===max) or the bypass flag.
     const seenIds = new Set<number>();
     const knobs = defs.filter((p) => {
-      const range = FM3_RANGES[family]?.[p.paramId];
+      const range = this.#prof.ranges[family]?.[p.paramId];
       if (range?.kind !== 'float') return false;
       if (!KNOB_UNITS.has(p.unit ?? '')) return false;
       if (/bypass/i.test(p.displayLabel ?? p.name)) return false;
@@ -383,7 +395,7 @@ class Device {
     // plus the raw bypass flag; everything else (modes, slopes, mics, mic/cab pickers…) is shown.
     const typeId = this.#paramId(family, 'type');
     const enumDefs = defs.filter((p) => {
-      const range = FM3_RANGES[family]?.[p.paramId];
+      const range = this.#prof.ranges[family]?.[p.paramId];
       if (range?.kind !== 'enum' || p.paramId === typeId) return false;
       if (range.displayMax <= range.displayMin) return false;
       if (/^bypass$/i.test(p.displayLabel ?? p.name)) return false;
@@ -396,8 +408,8 @@ class Device {
       const dev = await this.#conn();
       try {
         const activeCh = 0; // channel A (skip the per-open status dump — one fewer serial round-trip)
-        const frames = await dev.request(buildBlockBulkReadPoll(eid, MODEL_FM3), { timeoutMs: 2500, quietMs: 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
-        const bulk = assembleGen3BlockBulkRead(frames, MODEL_FM3);
+        const frames = await dev.request(buildBlockBulkReadPoll(eid, this.#prof.model), { timeoutMs: 2500, quietMs: 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
+        const bulk = assembleGen3BlockBulkRead(frames, this.#prof.model);
         const stride = Math.max(1, ...defs.map((p) => p.paramId)) + 1;
         const channelCount = Math.max(1, Math.floor(bulk.values.length / stride));
         const base = Math.min(activeCh, channelCount - 1) * stride;
@@ -406,7 +418,7 @@ class Device {
           named.push({ id: p.paramId, name: paramLabel(p), ...this.#display(family, p.paramId, raw) });
         }
         for (const p of enumDefs) {
-          const range = FM3_RANGES[family]![p.paramId]!;
+          const range = this.#prof.ranges[family]![p.paramId]!;
           const max = Math.round(range.displayMax);
           const min = Math.round(range.displayMin);
           const raw = bulk.values[base + p.paramId] ?? 0;
@@ -416,7 +428,7 @@ class Device {
         }
         // current model/type (for EQ band layout etc.)
         if (typeId != null) {
-          const roster = rosterBySlug(slug);
+          const roster = this.#prof.rosterFor(slug);
           const max = Math.max(0, roster.length - 1);
           const raw = bulk.values[base + typeId] ?? 0;
           const tv = raw > max ? Math.round((raw / 65534) * max) : raw;
@@ -439,21 +451,22 @@ class Device {
    * Writes are plain setParam calls: bank = ord at param 0|1, IR index = raw index at param 4|5,
    * mode = ord at 31, dyna type = ord at 85|86. */
   async cabState(eid: number) {
+    await this.#ready();
     const slug = slugForEffectId(eid) ?? '';
     const family = SLUG_FAMILY[slug.toLowerCase()];
     if (family !== 'CABINET') return { error: 'not a cab block' };
     let values: number[] = [];
     try {
       const dev = await this.#conn();
-      const frames = await dev.request(buildBlockBulkReadPoll(eid, MODEL_FM3), { timeoutMs: 2500, quietMs: 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
-      values = assembleGen3BlockBulkRead(frames, MODEL_FM3).values;
+      const frames = await dev.request(buildBlockBulkReadPoll(eid, this.#prof.model), { timeoutMs: 2500, quietMs: 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
+      values = assembleGen3BlockBulkRead(frames, this.#prof.model).values;
     } catch {
       /* device unreachable — return option lists with zeroed current state */
     }
     // discrete params store the ordinal; if it looks 16-bit-scaled, unscale against the known max
     const ord = (id: number, max: number) => { const raw = values[id] ?? 0; return max > 0 && raw > max ? Math.round((raw / 65534) * max) : raw; };
     const bankOptions = this.#enumOptions(family, 0, 'Bank', 0, 4).map((o) => o.label);
-    const dynaLabels = enumLabelsFor(family, 85) ?? [];
+    const dynaLabels = this.#prof.enumLabelsFor(family, 85) ?? [];
     const dynaOptions = this.#enumOptions(family, 85, 'DynaCab Type', 0, Math.max(0, dynaLabels.length - 1));
     const modeOptions = this.#enumOptions(family, 31, 'Mode', 0, 1);
     const irBanks = cabIrBanks();
@@ -479,13 +492,14 @@ class Device {
     const out: { effectId: number; slug: string; defaultId: number; defaultName: string; typeName: string; vals: Record<number, MeterVal> }[] = [];
     const dev = await this.#conn();
     for (const c of g.cells) {
+    await this.#ready();
       if (c.isShunt) continue;
       const slug = slugForEffectId(c.effectId);
       const family = slug ? SLUG_FAMILY[slug] : undefined;
       if (!slug || !family) continue;
-      const defs = FM3_PARAMS_BY_FAMILY[family] ?? [];
+      const defs = this.#prof.params[family] ?? [];
       const knobs = defs.filter((p) => {
-        const r = FM3_RANGES[family]?.[p.paramId];
+        const r = this.#prof.ranges[family]?.[p.paramId];
         if (r?.kind !== 'float' || r.displayMin === r.displayMax || (r.displayMin === 0 && r.displayMax === 1)) return false;
         const label = p.displayLabel ?? p.name;
         return KNOB_UNITS.has(p.unit ?? '') && !/bypass/i.test(label) && !/_/.test(label) && !/^[A-Z][A-Z0-9+]*$/.test(label);
@@ -496,15 +510,15 @@ class Device {
       const vals: Record<number, MeterVal> = {};
       let typeName = '';
       try {
-        const frames = await dev.request(buildBlockBulkReadPoll(c.effectId, MODEL_FM3), { timeoutMs: 2000, quietMs: 100, match: (fs) => fs.some((f) => f[5] === 0x76) });
-        const bulk = assembleGen3BlockBulkRead(frames, MODEL_FM3);
+        const frames = await dev.request(buildBlockBulkReadPoll(c.effectId, this.#prof.model), { timeoutMs: 2000, quietMs: 100, match: (fs) => fs.some((f) => f[5] === 0x76) });
+        const bulk = assembleGen3BlockBulkRead(frames, this.#prof.model);
         for (const id of wantIds) {
           const d = this.#display(family, id, bulk.values[id] ?? 0);
           vals[id] = { norm: d.norm, value: d.value, unit: d.unit, min: d.min, max: d.max, log: d.log };
         }
         const typeId = this.#paramId(family, 'type');
         if (typeId != null) {
-          const roster = rosterBySlug(slug);
+          const roster = this.#prof.rosterFor(slug);
           const tmax = Math.max(0, roster.length - 1);
           const rawT = bulk.values[typeId] ?? 0;
           typeName = roster[rawT > tmax ? Math.round((rawT / 65534) * tmax) : rawT]?.name ?? '';
@@ -520,7 +534,7 @@ class Device {
   /** Build dropdown options for an enum param. Labels come from fractal-midi's enum overlay
    * (matched by device param name) where known; otherwise the bare ordinal. */
   #enumOptions(family: string, paramId: number, name: string, min: number, max: number): { value: number; label: string }[] {
-    const cache = enumLabelsFor(family, paramId); // device-true labels from the editor cache
+    const cache = this.#prof.enumLabelsFor(family, paramId); // device-true labels from the editor cache
     const ov = resolveEnumValues(name); // III overlay fallback
     const out: { value: number; label: string }[] = [];
     for (let v = min; v <= max && out.length < 128; v++) {
@@ -533,13 +547,13 @@ class Device {
    * Taper from typecode: middle nibble 4/5 = log10 (e.g. freq cuts), else linear. */
   #display(family: string | undefined, paramId: number, raw: number): { value: number; norm: number; unit?: string; min?: number; max?: number; log?: boolean } {
     const norm = clamp01(raw / 65534);
-    const range = family ? FM3_RANGES[family]?.[paramId] : undefined;
+    const range = family ? this.#prof.ranges[family]?.[paramId] : undefined;
     if (range && range.kind === 'float' && Number.isFinite(range.displayMin) && Number.isFinite(range.displayMax) && range.displayMin !== range.displayMax) {
       try {
         const taperNib = (range.typecode >> 4) & 0xf;
         const log = (taperNib === 4 || taperNib === 5) && range.displayMin > 0;
         const v = wireToDisplay(raw, { displayMin: range.displayMin, displayMax: range.displayMax, displayScale: log ? 'log10' : 'linear' });
-        const unitCode = family ? FM3_PARAMS_BY_FAMILY[family]?.find((x) => x.paramId === paramId)?.unit : undefined;
+        const unitCode = family ? this.#prof.params[family]?.find((x) => x.paramId === paramId)?.unit : undefined;
         return { value: round3(v), norm, unit: (unitCode && UNIT_LABEL[unitCode]) || undefined, min: range.displayMin, max: range.displayMax, log: log || undefined };
       } catch {
         /* fall through to 0..10 position */
@@ -550,7 +564,7 @@ class Device {
 
   /** Resolve a param name (display label) → device-true paramId. 'Type' → the model-selector enum. */
   #paramId(family: string, name: string): number | undefined {
-    const defs = FM3_PARAMS_BY_FAMILY[family] ?? [];
+    const defs = this.#prof.params[family] ?? [];
     if (name.toLowerCase() === 'type') return defs.find((p) => p.unit === 'enum' && /TYPE$/i.test(p.name))?.paramId;
     return defs.find((p) => p.displayLabel === name || p.name === name)?.paramId;
   }
@@ -559,23 +573,23 @@ class Device {
   async setParam(eid: number, paramId: number, value: number, continuous: boolean) {
     // continuous knob writes stream at high frequency → fire-and-forget (instant);
     // a discrete write (enum) is rarer + worth confirming, so reject-watch it.
-    if (continuous) return this.#send(buildSetParameterContinuous(eid, paramId, clamp01(value), MODEL_FM3));
-    return this.#write(buildSetParameter(eid, paramId, value, MODEL_FM3));
+    if (continuous) return this.#send(buildSetParameterContinuous(eid, paramId, clamp01(value), this.#prof.model));
+    return this.#write(buildSetParameter(eid, paramId, value, this.#prof.model));
   }
   /** Change a block's model/type (the family TYPE selector ordinal). */
   async setType(eid: number, value: number) {
     const family = SLUG_FAMILY[(slugForEffectId(eid) ?? '').toLowerCase()];
     const tid = family ? this.#paramId(family, 'type') : undefined;
     if (tid == null) return { ok: false };
-    return this.#write(buildSetParameter(eid, tid, value, MODEL_FM3));
+    return this.#write(buildSetParameter(eid, tid, value, this.#prof.model));
   }
   async setBypass(eid: number, bypassed: boolean) {
-    return this.#send(buildSetBypass(eid, bypassed, MODEL_FM3)); // instant toggle
+    return this.#send(buildSetBypass(eid, bypassed, this.#prof.model)); // instant toggle
   }
   async setChannel(eid: number, channel: string) {
     const idx = CH_LETTERS.indexOf(channel.toUpperCase());
     if (idx < 0 || idx > 3) return { ok: false };
-    return this.#send(buildSetChannel(eid, idx as 0 | 1 | 2 | 3, MODEL_FM3)); // instant
+    return this.#send(buildSetChannel(eid, idx as 0 | 1 | 2 | 3, this.#prof.model)); // instant
   }
 
   // ── telemetry: tuner / tempo / scene ──
@@ -597,7 +611,7 @@ class Device {
    * inline (LSB-first septet pair) for FM3 model 0x11. */
   async getTempo(): Promise<{ bpm: number }> {
     const dev = await this.#conn();
-    const frames = await dev.request(buildGetTempo(MODEL_FM3), { timeoutMs: 1200, match: (fs) => fs.some((f) => f[5] === 0x14) });
+    const frames = await dev.request(buildGetTempo(this.#prof.model), { timeoutMs: 1200, match: (fs) => fs.some((f) => f[5] === 0x14) });
     const f = frames.find((x) => x[5] === 0x14);
     if (!f) return { bpm: 0 };
     const p = f.slice(6, f.length - 2);
@@ -621,14 +635,14 @@ class Device {
   /** Current scene index (0-based). Parse the 0x0C payload inline (parser is 0x10-locked). */
   async getScene(): Promise<{ index: number }> {
     const dev = await this.#conn();
-    const frames = await dev.request(buildGetScene(MODEL_FM3), { timeoutMs: 1200, match: (fs) => fs.some((f) => f[5] === 0x0c) });
+    const frames = await dev.request(buildGetScene(this.#prof.model), { timeoutMs: 1200, match: (fs) => fs.some((f) => f[5] === 0x0c) });
     const f = frames.find((x) => x[5] === 0x0c);
     if (!f) return { index: 0 };
     return { index: (f.slice(6, f.length - 2)[0] ?? 0) & 0x07 };
   }
   async setScene(index: number) {
     if (index < 0 || index > 7) return { ok: false };
-    const r = await this.#send(buildSetScene(index, MODEL_FM3));
+    const r = await this.#send(buildSetScene(index, this.#prof.model));
     // scene selects per-scene bypass/channel; status is read fresh each placedBlocks() call, so no
     // cache to bust — just notify subscribers so the UI follows.
     this.#emit({ type: 'scene', index });
@@ -638,27 +652,27 @@ class Device {
     // FM3 needs a cell-select (sub 0x30) before the insert (sub 0x32), or the block
     // lands at the default cell. buildClearBlock IS that select frame (no-op on an
     // empty cell). For blockId 0 this becomes select + insert-0 = clear, like the C#.
-    await this.#write(buildClearBlock({ row, col, rows: FM3_ROWS }, MODEL_FM3));
-    const r = await this.#write(buildSetGridCell({ row, col, blockId, rows: FM3_ROWS }, MODEL_FM3));
+    await this.#write(buildClearBlock({ row, col, rows: this.#prof.rows }, this.#prof.model));
+    const r = await this.#write(buildSetGridCell({ row, col, blockId, rows: this.#prof.rows }, this.#prof.model));
     this.#gridCache = null;
     return r;
   }
   /** Move the device's edit cursor to a cell (sub 0x30) so the FM3 screen follows the UI.
    * Non-destructive: this is the cursor-select frame (no companion = no clear). */
   async selectCell(row: number, col: number) {
-    return this.#send(buildClearBlock({ row, col, rows: FM3_ROWS }, MODEL_FM3));
+    return this.#send(buildClearBlock({ row, col, rows: this.#prof.rows }, this.#prof.model));
   }
   async cable(srcRow: number, srcCol: number, destRow: number, connect: boolean) {
-    const r = await this.#write(buildSetGridRouting({ srcRow, srcCol, destRow, rows: FM3_ROWS, op: connect ? ROUTING_OP_CONNECT : ROUTING_OP_DISCONNECT }, MODEL_FM3));
+    const r = await this.#write(buildSetGridRouting({ srcRow, srcCol, destRow, rows: this.#prof.rows, op: connect ? ROUTING_OP_CONNECT : ROUTING_OP_DISCONNECT }, this.#prof.model));
     this.#gridCache = null;
     return r;
   }
   async selectPreset(n: number) {
     this.#gridCache = null;
-    return this.#write(buildSwitchPresetSysEx(n, MODEL_FM3));
+    return this.#write(buildSwitchPresetSysEx(n, this.#prof.model));
   }
   async store(n: number) {
-    return this.#write(buildStorePreset(n, MODEL_FM3));
+    return this.#write(buildStorePreset(n, this.#prof.model));
   }
 }
 

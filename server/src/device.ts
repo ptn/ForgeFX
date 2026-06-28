@@ -99,6 +99,7 @@ function paramLabel(p: { displayLabel?: string; name: string }): string {
 
 class Device {
   #serial: FractalSerial | null = null;
+  #connecting: Promise<FractalSerial> | null = null;
   #gridCache: { grid: PresetGridDTO; at: number } | null = null;
   #gridInflight: Promise<PresetGridDTO> | null = null;
   static GRID_TTL_MS = 500; // coalesce the grid()+presetBlocks() burst on a single load
@@ -124,9 +125,20 @@ class Device {
 
   async #conn(): Promise<FractalSerial> {
     if (this.#serial?.isOpen) return this.#serial;
-    this.#serial = new FractalSerial();
-    await this.#serial.open();
-    return this.#serial;
+    // share a single open across concurrent callers — the UI fires many requests on load, and
+    // opening the same tty twice fails serialport's exclusive lock ("Cannot lock port").
+    if (!this.#connecting) {
+      this.#connecting = (async () => {
+        const s = new FractalSerial();
+        await s.open();
+        this.#serial = s;
+        return s;
+      })().catch((e) => {
+        this.#connecting = null; // allow a retry on the next request
+        throw e;
+      });
+    }
+    return this.#connecting;
   }
 
   /** Build a Fractal SysEx frame: F0 00 01 74 <model> <fn> <data…> <cs> F7. cs = XOR of all

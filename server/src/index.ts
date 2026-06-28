@@ -2,6 +2,8 @@
 // Axis consumes; drop-in replacement for the retired C# server.
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import { existsSync, statSync, createReadStream } from 'node:fs';
+import { join, resolve, extname } from 'node:path';
 import { device } from './device.js';
 import { cabIrBanks } from './defs.js';
 
@@ -104,6 +106,29 @@ app.get('/events', (req, reply) => {
     unsub();
   });
 });
+
+// ── static UI (optional) ──
+// When FORGEFX_STATIC points at a built SPA (Axis), serve it for any non-API GET, with SPA
+// fallback to index.html. Registered as the not-found handler so it never shadows API routes.
+// Used by the desktop app (loads http://localhost:PORT) and headless/Pi single-binary setups.
+const STATIC = process.env.FORGEFX_STATIC;
+if (STATIC) {
+  const root = resolve(STATIC);
+  const MIME: Record<string, string> = {
+    '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
+    '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.ico': 'image/x-icon',
+    '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.map': 'application/json', '.wasm': 'application/wasm'
+  };
+  app.setNotFoundHandler((req, reply) => {
+    if (req.method !== 'GET') return reply.code(404).send({ error: 'not found' });
+    const urlPath = decodeURIComponent(req.url.split('?')[0] ?? '/');
+    let file = join(root, urlPath === '/' ? 'index.html' : urlPath);
+    if (!resolve(file).startsWith(root) || !existsSync(file) || statSync(file).isDirectory()) file = join(root, 'index.html');
+    if (!existsSync(file)) return reply.code(404).send({ error: 'not found' });
+    return reply.type(MIME[extname(file).toLowerCase()] ?? 'application/octet-stream').send(createReadStream(file));
+  });
+}
 
 app
   .listen({ port: PORT, host: '0.0.0.0' })

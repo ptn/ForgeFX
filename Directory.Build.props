@@ -1,8 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <!-- Workaround for .NET 10 SDK NETSDK1226 (missing prune package data for
-         the ASP.NET Core shared framework on this SDK patch). Safe to remove
-         once the SDK ships the prune manifest. -->
-    <AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
-  </PropertyGroup>
-</Project>

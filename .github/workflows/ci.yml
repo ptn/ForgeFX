@@ -7,18 +7,27 @@ on:
     branches: [main]
 
 jobs:
-  build-test:
-    name: build & test (Docker)
+  server:
+    name: server (typecheck + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  docker:
+    name: docker image builds
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
-      # Build + run the test suite inside the Dockerfile's `test` stage.
-      # This keeps CI and deployment on the exact same toolchain and avoids a
-      # separate .NET setup action.
-      - name: Build & test
-        run: docker build --target test -t forgefx:test .
-
-      # Ensure the deployable runtime image builds too (reuses cached layers).
+      - uses: actions/checkout@v4
       - name: Build runtime image
-        run: docker build --target runtime -t forgefx:latest .
+        run: docker build -t forgefx:ci .

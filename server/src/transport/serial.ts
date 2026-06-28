@@ -3,7 +3,7 @@
 // retired C# ForgeFX used. fractal-midi builds/parses the SysEx; this layer just
 // does framed serial I/O with request/response correlation.
 import { SerialPort } from 'serialport';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, appendFileSync } from 'node:fs';
 
 const SYSEX_START = 0xf0;
 const SYSEX_END = 0xf7;
@@ -15,8 +15,11 @@ export interface TransportOpts {
   baudRate?: number;
 }
 
-/** Prefer the stable by-id Fractal if03 node (survives ttyACM renumbering); fall back to ttyACM0. */
+/** Resolve the device path. An explicit FORGEFX_SERIAL wins (e.g. /dev/fm3 in Docker); otherwise
+ * prefer the stable by-id Fractal if03 node (survives ttyACM renumbering), then fall back to ttyACM0. */
 export function autoDetectPath(): string | null {
+  const env = process.env.FORGEFX_SERIAL;
+  if (env && existsSync(env)) return env;
   try {
     if (existsSync(BY_ID_DIR)) {
       const hit = readdirSync(BY_ID_DIR).find((n) => /Fractal/i.test(n) && /if03/i.test(n));
@@ -41,6 +44,19 @@ export class FractalSerial {
     this.#baud = opts.baudRate ?? 115200;
   }
   #baud: number;
+
+  // ── capture tap (FORGEFX_TAP=1 → ./tap.log, or FORGEFX_TAP=/path) ──
+  // Timestamps every RX/TX SysEx frame so we can diff FM3-Edit traffic (CPU + tuner discovery).
+  #tapPath: string | null = process.env.FORGEFX_TAP ? (process.env.FORGEFX_TAP === '1' ? 'tap.log' : process.env.FORGEFX_TAP) : null;
+  #logTap(dir: 'RX' | 'TX', bytes: readonly number[]) {
+    if (!this.#tapPath) return;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(' ');
+    try {
+      appendFileSync(this.#tapPath, `${Date.now()} ${dir} ${hex}\n`);
+    } catch {
+      /* tap is best-effort */
+    }
+  }
 
   async open(): Promise<void> {
     if (this.#port?.isOpen) return;
@@ -71,6 +87,7 @@ export class FractalSerial {
         if (b === SYSEX_END) {
           const frame = this.#rx;
           this.#rx = [];
+          this.#logTap('RX', frame);
           for (const h of this.#frameHandlers) h(frame);
         }
       }
@@ -80,6 +97,7 @@ export class FractalSerial {
   /** Fire-and-forget send of one SysEx frame. */
   send(bytes: readonly number[]): void {
     if (!this.#port?.isOpen) throw new Error('port not open');
+    this.#logTap('TX', bytes);
     this.#port.write(Buffer.from(bytes));
   }
 

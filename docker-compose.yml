@@ -24,7 +24,8 @@ services:
     # Adjust the left-hand path for your unit (FM9/Axe-Fx III have their own id).
     devices:
       - "/dev/serial/by-id/usb-Fractal_Audio_Systems_FM3-if03:/dev/fm3"
-    command: ["--device", "/dev/fm3"]
+    environment:
+      - FORGEFX_SERIAL=/dev/fm3
 
     # If the container user can't open the serial device, grant the host's serial
     # group (find it with `getent group dialout uucp`), or as a last resort run

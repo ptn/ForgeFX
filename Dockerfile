@@ -1,37 +1,31 @@
 # syntax=docker/dockerfile:1
 #
-# Multi-stage build for ForgeFX.Server. The Microsoft .NET images are multi-arch,
-# so this builds natively on amd64 and arm64 (Raspberry Pi 4/5).
+# ForgeFX — Node backend (Fastify + fractal-midi). Multi-arch: the official node images are
+# amd64 + arm64, so this builds natively on a Raspberry Pi 4/5 too.
 #
-#   docker build -t forgefx .                 # build the runtime image
-#   docker build --target test -t fx:test .   # build + run the test suite (CI)
+# Build context is the repo root (so `vendor/` and `definitions/` are available).
 
-ARG DOTNET=10.0
-
-# ---- restore + build the whole solution ----
-FROM mcr.microsoft.com/dotnet/sdk:${DOTNET} AS build
-WORKDIR /src
-COPY . .
-RUN dotnet restore
-RUN dotnet build -c Release --no-restore
-
-# ---- run the test suite (CI targets this stage; a failure fails the build) ----
-FROM build AS test
-RUN dotnet test -c Release --no-build --verbosity normal
-
-# ---- publish the server ----
-FROM build AS publish
-RUN dotnet publish src/ForgeFX.Server -c Release -o /app
-
-# ---- minimal runtime image ----
-FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET} AS runtime
+FROM node:20-bookworm-slim AS build
 WORKDIR /app
-COPY --from=publish /app ./
-# definition packs are loaded at runtime and are not part of the publish output
+COPY vendor ./vendor
+COPY server/package.json server/package-lock.json ./server/
+WORKDIR /app/server
+RUN npm ci
+COPY server/tsconfig.json ./
+COPY server/src ./src
+RUN npm run build
+
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /app
+COPY vendor ./vendor
 COPY definitions ./definitions
-# listen on all interfaces inside the container; map a host port in compose
-ENV ASPNETCORE_URLS=http://0.0.0.0:5056
+COPY server/package.json server/package-lock.json ./server/
+WORKDIR /app/server
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build /app/server/dist ./dist
+ENV NODE_ENV=production \
+    PORT=5056 \
+    FORGEFX_DEFINITIONS=/app/definitions
 EXPOSE 5056
-# device path is passed as an arg by compose (e.g. --device /dev/fm3); without it
-# the server auto-detects a mapped /dev/ttyACM* port.
-ENTRYPOINT ["dotnet", "ForgeFX.Server.dll"]
+# the FM3 is passed through to the container at a stable path (see docker-compose.yml)
+CMD ["node", "dist/index.js"]

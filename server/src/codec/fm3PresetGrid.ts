@@ -192,6 +192,43 @@ export function effectName(eid: number): string | null {
   return null;
 }
 
+// EFFECT_BASES base name → editor pack slug (lowercased pack key the client sends).
+// This is the authoritative, complete roster — eid→slug no longer depends on a def pack existing.
+const BASE_SLUG: Record<string, string> = {
+  Input: 'input', Output: 'output', Comp: 'comp', GEQ: 'geq', PEQ: 'peq', Amp: 'amp', Cab: 'cab',
+  Reverb: 'reverb', Delay: 'delay', MultiTap: 'multitap', Chorus: 'chorus', Flanger: 'flanger',
+  Rotary: 'rotary', Phaser: 'phaser', Wah: 'wah', Formant: 'formant', 'Vol/Pan': 'volume',
+  Tremolo: 'tremolo', Pitch: 'pitch', Filter: 'filter', Drive: 'drive', Enhancer: 'enhancer',
+  Mixer: 'mixer', Synth: 'synth', Megatap: 'megatap', Gate: 'gate', RingMod: 'ringmod',
+  MultiComp: 'multicomp', 'Ten-Tap': 'tentap', Resonator: 'resonator', Looper: 'looper',
+  'Plex Delay': 'plex', Send: 'send', Return: 'return', Multiplexer: 'multiplexer'
+};
+// Friendly palette names for the EFFECT_BASES base keys (else the base key is used as-is).
+const PRETTY_NAME: Record<string, string> = {
+  Comp: 'Compressor', MultiComp: 'Multiband Comp', PEQ: 'Parametric EQ', GEQ: 'Graphic EQ',
+  'Vol/Pan': 'Volume/Pan', RingMod: 'Ring Modulator', MultiTap: 'Multitap Delay',
+  Megatap: 'Megatap Delay', 'Ten-Tap': 'Ten-Tap Delay', Drive: 'Drive', Cab: 'Cab',
+  Send: 'Send', Return: 'Return'
+};
+
+/** Full placeable-block roster from the authoritative base table: { slug, name, page=base eid }. */
+export function effectRoster(): { slug: string; name: string; page: number }[] {
+  return Object.entries(EFFECT_BASES)
+    .map(([id, base]) => ({ slug: BASE_SLUG[base] ?? base.toLowerCase(), name: PRETTY_NAME[base] ?? base, page: Number(id) }))
+    .filter((e) => !!e.slug)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** effect id (base..base+3) → editor pack slug, from the decoder's authoritative base table. */
+export function slugForEffectId(eid: number): string | null {
+  if (EFFECT_BASES[eid]) return BASE_SLUG[EFFECT_BASES[eid]] ?? null;
+  for (const [baseId, name] of Object.entries(EFFECT_BASES)) {
+    const d = eid - Number(baseId);
+    if (d > 0 && d <= 3) return BASE_SLUG[name] ?? null;
+  }
+  return null;
+}
+
 // ---- helpers ----
 function readSceneNames(body: Uint8Array): string[] {
   const scenes: string[] = [];

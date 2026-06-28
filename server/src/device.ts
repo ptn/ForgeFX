@@ -25,7 +25,7 @@ import {
 } from 'fractal-midi/gen3/axe-fx-iii';
 import { resolveEnumValues } from 'fractal-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'fractal-midi/shared';
-import { FractalSerial, autoDetectPath } from './transport/serial.js';
+import { FractalSerial, autoDetectPath, detectPath, listFractalPorts } from './transport/serial.js';
 import { decodePresetDump, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
 import { packBySlug, cabIrBanks, type TypeModel } from './defs.js';
 import { DEVICE_MODELS, MODEL_BROADCAST } from './models.js';
@@ -136,7 +136,9 @@ class Device {
     // opening the same tty twice fails serialport's exclusive lock ("Cannot lock port").
     if (!this.#connecting) {
       this.#connecting = (async () => {
-        const s = new FractalSerial();
+        const path = await detectPath(); // cross-platform: Windows COM / macOS cu.usbmodem / Linux ttyACM
+        if (!path) throw new Error('No Fractal device found on any serial port (USB VID 2466). Connect the unit and quit other editors.');
+        const s = new FractalSerial({ path });
         await s.open();
         this.#serial = s;
         return s;
@@ -195,8 +197,13 @@ class Device {
   }
 
   async health() {
-    const path = autoDetectPath();
+    const path = await detectPath();
     return { ok: !!path, device: this.#prof.name };
+  }
+
+  /** Cross-platform diagnostic: every Fractal serial node we can see + the one detection picks. */
+  async serialPorts() {
+    return { chosen: await detectPath(), ports: await listFractalPorts() };
   }
   async deviceInfo() {
     return { model: this.#prof.name, modelByte: `0x${this.#prof.model.toString(16)}`, firmware: null as null | { version: string; build: string }, port: this.port };

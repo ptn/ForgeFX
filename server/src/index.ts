@@ -14,6 +14,7 @@ await app.register(cors, { origin: true });
 // ── system ──
 app.get('/healthz', () => device.health());
 app.get('/device', () => device.deviceInfo());
+app.get('/serial/ports', () => device.serialPorts()); // diagnostic: Fractal nodes seen + chosen path
 
 // ── preset ──
 app.get('/preset', () => device.presetRef());

@@ -31,6 +31,69 @@ export function autoDetectPath(): string | null {
   return existsSync('/dev/ttyACM0') ? '/dev/ttyACM0' : null;
 }
 
+// Fractal Audio USB vendor id (hex string as serialport reports it) — identical on every OS.
+const FRACTAL_VID = '2466';
+// Known product ids (hex) → model, for the ports diagnostic. Detection keys on the VID, not these,
+// so an unlisted model still detects (and the fn 0x00 handshake names it precisely after connecting).
+const FRACTAL_PIDS: Record<string, string> = { '8003': 'Axe-Fx II', '8010': 'Axe-Fx III', '8011': 'FM3', '8012': 'FM9' };
+export interface FractalPortInfo {
+  path: string;
+  model?: string;
+  manufacturer?: string;
+  vendorId?: string;
+  productId?: string;
+  pnpId?: string;
+  friendlyName?: string;
+}
+const looksFractal = (p: FractalPortInfo): boolean =>
+  (p.vendorId ?? '').toLowerCase() === FRACTAL_VID ||
+  /fractal/i.test(p.manufacturer ?? '') ||
+  /fractal/i.test(p.pnpId ?? '') ||
+  /fractal/i.test(p.friendlyName ?? '');
+// gen-3 units expose several CDC interfaces; interface 3 (if03 on Linux/macOS, MI_03 on Windows)
+// carries the MIDI/SysEx stream — the others are audio/control and won't answer SysEx.
+const isMidiIface = (p: FractalPortInfo): boolean =>
+  /if0?3\b/i.test(p.pnpId ?? '') || /MI_0?3/i.test(p.pnpId ?? '') || /if0?3\b/i.test(p.path);
+
+/** Cross-platform: every Fractal serial node (USB VID 2466), Windows COM / macOS cu.usbmodem / Linux ttyACM. */
+export async function listFractalPorts(): Promise<FractalPortInfo[]> {
+  try {
+    const ports = await SerialPort.list();
+    return ports
+      .map((p) => ({ path: p.path, model: FRACTAL_PIDS[(p.productId ?? '').toLowerCase()], manufacturer: p.manufacturer, vendorId: p.vendorId, productId: p.productId, pnpId: p.pnpId, friendlyName: (p as { friendlyName?: string }).friendlyName }))
+      .filter(looksFractal);
+  } catch {
+    return [];
+  }
+}
+
+/** Resolve the device path on any OS. Explicit FORGEFX_SERIAL wins; else the Fractal USB device,
+ *  preferring its MIDI interface (if03 / MI_03); else the legacy Linux by-id / ttyACM0 fallbacks. */
+export async function detectPath(): Promise<string | null> {
+  const env = process.env.FORGEFX_SERIAL;
+  if (env && existsSync(env)) return env;
+  let fractal = await listFractalPorts();
+  // macOS lists both /dev/tty.* and /dev/cu.* for one node — keep only the callout (cu) device
+  fractal = fractal.filter((p) => !(p.path.startsWith('/dev/tty.') && fractal.some((q) => q.path === p.path.replace('/dev/tty.', '/dev/cu.'))));
+  if (fractal.length) {
+    let pick = fractal.find(isMidiIface);
+    // macOS often omits the interface tag in pnpId — when several Fractal nodes exist, prefer the
+    // one whose device name ends in interface index 3 (the MIDI CDC); else just take the first.
+    if (!pick && process.platform === 'darwin' && fractal.length > 1) pick = fractal.find((p) => /3$/.test(p.path));
+    pick = pick ?? fractal[0];
+    if (pick) return pick.path;
+  }
+  try {
+    if (existsSync(BY_ID_DIR)) {
+      const hit = readdirSync(BY_ID_DIR).find((n) => /Fractal/i.test(n) && /if03/i.test(n));
+      if (hit) return `${BY_ID_DIR}/${hit}`;
+    }
+  } catch {
+    /* */
+  }
+  return existsSync('/dev/ttyACM0') ? '/dev/ttyACM0' : null;
+}
+
 export class FractalSerial {
   #port: SerialPort | null = null;
   #rx: number[] = [];

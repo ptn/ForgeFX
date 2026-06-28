@@ -73,6 +73,21 @@ export type DeviceEvent =
   | { type: 'cpu'; percent: number };
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+/** Append 1/2/3… to labels that repeat within a list (e.g. the cab's four "Low Cut" mic params),
+ * so the UI can tell otherwise-identical controls apart. Mutates the items' `name`. */
+function dedupeLabels(items: { name: string }[]): void {
+  const total = new Map<string, number>();
+  for (const it of items) total.set(it.name, (total.get(it.name) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  for (const it of items) {
+    if ((total.get(it.name) ?? 0) > 1) {
+      const n = (seen.get(it.name) ?? 0) + 1;
+      seen.set(it.name, n);
+      it.name = `${it.name} ${n}`;
+    }
+  }
+}
 /** Detected frequency (Hz) → musical note + cents offset (equal temperament, A4=440). */
 function freqToNote(f: number): { note: string; cents: number; octave: number } | null {
   if (!(f > 0) || !Number.isFinite(f)) return null;
@@ -412,6 +427,10 @@ class Device {
         for (const p of knobs) named.push({ id: p.paramId, name: paramLabel(p), value: 0, norm: 0 });
       }
     }
+    // disambiguate repeated labels within a block (e.g. the cab's 4× "Low Cut", amp's two "Depth")
+    // so identical names get a 1/2/3 suffix the UI can tell apart.
+    dedupeLabels(named);
+    dedupeLabels(enums);
     return { block: blockName, slug, page, named, enums, type };
   }
 

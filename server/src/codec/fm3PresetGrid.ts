@@ -8,6 +8,8 @@
 // Pipeline: 0x78 chunks → reassemble (3 wire bytes → u16) → 16384B raw_patch →
 // CRC16/CCITT check + dynamic-Huffman body → grid @ body 0x104 (column-major, 2 words/cell).
 
+import { AXE_FX_III_BLOCKS } from 'fractal-midi/gen3/axe-fx-iii';
+
 const SYSEX_START = 0xf0;
 const SYSEX_END = 0xf7;
 
@@ -211,12 +213,50 @@ const PRETTY_NAME: Record<string, string> = {
   Send: 'Send', Return: 'Return'
 };
 
+// How many consecutive instances each family supports (Amp 1..N), from the v1.4 spec catalog.
+// `instance_N_id = firstId + (N-1)`. Most families = 4, Input = 5; the device (and the per-device
+// `maxInstances` cap in the profile) is the final arbiter of how many are actually placeable.
+const GROUP_SLUG: Record<string, string> = {
+  IN: 'input', OUT: 'output', CMP: 'comp', GEQ: 'geq', PEQ: 'peq', AMP: 'amp', CAB: 'cab',
+  REV: 'reverb', DLY: 'delay', MTD: 'multitap', CHO: 'chorus', FLG: 'flanger', ROT: 'rotary',
+  PHA: 'phaser', WAH: 'wah', FRM: 'formant', VOL: 'volume', PTR: 'tremolo', PIT: 'pitch',
+  FIL: 'filter', FUZ: 'drive', ENH: 'enhancer', MIX: 'mixer', SYN: 'synth', MGD: 'megatap',
+  GAT: 'gate', RNG: 'ringmod', MBC: 'multicomp', TTD: 'tentap', RES: 'resonator', LPR: 'looper',
+  PLX: 'plex', SND: 'send', RTN: 'return', MUX: 'multiplexer'
+};
+const INSTANCE_COUNT: Record<string, number> = (() => {
+  const out: Record<string, number> = {};
+  for (const b of AXE_FX_III_BLOCKS) {
+    const slug = GROUP_SLUG[b.groupCode];
+    if (slug) out[slug] = b.instances;
+  }
+  return out;
+})();
+/** Number of addressable instances a block family supports (default 4 if unlisted). */
+export const blockInstances = (slug: string): number => INSTANCE_COUNT[slug.toLowerCase()] ?? 4;
+
 /** Full placeable-block roster from the authoritative base table: { slug, name, page=base eid }. */
 export function effectRoster(): { slug: string; name: string; page: number }[] {
   return Object.entries(EFFECT_BASES)
     .map(([id, base]) => ({ slug: BASE_SLUG[base] ?? base.toLowerCase(), name: PRETTY_NAME[base] ?? base, page: Number(id) }))
     .filter((e) => !!e.slug)
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** effect id → { slug, instance } (1-based), or null for shunts / unknown / clear (eid 0). */
+export function blockRefForEid(eid: number): { slug: string; instance: number } | null {
+  if (EFFECT_BASES[eid]) {
+    const slug = BASE_SLUG[EFFECT_BASES[eid]];
+    return slug ? { slug, instance: 1 } : null;
+  }
+  for (const [baseId, name] of Object.entries(EFFECT_BASES)) {
+    const d = eid - Number(baseId);
+    if (d > 0 && d <= 3) {
+      const slug = BASE_SLUG[name];
+      return slug ? { slug, instance: d + 1 } : null;
+    }
+  }
+  return null;
 }
 
 /** effect id (base..base+3) → editor pack slug, from the decoder's authoritative base table. */

@@ -29,6 +29,14 @@ export interface DeviceProfile {
   name: string;
   rows: number; // routing-grid dimensions
   cols: number;
+  // How many of each block FAMILY this specific unit can actually run. The gen-3 protocol reserves
+  // an ID range per family (Amp = eid 58..61) but a given unit allows far fewer — the FM3 has ONE
+  // amp, not four. These device-true counts aren't in fractal-midi or the editor cache (they're
+  // baked into the editor binary), so they live here, transcribed from Fractal's "Product BLOCKS
+  // Comparison" (Blocks Guide) + the wiki "Current hardware" table. Unlisted families fall back to
+  // `defaultInstances` (1) — i.e. only families listed with ≥2 get multiple palette instances.
+  defaultInstances: number;
+  instanceLimits: Record<string, number>; // slug → device-true instance count (≥2 only; rest = 1)
   params: ParamsByFamily;
   ranges: Ranges;
   rosterFor(slug: string): TypeModel[];
@@ -90,6 +98,8 @@ function axe3EnumLabels(family: string, paramId: number): string[] | undefined {
 export const PROFILES: Record<number, DeviceProfile> = {
   0x10: {
     model: 0x10, key: 'axe3', name: 'Axe-Fx III', rows: 6, cols: 14,
+    defaultInstances: 1,
+    instanceLimits: { amp: 2, cab: 2, drive: 4, comp: 4, multicomp: 2, geq: 4, peq: 4, filter: 4, volume: 4, gate: 4, mixer: 4, multiplexer: 2, input: 5, output: 4, chorus: 2, flanger: 2, phaser: 2, rotary: 2, tremolo: 2, wah: 2, formant: 2, enhancer: 2, resonator: 2, reverb: 2, delay: 4, multitap: 2, megatap: 2, tentap: 2, plex: 2, pitch: 2, synth: 2, send: 2, return: 2 },
     params: axe3Params as unknown as ParamsByFamily,
     ranges: AXE3_RANGES,
     rosterFor: axe3RosterFor,
@@ -97,6 +107,9 @@ export const PROFILES: Record<number, DeviceProfile> = {
   },
   0x11: {
     model: 0x11, key: 'fm3', name: 'FM3', rows: 4, cols: 12,
+    // FM3 = ONE amp / ONE cab / ONE reverb / ONE delay-family-pitch etc. (its DSP is ~1/5 the III).
+    defaultInstances: 1,
+    instanceLimits: { input: 2, output: 2, drive: 2, comp: 2, geq: 2, peq: 2, filter: 4, volume: 2, gate: 2, mixer: 4, multiplexer: 2, chorus: 2, flanger: 2, phaser: 2, rotary: 2, tremolo: 2, wah: 2, formant: 2, enhancer: 2, resonator: 2, delay: 2, multitap: 2, send: 2, return: 2 },
     params: FM3_PARAMS_BY_FAMILY as unknown as ParamsByFamily,
     ranges: FM3_RANGES as unknown as Ranges,
     rosterFor: rosterBySlug, // device-true names + basedOn (from the editor-cache definitions)
@@ -104,6 +117,8 @@ export const PROFILES: Record<number, DeviceProfile> = {
   },
   0x12: {
     model: 0x12, key: 'fm9', name: 'FM9', rows: 6, cols: 14,
+    defaultInstances: 1,
+    instanceLimits: { amp: 2, cab: 2, drive: 3, comp: 2, multicomp: 2, geq: 4, peq: 4, filter: 4, volume: 4, gate: 4, mixer: 4, multiplexer: 2, input: 4, output: 3, chorus: 2, flanger: 2, phaser: 2, rotary: 2, tremolo: 2, wah: 2, formant: 2, enhancer: 2, resonator: 2, reverb: 2, delay: 2, multitap: 2, megatap: 2, tentap: 2, send: 2, return: 2 },
     params: fm9Params,
     ranges: FM9_RANGES as unknown as Ranges,
     rosterFor: fm9RosterFor,

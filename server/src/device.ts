@@ -26,7 +26,7 @@ import {
 import { resolveEnumValues } from 'fractal-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'fractal-midi/shared';
 import { FractalSerial, autoDetectPath } from './transport/serial.js';
-import { decodePresetDump, slugForEffectId, effectRoster } from './codec/fm3PresetGrid.js';
+import { decodePresetDump, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
 import { packBySlug, cabIrBanks, type TypeModel } from './defs.js';
 import { DEVICE_MODELS, MODEL_BROADCAST } from './models.js';
 import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile } from './devices.js';
@@ -345,14 +345,24 @@ class Device {
   }
 
   // ── catalog ──
-  // Full placeable roster (every EFFECT_BASES block), so the palette can place any block —
-  // not just the ones that happen to have a def pack. paramCount = family knob count.
+  // Full placeable roster — one entry PER INSTANCE (Amp 1, …, Output 1, Output 2) so the palette can
+  // place a specific instance instead of always re-sending instance 1 (which the device refuses once
+  // that instance is on the grid). Instance count = the DEVICE-TRUE count from the profile
+  // (`instanceLimits[slug]` else `defaultInstances`), clamped to the protocol's reserved ID range
+  // (`blockInstances`). `page` is the exact effect id (firstId + instance-1).
   blocksCatalog() {
-    return effectRoster().map((e) => {
+    const out: { slug: string; family: string; instance: number; name: string; page: number; paramCount: number; typeCount: number }[] = [];
+    for (const e of effectRoster()) {
       const fam = SLUG_FAMILY[e.slug];
       const paramCount = fam ? (this.#prof.params[fam]?.length ?? 0) : (packBySlug(e.slug)?.params.length ?? 0);
-      return { slug: e.slug, name: e.name, page: e.page, paramCount, typeCount: this.#prof.rosterFor(e.slug).length };
-    });
+      const typeCount = this.#prof.rosterFor(e.slug).length;
+      const limit = this.#prof.instanceLimits[e.slug] ?? this.#prof.defaultInstances;
+      const n = Math.max(1, Math.min(blockInstances(e.slug), limit));
+      for (let i = 0; i < n; i++) {
+        out.push({ slug: e.slug, family: e.slug, instance: i + 1, name: n > 1 ? `${e.name} ${i + 1}` : e.name, page: e.page + i, paramCount, typeCount });
+      }
+    }
+    return out;
   }
   blockTypes(slug: string): TypeModel[] {
     return this.#prof.rosterFor(slug);
@@ -649,6 +659,18 @@ class Device {
     return r;
   }
   async placeCell(row: number, col: number, blockId: number) {
+    // Guard against placing an instance the unit doesn't have (e.g. Amp 2 on an FM3, which has one
+    // amp). The protocol reserves an ID range per family but each unit allows fewer — reject here so
+    // the rule is authoritative server-side, not just a UI hint, and we don't waste a doomed write.
+    const ref = blockRefForEid(blockId);
+    if (ref) {
+      const limit = this.#prof.instanceLimits[ref.slug] ?? this.#prof.defaultInstances;
+      if (ref.instance > limit) {
+        const err = new Error(`${this.#prof.name} has no ${ref.slug} ${ref.instance} (max ${limit} of this block)`);
+        (err as Error & { statusCode?: number }).statusCode = 400; // client error, not a server fault
+        throw err;
+      }
+    }
     // FM3 needs a cell-select (sub 0x30) before the insert (sub 0x32), or the block
     // lands at the default cell. buildClearBlock IS that select frame (no-op on an
     // empty cell). For blockId 0 this becomes select + insert-0 = clear, like the C#.

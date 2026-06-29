@@ -1,9 +1,29 @@
 // USB-MIDI transport for Fractal units that present as a MIDI-class device (Axe-Fx III, and FM9 if
 // it enumerates as MIDI). Uses @julusian/midi (RtMidi, N-API prebuilds → bundles like serialport).
 // SysEx framing is trivial here: RtMidi delivers each F0..F7 message whole, so no byte reassembly.
-import { Input, Output } from '@julusian/midi';
+import { createRequire } from 'node:module';
 import { appendFileSync } from 'node:fs';
+import type { Input as MidiInput, Output as MidiOutput } from '@julusian/midi';
 import type { Transport, RequestOpts } from './types.js';
+
+// LAZY + FAULT-TOLERANT load of the native MIDI binding. In a packaged desktop build the native
+// .node may be missing/incompatible; a static import would throw at module load and take down the
+// whole server (and with it the serial/FM3 path). Loading it lazily + guarded means MIDI simply
+// degrades to "no MIDI ports" while serial keeps working.
+type MidiMod = { Input: new () => MidiInput; Output: new () => MidiOutput };
+let _midi: MidiMod | null | undefined;
+function midi(): MidiMod | null {
+  if (_midi === undefined) {
+    try {
+      _midi = createRequire(import.meta.url)('@julusian/midi') as MidiMod;
+    } catch (e) {
+      console.warn(`[forgefx] MIDI transport unavailable (@julusian/midi failed to load): ${(e as Error).message}`);
+      _midi = null;
+    }
+  }
+  return _midi;
+}
+export const midiAvailable = (): boolean => midi() !== null;
 
 const SYSEX_START = 0xf0;
 // Fractal-looking MIDI port names (CoreMIDI/ALSA expose the unit by name).
@@ -53,27 +73,33 @@ function findPort(p: PortLister, id: string): number {
  *  the Axe-Fx III / FM9 expose distinct In and Out endpoints), Fractal ones flagged. */
 export function listMidiPorts(): MidiPortInfo[] {
   const out: MidiPortInfo[] = [];
+  const m = midi();
+  if (!m) return out; // MIDI native binding unavailable → no MIDI ports (serial still works)
   const collect = (p: PortLister, dir: 'input' | 'output') => {
     for (let i = 0; i < p.getPortCount(); i++) {
       const name = p.getPortName(i);
       if (name) out.push({ id: name, label: name, fractal: FRACTAL_RE.test(name), dir });
     }
   };
-  const inp = new Input();
-  const outp = new Output();
+  let inp: MidiInput | null = null;
+  let outp: MidiOutput | null = null;
   try {
+    inp = new m.Input();
+    outp = new m.Output();
     collect(inp, 'input');
     collect(outp, 'output');
+  } catch (e) {
+    console.warn(`[forgefx] MIDI port enumeration failed: ${(e as Error).message}`);
   } finally {
-    inp.destroy();
-    outp.destroy();
+    inp?.destroy();
+    outp?.destroy();
   }
   return out;
 }
 
 export class MidiTransport implements Transport {
-  #in: Input | null = null;
-  #out: Output | null = null;
+  #in: MidiInput | null = null;
+  #out: MidiOutput | null = null;
   #handlers = new Set<(frame: number[]) => void>();
   readonly label: string;
   #inId: string;
@@ -88,8 +114,10 @@ export class MidiTransport implements Transport {
 
   async open(): Promise<void> {
     if (this.#in && this.#out) return;
-    const inp = new Input();
-    const out = new Output();
+    const m = midi();
+    if (!m) throw new Error('MIDI transport unavailable (native binding @julusian/midi not loaded)');
+    const inp = new m.Input();
+    const out = new m.Output();
     const ii = findPort(inp, this.#inId);
     const oi = findPort(out, this.#outId);
     if (ii < 0 || oi < 0) {

@@ -49,19 +49,37 @@ export function setConnOverride(c: Conn | null): void {
   }
 }
 
-/** Every selectable connection (serial + MIDI), Fractal ones flagged — for the manual picker. */
+/** Every selectable connection (serial + MIDI), Fractal ones flagged — for the manual picker.
+ *  Serial and MIDI are listed independently so a failure in one (e.g. the native MIDI binding) never
+ *  hides the other — the FM3 serial path must survive a broken MIDI module. */
 export async function listConnections(): Promise<ConnInfo[]> {
-  const serial = (await listAllPorts()).map(
-    (p): ConnInfo => ({ transport: 'serial', id: p.path, label: p.model ? `${p.path} · ${p.model}` : p.friendlyName ? `${p.path} · ${p.friendlyName}` : p.path, fractal: p.fractal, model: p.model })
-  );
-  const midi = listMidiPorts().map((p): ConnInfo => ({ transport: 'midi', id: p.id, label: p.label, fractal: p.fractal, dir: p.dir }));
+  let serial: ConnInfo[] = [];
+  try {
+    serial = (await listAllPorts()).map(
+      (p): ConnInfo => ({ transport: 'serial', id: p.path, label: p.model ? `${p.path} · ${p.model}` : p.friendlyName ? `${p.path} · ${p.friendlyName}` : p.path, fractal: p.fractal, model: p.model })
+    );
+  } catch (e) {
+    console.warn(`[forgefx] serial port listing failed: ${(e as Error).message}`);
+  }
+  let midi: ConnInfo[] = [];
+  try {
+    midi = listMidiPorts().map((p): ConnInfo => ({ transport: 'midi', id: p.id, label: p.label, fractal: p.fractal, dir: p.dir }));
+  } catch (e) {
+    console.warn(`[forgefx] MIDI port listing failed: ${(e as Error).message}`);
+  }
   return [...serial, ...midi];
 }
 
 /** Resolve the active connection: a present manual override → Fractal serial auto → Fractal MIDI auto
  *  (auto-pairs the Fractal MIDI Input with its matching Output, e.g. "Axe-Fx III MIDI In/Out"). */
 export async function resolveConn(): Promise<Conn | null> {
-  const list = await listConnections();
+  // resilient: a failure listing MIDI/serial ports must NOT block the FM3 serial auto-detect below.
+  let list: ConnInfo[] = [];
+  try {
+    list = await listConnections();
+  } catch (e) {
+    console.warn(`[forgefx] listConnections failed: ${(e as Error).message}`);
+  }
   const midiOutNames = list.filter((c) => c.transport === 'midi' && c.dir === 'output').map((c) => c.id);
   // present manual override still valid?
   if (override) {
@@ -73,7 +91,7 @@ export async function resolveConn(): Promise<Conn | null> {
       return override;
     }
   }
-  const serialPath = await detectPath(); // env + Fractal serial auto-detect (CDC: FM3, FM9-if-serial)
+  const serialPath = await detectPath().catch(() => null); // env + Fractal serial auto-detect (CDC: FM3, FM9-if-serial)
   if (serialPath) return { transport: 'serial', id: serialPath };
   // MIDI auto: pick the Fractal input, pair its output (Axe-Fx III / FM9 expose In + Out separately).
   const midiIn = list.find((c) => c.transport === 'midi' && c.dir === 'input' && c.fractal);

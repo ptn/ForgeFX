@@ -12,6 +12,7 @@ await app.register(cors, { origin: true });
 
 // ── system ──
 app.get('/healthz', () => device.health());
+app.get('/diag', () => device.diagnostics()); // full connection diagnostic for the desktop debug log
 app.get('/device', () => device.deviceInfo());
 app.get('/ports', () => device.connections()); // serial + MIDI connections (Fractal flagged) + chosen + override
 app.post<{ Body: { transport?: 'serial' | 'midi'; id?: string | null; inId?: string | null; outId?: string | null } }>('/ports/select', (req) => {
@@ -159,6 +160,8 @@ async function listen(port: number, fellBack = false): Promise<void> {
     const addr = app.server.address();
     const actual = addr && typeof addr === 'object' ? addr.port : port;
     app.log.info(`ForgeFX (node) on http://localhost:${actual}`);
+    // one-shot startup diagnostic — lands in the desktop debug log even if the /diag fetch never fires
+    device.diagnostics().then((d) => app.log.info({ diag: d }, 'forgefx startup diagnostics')).catch(() => {});
   } catch (e) {
     if ((e as NodeJS.ErrnoException)?.code === 'EADDRINUSE' && !fellBack) {
       app.log.warn(`port ${port} in use — falling back to an OS-assigned free port`);

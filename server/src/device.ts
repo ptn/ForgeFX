@@ -27,6 +27,7 @@ import { resolveEnumValues } from 'fractal-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'fractal-midi/shared';
 import { autoDetectPath } from './transport/serial.js';
 import { listConnections, resolveConn, openConn, getConnOverride, setConnOverride } from './transport/connection.js';
+import { midiAvailable } from './transport/midi.js';
 import type { Transport, Conn } from './transport/types.js';
 import { decodePresetDump, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
 import { DEVICE_MODELS, MODEL_BROADCAST } from './models.js';
@@ -208,6 +209,36 @@ class Device {
   async health() {
     const conn = await resolveConn();
     return { ok: !!conn, device: this.#prof.name };
+  }
+
+  /** Full connection diagnostic for the desktop debug log — platform, MIDI availability, every
+   *  serial + MIDI in/out port, the resolved connection, and the live transport state. */
+  async diagnostics() {
+    let ports: Awaited<ReturnType<typeof listConnections>> = [];
+    let listError: string | null = null;
+    let resolved: Awaited<ReturnType<typeof resolveConn>> = null;
+    try { ports = await listConnections(); } catch (e) { listError = (e as Error).message; }
+    try { resolved = await resolveConn(); } catch (e) { listError = (listError ?? '') + ' | resolve: ' + (e as Error).message; }
+    const midi = ports.filter((p) => p.transport === 'midi');
+    return {
+      ok: true,
+      platform: process.platform,
+      arch: process.arch,
+      versions: { node: process.versions.node, napi: process.versions.napi },
+      profile: { key: this.#prof.key, name: this.#prof.name, model: `0x${this.#prof.model.toString(16)}` },
+      detected: this.#detected,
+      midiAvailable: midiAvailable(),
+      ports: {
+        serial: ports.filter((p) => p.transport === 'serial').map((p) => ({ id: p.id, fractal: p.fractal, model: p.model })),
+        midiIn: midi.filter((p) => p.dir === 'input').map((p) => ({ id: p.id, fractal: p.fractal })),
+        midiOut: midi.filter((p) => p.dir === 'output').map((p) => ({ id: p.id, fractal: p.fractal }))
+      },
+      override: getConnOverride(),
+      resolved,
+      transportOpen: !!this.#transport?.isOpen,
+      transportLabel: this.#transport?.label ?? null,
+      listError
+    };
   }
 
   /** Every connection (serial + MIDI, Fractal flagged) + the chosen one + any manual override. */
@@ -516,7 +547,10 @@ class Device {
           match: (fs) => fs.some((f) => f[5] === 0x01 && f[6] === 0x01 && f[7] === 0x00 && (f[8]! | (f[9]! << 7)) === eid && (f[10]! | (f[11]! << 7)) === pid)
         });
         const f = frames.find((fr) => fr[5] === 0x01 && fr[6] === 0x01 && fr[7] === 0x00 && (fr[8]! | (fr[9]! << 7)) === eid && (fr[10]! | (fr[11]! << 7)) === pid);
-        if (f) out[pid] = unpackF32(f.slice(12, 17));
+        if (f) {
+          if (process.env.FORGEFX_GETDUMP) console.log(`GETDUMP eid=${eid} pid=${pid} raw=${f.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`);
+          out[pid] = unpackF32(f.slice(12, 17));
+        }
       } catch {
         /* skip unreadable pid */
       }

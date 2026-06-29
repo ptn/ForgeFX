@@ -5,7 +5,6 @@ import cors from '@fastify/cors';
 import { existsSync, statSync, createReadStream } from 'node:fs';
 import { join, resolve, extname } from 'node:path';
 import { device } from './device.js';
-import { cabIrBanks } from './defs.js';
 
 const PORT = Number(process.env.PORT ?? 5056);
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
@@ -83,7 +82,7 @@ app.post<{ Body: { index: number } }>('/scene', (req) => device.setScene(req.bod
 app.get('/device/detect', () => device.detect());
 
 // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — for the cab IR picker
-app.get('/cab/irs', () => cabIrBanks());
+app.get('/cab/irs', () => device.profile.cabIrs());
 // current state of a cab block (mode / per-slot bank + IR + dyna type) for the picker
 app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/cab', (req) => device.cabState(Number(req.params.eid)));
 

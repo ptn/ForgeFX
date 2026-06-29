@@ -1,4 +1,4 @@
-// High-level FM3 device service. Wire protocol via fractal-midi; catalog/params via defs.
+// High-level FM3 device service. Wire protocol + catalog/params/rosters/enums/cab-IRs all via fractal-midi.
 import {
   buildQueryPatchName,
   isQueryPatchNameResponse,
@@ -29,9 +29,16 @@ import { autoDetectPath } from './transport/serial.js';
 import { listConnections, resolveConn, openConn, getConnOverride, setConnOverride } from './transport/connection.js';
 import type { Transport, Conn } from './transport/types.js';
 import { decodePresetDump, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
-import { packBySlug, cabIrBanks, type TypeModel } from './defs.js';
 import { DEVICE_MODELS, MODEL_BROADCAST } from './models.js';
-import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile } from './devices.js';
+import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile, type TypeModel } from './devices.js';
+
+// slug → { name, page=base effect id } from the authoritative codec base table (replaces the old
+// defs.js pack lookup; block names + base ids are codec facts, not editor-cache definitions).
+const BLOCK_META: Record<string, { name: string; page: number }> = (() => {
+  const out: Record<string, { name: string; page: number }> = {};
+  for (const e of effectRoster()) out[e.slug] = { name: e.name, page: e.page };
+  return out;
+})();
 
 const EDIT_BUFFER = 0x3fff; // preset number sentinel = current edit buffer
 const CH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -375,7 +382,7 @@ class Device {
     const out: { slug: string; family: string; instance: number; name: string; page: number; paramCount: number; typeCount: number }[] = [];
     for (const e of effectRoster()) {
       const fam = SLUG_FAMILY[e.slug];
-      const paramCount = fam ? (this.#prof.params[fam]?.length ?? 0) : (packBySlug(e.slug)?.params.length ?? 0);
+      const paramCount = fam ? (this.#prof.params[fam]?.length ?? 0) : 0;
       const typeCount = this.#prof.rosterFor(e.slug).length;
       const limit = this.#prof.instanceLimits[e.slug] ?? this.#prof.defaultInstances;
       const n = Math.max(1, Math.min(blockInstances(e.slug), limit));
@@ -399,10 +406,10 @@ class Device {
   async blockParams(eid: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null }> {
     await this.#ready();
     const slug = slugForEffectId(eid) ?? ''; // address the EXACT placed instance, not the first of its family
-    const pack = packBySlug(slug);
+    const meta = BLOCK_META[slug];
     const family = SLUG_FAMILY[slug.toLowerCase()];
-    const blockName = pack?.name ?? family ?? slug;
-    const page = pack?.page ?? -1;
+    const blockName = meta?.name ?? family ?? slug;
+    const page = meta?.page ?? -1;
     if (!family) {
       return { block: blockName, slug, page, named: [], enums: [], type: null }; // no device-true param family mapped
     }
@@ -478,7 +485,7 @@ class Device {
   }
 
   /** Cab block state for the IR picker: current mode (Legacy / DynaCab), per-slot bank + IR index +
-   * dyna type, plus the option lists. IR names come from the editor cache (cabIrBanks / GET /cab/irs).
+   * dyna type, plus the option lists. IR names come from fractal-midi (profile.cabIrs() / GET /cab/irs).
    * Writes are plain setParam calls: bank = ord at param 0|1, IR index = raw index at param 4|5,
    * mode = ord at 31, dyna type = ord at 85|86. */
   async cabState(eid: number) {
@@ -500,7 +507,7 @@ class Device {
     const dynaLabels = this.#prof.enumLabelsFor(family, 85) ?? [];
     const dynaOptions = this.#enumOptions(family, 85, 'DynaCab Type', 0, Math.max(0, dynaLabels.length - 1));
     const modeOptions = this.#enumOptions(family, 31, 'Mode', 0, 1);
-    const irBanks = cabIrBanks();
+    const irBanks = this.#prof.cabIrs();
     const slots = [0, 1].map((s) => {
       const bankV = ord(s, bankOptions.length - 1);
       const bankLabel = bankOptions[bankV] ?? String(bankV);

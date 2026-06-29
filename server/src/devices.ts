@@ -1,10 +1,20 @@
 // Per-device profile: everything that differs between gen-3 units (model byte, grid size, param
 // catalog, ranges, rosters, enum labels). The gen-3 effect codec itself is shared — only the data
 // changes — so the device client picks a profile by the detected model and is otherwise generic.
-import { FM3_RANGES, FM3_PARAMS_BY_FAMILY } from 'fractal-midi/gen3/fm3';
+import {
+  FM3_RANGES,
+  FM3_PARAMS_BY_FAMILY,
+  FM3_ROSTERS,
+  FM3_ENUM_OVERRIDES,
+  FM3_CAB_IRS,
+  type Fm3TypeModel,
+} from 'fractal-midi/gen3/fm3';
 import { FM9_RANGES, FM9_PARAMS_BY_FAMILY, FM9_ENUM_OVERRIDES } from 'fractal-midi/gen3/fm9';
 import { PARAMS_BY_FAMILY as AXE3_PARAMS, resolveEnumValues as axe3Enum } from 'fractal-midi/gen3/axe-fx-iii';
-import { rosterBySlug, enumLabelsFor as fm3EnumLabels, type TypeModel } from './defs.js';
+
+// The model-roster entry shape ForgeFX surfaces to the UI (value + name + lineage). FM3's
+// fractal-midi rosters already carry this exact shape (Fm3TypeModel); FM9/III synthesize it.
+export type TypeModel = { value: number; name: string; manufacturer: string | null; basedOn: string | null };
 
 // pack slug → gen-3 catalog family (shared across FM3/FM9 — family names are the same)
 export const SLUG_FAMILY: Record<string, string> = {
@@ -41,6 +51,8 @@ export interface DeviceProfile {
   ranges: Ranges;
   rosterFor(slug: string): TypeModel[];
   enumLabelsFor(family: string, paramId: number): string[] | undefined;
+  /** Cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — for the cab IR picker. {} if the device has none. */
+  cabIrs(): Record<string, string[]>;
 }
 
 // FM9 enum data ships as FM9_ENUM_OVERRIDES, keyed by the param's NAME → { ordinal: label }.
@@ -65,6 +77,19 @@ function fm9EnumLabels(family: string, paramId: number): string[] | undefined {
   const p = fm9Params[family]?.find((x) => x.paramId === paramId);
   const r = p && fm9Over[p.name];
   return r ? recToLabels(r) : undefined;
+}
+
+// FM3 ships its device-true data IN fractal-midi (uniform with FM9/III): FM3_ROSTERS = slug → model
+// list (already the {value,name,manufacturer,basedOn} shape, so no synthesis), FM3_ENUM_OVERRIDES =
+// family → paramId → labels[], FM3_CAB_IRS = bank → IR names. ForgeFX is now a thin consumer.
+const fm3Rosters = FM3_ROSTERS as unknown as Record<string, Fm3TypeModel[]>;
+const fm3Enums = FM3_ENUM_OVERRIDES as unknown as Record<string, Record<string, string[]>>;
+const fm3CabIrs = FM3_CAB_IRS as unknown as Record<string, string[]>;
+function fm3RosterFor(slug: string): TypeModel[] {
+  return (fm3Rosters[slug.toLowerCase()] as TypeModel[] | undefined) ?? [];
+}
+function fm3EnumLabels(family: string, paramId: number): string[] | undefined {
+  return fm3Enums[family]?.[String(paramId)];
 }
 
 // Axe-Fx III carries ranges inline on its params (no separate *_RANGES); synthesize a ranges table.
@@ -103,7 +128,8 @@ export const PROFILES: Record<number, DeviceProfile> = {
     params: axe3Params as unknown as ParamsByFamily,
     ranges: AXE3_RANGES,
     rosterFor: axe3RosterFor,
-    enumLabelsFor: axe3EnumLabels
+    enumLabelsFor: axe3EnumLabels,
+    cabIrs: () => ({}) // III IR names are read live from the unit, not bundled
   },
   0x11: {
     model: 0x11, key: 'fm3', name: 'FM3', rows: 4, cols: 12,
@@ -112,8 +138,9 @@ export const PROFILES: Record<number, DeviceProfile> = {
     instanceLimits: { input: 2, output: 2, drive: 2, comp: 2, geq: 2, peq: 2, filter: 4, volume: 2, gate: 2, mixer: 4, multiplexer: 2, chorus: 2, flanger: 2, phaser: 2, rotary: 2, tremolo: 2, wah: 2, formant: 2, enhancer: 2, resonator: 2, delay: 2, multitap: 2, send: 2, return: 2 },
     params: FM3_PARAMS_BY_FAMILY as unknown as ParamsByFamily,
     ranges: FM3_RANGES as unknown as Ranges,
-    rosterFor: rosterBySlug, // device-true names + basedOn (from the editor-cache definitions)
-    enumLabelsFor: fm3EnumLabels
+    rosterFor: fm3RosterFor, // device-true names + manufacturer + basedOn (from fractal-midi FM3_ROSTERS)
+    enumLabelsFor: fm3EnumLabels,
+    cabIrs: () => fm3CabIrs // device-true IR names per bank (fractal-midi FM3_CAB_IRS)
   },
   0x12: {
     model: 0x12, key: 'fm9', name: 'FM9', rows: 6, cols: 14,
@@ -122,7 +149,8 @@ export const PROFILES: Record<number, DeviceProfile> = {
     params: fm9Params,
     ranges: FM9_RANGES as unknown as Ranges,
     rosterFor: fm9RosterFor,
-    enumLabelsFor: fm9EnumLabels
+    enumLabelsFor: fm9EnumLabels,
+    cabIrs: () => ({}) // FM9 IR names not yet bundled
   }
 };
 

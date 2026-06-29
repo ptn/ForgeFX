@@ -24,6 +24,8 @@ import {
   FM3_FC_FUNCTIONS,
   FM3_FC_CHANNELS,
   FM3_MOD_EFFECT_ID,
+  FM3_MOD_SLOT_COUNT,
+  FM3_MOD_SOURCES,
   FM3_MOD_FIELDS,
 } from 'fractal-midi/gen3/fm3';
 import { FM9_RANGES, FM9_PARAMS_BY_FAMILY, FM9_ENUM_OVERRIDES, FM9_FAMILY_BY_EFFECT_ID, FM9_LAYOUTS } from 'fractal-midi/gen3/fm9';
@@ -56,7 +58,15 @@ export type FcModel = {
   functions: typeof FM3_FC_FUNCTIONS;
   channels: readonly string[];
 };
-export type ModModel = { effectId: number; fields: typeof FM3_MOD_FIELDS };
+export type ModSource = { name: string; ordinal: number };
+export type ModModel = {
+  /** effectId of modifier slot 1; slot N (1-based) = effectId + (N-1). */
+  effectId: number;
+  slotCount: number;
+  fields: typeof FM3_MOD_FIELDS;
+  /** Known modulation sources (name → MOD_CTRLID ordinal). Partial — extended as more are confirmed. */
+  sources: readonly ModSource[];
+};
 const FM3_FC_MODEL: FcModel = {
   effectId: FM3_FC_EFFECT_ID,
   switches: FM3_FC_SWITCHES,
@@ -72,7 +82,12 @@ const FM3_FC_MODEL: FcModel = {
   functions: FM3_FC_FUNCTIONS,
   channels: FM3_FC_CHANNELS,
 };
-const FM3_MOD_MODEL: ModModel = { effectId: FM3_MOD_EFFECT_ID, fields: FM3_MOD_FIELDS };
+const FM3_MOD_MODEL: ModModel = {
+  effectId: FM3_MOD_EFFECT_ID,
+  slotCount: FM3_MOD_SLOT_COUNT,
+  fields: FM3_MOD_FIELDS,
+  sources: FM3_MOD_SOURCES.map((s) => ({ name: s.name, ordinal: s.ordinal }))
+};
 
 // The model-roster entry shape ForgeFX surfaces to the UI (value + name + lineage). FM3's
 // fractal-midi rosters already carry this exact shape (Fm3TypeModel); FM9/III synthesize it.

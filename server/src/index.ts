@@ -94,6 +94,15 @@ app.get('/cab/irs', () => device.profile.cabIrs());
 // reads/writes via the normal raw-read + setParam path.
 app.get('/fc/model', () => device.profile.fcModel ?? null);
 app.get('/mod/model', () => device.profile.modModel ?? null);
+// bind a modifier slot to a target parameter (writes targetEffectId + targetParam + source on the slot eid)
+app.post<{ Body: { slot: number; targetEffectId: number; targetParam: number; source: number } }>('/mod/bind', async (req, reply) => {
+  const b = req.body;
+  if (b?.slot == null || b.targetEffectId == null || b.targetParam == null || b.source == null) {
+    reply.code(400);
+    return { ok: false, error: 'slot, targetEffectId, targetParam, source required' };
+  }
+  try { return await device.bindModifier(b.slot, b.targetEffectId, b.targetParam, b.source); } catch (e) { reply.code(503); return { ok: false, error: (e as Error).message }; }
+});
 // raw param values for an effect (for FC eid 199 / Modifier eid 3, whose params have no display range)
 app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/raw', async (req, reply) => {
   try { return await device.rawBlock(Number(req.params.eid)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }

@@ -723,6 +723,22 @@ class Device {
     return this.#send(buildSetChannel(eid, idx as 0 | 1 | 2 | 3, this.#prof.model)); // instant
   }
 
+  /**
+   * Bind a modifier slot to a target parameter. The modifier→target link lives on the modifier's own
+   * eid as two params: targetEffectId (the block) + targetParam (the paramId), plus the source. Slot is
+   * 1-based; slot N = modModel.effectId + (N-1). Writes the three discrete SETs that activate the link.
+   */
+  async bindModifier(slot: number, targetEffectId: number, targetParam: number, source: number) {
+    const mm = this.#prof.modModel;
+    if (!mm) return { ok: false, error: 'device has no modifier model' };
+    const f = mm.fields;
+    const slotEid = mm.effectId + (Math.max(1, Math.floor(slot)) - 1);
+    await this.#write(buildSetParameter(slotEid, f.targetEffectId.pid, targetEffectId, this.#prof.model));
+    await this.#write(buildSetParameter(slotEid, f.targetParam.pid, targetParam, this.#prof.model));
+    await this.#write(buildSetParameter(slotEid, f.source.pid, source, this.#prof.model));
+    return { ok: true, slotEid, slot, targetEffectId, targetParam, source };
+  }
+
   // ── telemetry: tuner / tempo / scene ──
   async setTuner(on: boolean) {
     const dev = await this.#conn();

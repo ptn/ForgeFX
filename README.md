@@ -83,6 +83,30 @@ Resource-oriented and named. The shape:
 | Stream | `GET /events` | live tuner/tempo/scene/state pushes (SSE) |
 | Backup | `GET /presets/{n}/backup` · `POST /presets/restore` | `.syx` download / upload |
 
+## Layouts & virtual effects
+
+On top of the flat parameter list, ForgeFX serves **device-authentic editor layouts** and exposes
+the device's **non-audio editor sections** through the very same endpoints — so a client can render
+a faithful editor without hardcoding labels or screens.
+
+- 🗂 **Editor layouts.** `GET /preset/blocks/:eid/params` now also returns a `layout` — the block
+  family's device-authentic pages/tabs with control labels and column positions:
+  `{ editorName?, pages: [{ name, controls: [{ label, paramName, paramId, col? }] }] }`. It's
+  optional metadata; the `named`/`enums` arrays stay the source of truth for live values.
+- 🧩 **Virtual effects.** The Setup/global, Controllers, Modifier, and Foot Controller (FC) sections
+  ride the same `(effectId, paramId)` path as audio blocks, so they're read/written through the
+  same endpoints — addressed by a reserved effect id: **GLOBAL/Setup = `1`, Controllers = `2`,
+  Modifier = `3`, FC = `199`.** "Setup" is just the block editor pointed at effect id `1`.
+
+```sh
+curl localhost:5056/preset/blocks/1/params              # Setup (GLOBAL) params + the Setup pages
+curl -X PUT localhost:5056/preset/blocks/1/params/4 \   # set a GLOBAL param (same write path)
+  -H 'content-type: application/json' -d '{ "value": 0.5, "continuous": true }'
+```
+
+Layouts and the virtual-effect map are per device (FM3/FM9/Axe-Fx III each via their `DeviceProfile`);
+the gen-3 units share the virtual effect ids. Full detail in [docs/LAYOUTS.md](docs/LAYOUTS.md).
+
 ## Architecture
 
 | Path | What |
@@ -98,6 +122,7 @@ consumes this API — and ships a desktop app that bundles ForgeFX into one inst
 
 - [Preset & routing-grid codec](docs/preset-grid-codec.md) — how a live preset is decoded.
 - [Write protocol](docs/write-protocol.md) — param/bypass/channel/grid frames + safety.
+- [Layouts & virtual effects](docs/LAYOUTS.md) — editor layouts on the param response + Setup/Controllers/Modifier/FC.
 - [Devices & families](docs/devices.md) — multi-device design (gen-3 today; FM9/III next).
 - [Definition packs](docs/definitions.md) — the block/parameter catalog format.
 - [Contributing](CONTRIBUTING.md).

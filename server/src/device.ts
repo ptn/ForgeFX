@@ -30,7 +30,7 @@ import { listConnections, resolveConn, openConn, getConnOverride, setConnOverrid
 import type { Transport, Conn } from './transport/types.js';
 import { decodePresetDump, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
 import { DEVICE_MODELS, MODEL_BROADCAST } from './models.js';
-import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile, type TypeModel } from './devices.js';
+import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile, type TypeModel, type DeviceLayout } from './devices.js';
 
 // slug → { name, page=base effect id } from the authoritative codec base table (replaces the old
 // defs.js pack lookup; block names + base ids are codec facts, not editor-cache definitions).
@@ -403,15 +403,18 @@ class Device {
    * (knob position); `value`/`unit` are the device-true DISPLAY reading via this.#prof.ranges
    * (e.g. 1.2k Hz, -12 dB) where the cache has a range, else the 0..10 position.
    */
-  async blockParams(eid: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null }> {
+  async blockParams(eid: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null; layout?: DeviceLayout }> {
     await this.#ready();
-    const slug = slugForEffectId(eid) ?? ''; // address the EXACT placed instance, not the first of its family
-    const meta = BLOCK_META[slug];
-    const family = SLUG_FAMILY[slug.toLowerCase()];
+    const codecSlug = slugForEffectId(eid) ?? ''; // audio blocks resolve via the codec
+    // virtual effects (GLOBAL=1, Controllers=2, Modifier=3, FC=199) resolve via the profile's effectId map
+    const family = SLUG_FAMILY[codecSlug.toLowerCase()] ?? this.#prof.familyForEffectId(eid);
+    const slug = codecSlug || (family ? family.toLowerCase() : ''); // virtual effects key on the family name
+    const meta = BLOCK_META[codecSlug];
     const blockName = meta?.name ?? family ?? slug;
     const page = meta?.page ?? -1;
+    const layout = family ? this.#prof.layoutFor(family) : undefined; // editor-authentic pages (Default layout seed)
     if (!family) {
-      return { block: blockName, slug, page, named: [], enums: [], type: null }; // no device-true param family mapped
+      return { block: blockName, slug, page, named: [], enums: [], type: null, layout }; // no device-true param family mapped
     }
     const defs = this.#prof.params[family] ?? [];
     // knob params = continuous, musician-facing: a float range + a real display unit
@@ -481,7 +484,7 @@ class Device {
     // so identical names get a 1/2/3 suffix the UI can tell apart.
     dedupeLabels(named);
     dedupeLabels(enums);
-    return { block: blockName, slug, page, named, enums, type };
+    return { block: blockName, slug, page, named, enums, type, layout };
   }
 
   /** Cab block state for the IR picker: current mode (Legacy / DynaCab), per-slot bank + IR index +

@@ -3,7 +3,8 @@
 // retired C# ForgeFX used. fractal-midi builds/parses the SysEx; this layer just
 // does framed serial I/O with request/response correlation.
 import { SerialPort } from 'serialport';
-import { existsSync, readdirSync, appendFileSync } from 'node:fs';
+import { existsSync, readdirSync, appendFileSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { homedir } from 'node:os';
 
 const SYSEX_START = 0xf0;
 const SYSEX_END = 0xf7;
@@ -55,16 +56,43 @@ const looksFractal = (p: FractalPortInfo): boolean =>
 const isMidiIface = (p: FractalPortInfo): boolean =>
   /if0?3\b/i.test(p.pnpId ?? '') || /MI_0?3/i.test(p.pnpId ?? '') || /if0?3\b/i.test(p.path);
 
-/** Cross-platform: every Fractal serial node (USB VID 2466), Windows COM / macOS cu.usbmodem / Linux ttyACM. */
-export async function listFractalPorts(): Promise<FractalPortInfo[]> {
+// User-chosen port override (persisted) — wins over auto-detection. Lets the UI offer a manual
+// "connect to this port" fallback when auto-detect picks wrong (or for non-CDC units).
+const OVERRIDE_FILE = process.env.FORGEFX_PORT_FILE ?? `${homedir()}/.forgefx-port`;
+let override: string | null = (() => {
+  try {
+    return readFileSync(OVERRIDE_FILE, 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+})();
+export const getPortOverride = (): string | null => override;
+export function setPortOverride(p: string | null): void {
+  override = p && p.trim() ? p.trim() : null;
+  try {
+    if (override) writeFileSync(OVERRIDE_FILE, override);
+    else if (existsSync(OVERRIDE_FILE)) unlinkSync(OVERRIDE_FILE);
+  } catch {
+    /* persistence is best-effort */
+  }
+}
+
+export type SerialPortInfo = FractalPortInfo & { fractal: boolean };
+/** Every serial port on the system (for the manual picker), with Fractal nodes flagged. */
+export async function listAllPorts(): Promise<SerialPortInfo[]> {
   try {
     const ports = await SerialPort.list();
-    return ports
-      .map((p) => ({ path: p.path, model: FRACTAL_PIDS[(p.productId ?? '').toLowerCase()], manufacturer: p.manufacturer, vendorId: p.vendorId, productId: p.productId, pnpId: p.pnpId, friendlyName: (p as { friendlyName?: string }).friendlyName }))
-      .filter(looksFractal);
+    return ports.map((p) => {
+      const info: FractalPortInfo = { path: p.path, model: FRACTAL_PIDS[(p.productId ?? '').toLowerCase()], manufacturer: p.manufacturer, vendorId: p.vendorId, productId: p.productId, pnpId: p.pnpId, friendlyName: (p as { friendlyName?: string }).friendlyName };
+      return { ...info, fractal: looksFractal(info) };
+    });
   } catch {
     return [];
   }
+}
+/** Just the Fractal serial nodes (USB VID 2466), Windows COM / macOS cu.usbmodem / Linux ttyACM. */
+export async function listFractalPorts(): Promise<FractalPortInfo[]> {
+  return (await listAllPorts()).filter((p) => p.fractal);
 }
 
 /** Resolve the device path on any OS. Explicit FORGEFX_SERIAL wins; else the Fractal USB device,
@@ -72,7 +100,10 @@ export async function listFractalPorts(): Promise<FractalPortInfo[]> {
 export async function detectPath(): Promise<string | null> {
   const env = process.env.FORGEFX_SERIAL;
   if (env && existsSync(env)) return env;
-  let fractal = await listFractalPorts();
+  const all = await listAllPorts();
+  // honor the user's manual pick when it's currently present; else fall through to auto-detect
+  if (override && all.some((p) => p.path === override)) return override;
+  let fractal = all.filter((p) => p.fractal);
   // macOS lists both /dev/tty.* and /dev/cu.* for one node — keep only the callout (cu) device
   fractal = fractal.filter((p) => !(p.path.startsWith('/dev/tty.') && fractal.some((q) => q.path === p.path.replace('/dev/tty.', '/dev/cu.'))));
   if (fractal.length) {

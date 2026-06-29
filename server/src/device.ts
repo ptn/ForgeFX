@@ -25,7 +25,7 @@ import {
 } from 'fractal-midi/gen3/axe-fx-iii';
 import { resolveEnumValues } from 'fractal-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'fractal-midi/shared';
-import { FractalSerial, autoDetectPath, detectPath, listFractalPorts } from './transport/serial.js';
+import { FractalSerial, autoDetectPath, detectPath, listAllPorts, getPortOverride, setPortOverride } from './transport/serial.js';
 import { decodePresetDump, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
 import { packBySlug, cabIrBanks, type TypeModel } from './defs.js';
 import { DEVICE_MODELS, MODEL_BROADCAST } from './models.js';
@@ -201,9 +201,21 @@ class Device {
     return { ok: !!path, device: this.#prof.name };
   }
 
-  /** Cross-platform diagnostic: every Fractal serial node we can see + the one detection picks. */
+  /** Every serial port (Fractal flagged) + the chosen path + any manual override — for the picker. */
   async serialPorts() {
-    return { chosen: await detectPath(), ports: await listFractalPorts() };
+    return { chosen: await detectPath(), override: getPortOverride(), ports: await listAllPorts() };
+  }
+  /** Manually pick a serial port (persisted); null clears it back to auto-detect. Drops the live
+   *  connection so the next request reconnects on the chosen port and re-runs the model handshake. */
+  async selectPort(path: string | null) {
+    setPortOverride(path);
+    if (this.#serial) {
+      await this.#serial.close().catch(() => {});
+      this.#serial = null;
+    }
+    this.#connecting = null;
+    this.#detected = false;
+    return { ok: true, chosen: await detectPath() };
   }
   async deviceInfo() {
     return { model: this.#prof.name, modelByte: `0x${this.#prof.model.toString(16)}`, firmware: null as null | { version: string; build: string }, port: this.port };

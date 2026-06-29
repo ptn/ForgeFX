@@ -4,7 +4,7 @@
 import { homedir } from 'node:os';
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { detectPath, listAllPorts, FractalSerial } from './serial.js';
-import { listMidiPorts, MidiTransport } from './midi.js';
+import { listMidiPorts, MidiTransport, pairMidiOutput } from './midi.js';
 import type { Transport, Conn, ConnKind } from './types.js';
 
 export interface ConnInfo {
@@ -13,6 +13,8 @@ export interface ConnInfo {
   label: string;
   fractal: boolean;
   model?: string;
+  /** MIDI only: which endpoint this entry is (the picker offers In + Out separately). */
+  dir?: 'input' | 'output';
 }
 
 const OVERRIDE_FILE = process.env.FORGEFX_PORT_FILE ?? `${homedir()}/.forgefx-conn`;
@@ -22,7 +24,12 @@ let override: Conn | null = (() => {
     if (!raw) return null;
     if (raw.startsWith('{')) {
       const j = JSON.parse(raw);
-      return j?.id ? { transport: j.transport === 'midi' ? 'midi' : 'serial', id: String(j.id) } : null;
+      if (j?.transport === 'midi') {
+        const inId = j.inId ?? j.id;
+        const outId = j.outId ?? j.id;
+        return inId && outId ? { transport: 'midi' as const, id: j.id ?? inId, inId: String(inId), outId: String(outId) } : null;
+      }
+      return j?.id ? { transport: 'serial' as const, id: String(j.id) } : null;
     }
     return { transport: 'serial', id: raw }; // legacy plain-path file
   } catch {
@@ -31,7 +38,9 @@ let override: Conn | null = (() => {
 })();
 export const getConnOverride = (): Conn | null => override;
 export function setConnOverride(c: Conn | null): void {
-  override = c && c.id ? { transport: c.transport, id: c.id } : null;
+  if (c && c.transport === 'midi' && c.inId && c.outId) override = { transport: 'midi', id: c.id || c.inId, inId: c.inId, outId: c.outId };
+  else if (c && c.id) override = { transport: 'serial', id: c.id };
+  else override = null;
   try {
     if (override) writeFileSync(OVERRIDE_FILE, JSON.stringify(override));
     else if (existsSync(OVERRIDE_FILE)) unlinkSync(OVERRIDE_FILE);
@@ -45,21 +54,37 @@ export async function listConnections(): Promise<ConnInfo[]> {
   const serial = (await listAllPorts()).map(
     (p): ConnInfo => ({ transport: 'serial', id: p.path, label: p.model ? `${p.path} · ${p.model}` : p.friendlyName ? `${p.path} · ${p.friendlyName}` : p.path, fractal: p.fractal, model: p.model })
   );
-  const midi = listMidiPorts().map((p): ConnInfo => ({ transport: 'midi', id: p.id, label: p.label, fractal: p.fractal }));
+  const midi = listMidiPorts().map((p): ConnInfo => ({ transport: 'midi', id: p.id, label: p.label, fractal: p.fractal, dir: p.dir }));
   return [...serial, ...midi];
 }
 
-/** Resolve the active connection: a present manual override → Fractal serial auto → Fractal MIDI auto. */
+/** Resolve the active connection: a present manual override → Fractal serial auto → Fractal MIDI auto
+ *  (auto-pairs the Fractal MIDI Input with its matching Output, e.g. "Axe-Fx III MIDI In/Out"). */
 export async function resolveConn(): Promise<Conn | null> {
   const list = await listConnections();
-  if (override && list.some((c) => c.transport === override!.transport && c.id === override!.id)) return override;
+  const midiOutNames = list.filter((c) => c.transport === 'midi' && c.dir === 'output').map((c) => c.id);
+  // present manual override still valid?
+  if (override) {
+    if (override.transport === 'midi') {
+      const okIn = list.some((c) => c.transport === 'midi' && c.dir === 'input' && c.id === override!.inId);
+      const okOut = list.some((c) => c.transport === 'midi' && c.dir === 'output' && c.id === override!.outId);
+      if (okIn && okOut) return override;
+    } else if (list.some((c) => c.transport === 'serial' && c.id === override!.id)) {
+      return override;
+    }
+  }
   const serialPath = await detectPath(); // env + Fractal serial auto-detect (CDC: FM3, FM9-if-serial)
   if (serialPath) return { transport: 'serial', id: serialPath };
-  const midiFractal = list.find((c) => c.transport === 'midi' && c.fractal); // Axe-Fx III / FM9-if-MIDI
-  if (midiFractal) return { transport: 'midi', id: midiFractal.id };
+  // MIDI auto: pick the Fractal input, pair its output (Axe-Fx III / FM9 expose In + Out separately).
+  const midiIn = list.find((c) => c.transport === 'midi' && c.dir === 'input' && c.fractal);
+  if (midiIn) {
+    const outId = pairMidiOutput(midiIn.id, midiOutNames) ?? midiIn.id;
+    return { transport: 'midi', id: midiIn.id, inId: midiIn.id, outId };
+  }
   return null;
 }
 
 export function openConn(conn: Conn): Transport {
-  return conn.transport === 'midi' ? new MidiTransport(conn.id) : new FractalSerial({ path: conn.id });
+  if (conn.transport === 'midi') return new MidiTransport(conn.inId ?? conn.id, conn.outId ?? conn.id);
+  return new FractalSerial({ path: conn.id });
 }

@@ -13,6 +13,30 @@ export interface MidiPortInfo {
   id: string; // the port name (used to reopen it)
   label: string;
   fractal: boolean;
+  dir: 'input' | 'output';
+}
+
+/**
+ * Pair the matching OUTPUT port for a given INPUT port name. USB-MIDI Fractal units expose two
+ * endpoints named like "Axe-Fx III MIDI In" / "Axe-Fx III MIDI Out" — same stem, In/Out suffix.
+ * Try an In→Out token swap (exact), else match by the suffix-stripped stem, else fall back to the
+ * sole output (or the input name itself).
+ */
+export function pairMidiOutput(inputName: string, outputs: string[]): string | null {
+  if (!outputs.length) return null;
+  const swap = inputName
+    .replace(/\bInput\b/gi, 'Output')
+    .replace(/\bIn\b/gi, 'Out')
+    .replace(/\bRX\b/gi, 'TX');
+  if (swap !== inputName) {
+    const exact = outputs.find((o) => o === swap);
+    if (exact) return exact;
+  }
+  const stem = (s: string) => s.replace(/\b(midi|usb)\b/gi, '').replace(/\b(in|out|input|output|rx|tx)\b/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const inStem = stem(inputName);
+  const byStem = outputs.find((o) => stem(o) === inStem);
+  if (byStem) return byStem;
+  return outputs.length === 1 ? outputs[0]! : null;
 }
 
 type PortLister = { getPortCount(): number; getPortName(i: number): string };
@@ -25,25 +49,26 @@ function findPort(p: PortLister, id: string): number {
   return -1;
 }
 
-/** All MIDI ports visible to the OS (inputs ∪ outputs by name), Fractal ones flagged. */
+/** All MIDI ports visible to the OS — inputs and outputs listed SEPARATELY (USB-MIDI devices like
+ *  the Axe-Fx III / FM9 expose distinct In and Out endpoints), Fractal ones flagged. */
 export function listMidiPorts(): MidiPortInfo[] {
-  const seen = new Map<string, MidiPortInfo>();
-  const collect = (p: PortLister) => {
+  const out: MidiPortInfo[] = [];
+  const collect = (p: PortLister, dir: 'input' | 'output') => {
     for (let i = 0; i < p.getPortCount(); i++) {
       const name = p.getPortName(i);
-      if (name && !seen.has(name)) seen.set(name, { id: name, label: name, fractal: FRACTAL_RE.test(name) });
+      if (name) out.push({ id: name, label: name, fractal: FRACTAL_RE.test(name), dir });
     }
   };
   const inp = new Input();
-  const out = new Output();
+  const outp = new Output();
   try {
-    collect(inp);
-    collect(out);
+    collect(inp, 'input');
+    collect(outp, 'output');
   } finally {
     inp.destroy();
-    out.destroy();
+    outp.destroy();
   }
-  return [...seen.values()];
+  return out;
 }
 
 export class MidiTransport implements Transport {
@@ -51,23 +76,26 @@ export class MidiTransport implements Transport {
   #out: Output | null = null;
   #handlers = new Set<(frame: number[]) => void>();
   readonly label: string;
-  #id: string;
+  #inId: string;
+  #outId: string;
 
-  constructor(id: string) {
-    this.#id = id;
-    this.label = id;
+  /** Open a USB-MIDI device by its (independent) input + output port names. */
+  constructor(inId: string, outId: string) {
+    this.#inId = inId;
+    this.#outId = outId;
+    this.label = inId === outId ? inId : `${inId} ⇄ ${outId}`;
   }
 
   async open(): Promise<void> {
     if (this.#in && this.#out) return;
     const inp = new Input();
     const out = new Output();
-    const ii = findPort(inp, this.#id);
-    const oi = findPort(out, this.#id);
+    const ii = findPort(inp, this.#inId);
+    const oi = findPort(out, this.#outId);
     if (ii < 0 || oi < 0) {
       inp.destroy();
       out.destroy();
-      throw new Error(`MIDI port not found: ${this.#id} (in=${ii}, out=${oi})`);
+      throw new Error(`MIDI port not found: in="${this.#inId}" (${ii}) / out="${this.#outId}" (${oi})`);
     }
     inp.ignoreTypes(false, true, true); // RECEIVE SysEx (ignored by default)
     inp.on('message', (_dt, msg) => {

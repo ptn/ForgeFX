@@ -14,9 +14,13 @@ await app.register(cors, { origin: true });
 app.get('/healthz', () => device.health());
 app.get('/device', () => device.deviceInfo());
 app.get('/ports', () => device.connections()); // serial + MIDI connections (Fractal flagged) + chosen + override
-app.post<{ Body: { transport?: 'serial' | 'midi'; id?: string | null } }>('/ports/select', (req) =>
-  device.selectConnection(req.body?.id ? { transport: req.body.transport === 'midi' ? 'midi' : 'serial', id: req.body.id } : null)
-); // manual pick (null id clears back to auto)
+app.post<{ Body: { transport?: 'serial' | 'midi'; id?: string | null; inId?: string | null; outId?: string | null } }>('/ports/select', (req) => {
+  const b = req.body;
+  // MIDI (Axe-Fx III / FM9): separate input + output endpoints (e.g. "… MIDI Out" / "… MIDI In")
+  if (b?.transport === 'midi' && b.inId && b.outId) return device.selectConnection({ transport: 'midi', id: b.id || b.inId, inId: b.inId, outId: b.outId });
+  if (b?.id) return device.selectConnection({ transport: b.transport === 'midi' ? 'midi' : 'serial', id: b.id });
+  return device.selectConnection(null); // clear back to auto
+}); // manual pick
 
 // ── preset ──
 app.get('/preset', () => device.presetRef());

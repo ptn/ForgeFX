@@ -487,6 +487,43 @@ class Device {
     return { block: blockName, slug, page, named, enums, type, layout };
   }
 
+  /** Read specific paramIds of an effect via per-pid fn 0x01 GET (sub 01 00) — the path FM3-Edit
+   *  uses to load FC state. Returns {pid: float value}. The RX value is a 5×7-bit packed float32 at
+   *  byte 12 of the response frame (after F0 00 01 74 <model> 01 | 01 00 | eid:2 | pid:2). */
+  async readParams(eid: number, pids: number[]): Promise<Record<number, number>> {
+    await this.#ready();
+    const dev = await this.#conn();
+    const out: Record<number, number> = {};
+    const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
+    const unpackF32 = (b: number[]): number => {
+      const v = ((b[0] ?? 0) | ((b[1] ?? 0) << 7) | ((b[2] ?? 0) << 14) | ((b[3] ?? 0) << 21) | ((b[4] ?? 0) << 28)) >>> 0;
+      return new Float32Array(new Uint32Array([v]).buffer)[0]!;
+    };
+    // Proper gen-3 GET: fn 0x01 with sub 01 00 + EMPTY value (NOT buildGetParameter, which uses the
+    // SET-typed sub 09 00 and therefore WRITES 0). Frame: F0 00 01 74 <model> 01 01 00 <eid> <pid> 0*9 cs F7.
+    const buildGet = (e: number, p: number): number[] => {
+      const f = [0xf0, 0x00, 0x01, 0x74, this.#prof.model, 0x01, 0x01, 0x00, ...enc14(e), ...enc14(p), 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      let cs = 0;
+      for (const b of f) cs ^= b;
+      f.push(cs & 0x7f, 0xf7);
+      return f;
+    };
+    for (const pid of pids) {
+      try {
+        const frames = await dev.request(buildGet(eid, pid), {
+          timeoutMs: 800,
+          quietMs: 50,
+          match: (fs) => fs.some((f) => f[5] === 0x01 && f[6] === 0x01 && f[7] === 0x00 && (f[8]! | (f[9]! << 7)) === eid && (f[10]! | (f[11]! << 7)) === pid)
+        });
+        const f = frames.find((fr) => fr[5] === 0x01 && fr[6] === 0x01 && fr[7] === 0x00 && (fr[8]! | (fr[9]! << 7)) === eid && (fr[10]! | (fr[11]! << 7)) === pid);
+        if (f) out[pid] = unpackF32(f.slice(12, 17));
+      } catch {
+        /* skip unreadable pid */
+      }
+    }
+    return out;
+  }
+
   /** Raw bulk-read of any effect's param values indexed by paramId — for FC (eid 199) / Modifier
    *  (eid 3), whose params carry no display range so blockParams returns them empty. Sparse
    *  (only non-zero pids), first channel. The client computes pids from the FC/Modifier model. */

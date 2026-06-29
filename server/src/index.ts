@@ -93,6 +93,10 @@ app.get('/mod/model', () => device.profile.modModel ?? null);
 app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/raw', async (req, reply) => {
   try { return await device.rawBlock(Number(req.params.eid)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
+// read specific paramIds via per-pid fn 0x01 GET (FC current state — the 0x1F bulk path doesn't cover FC)
+app.post<{ Params: { eid: string }; Body: { pids: number[] } }>('/preset/blocks/:eid/read', async (req, reply) => {
+  try { return await device.readParams(Number(req.params.eid), req.body?.pids ?? []); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 // current state of a cab block (mode / per-slot bank + IR + dyna type) for the picker
 app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/cab', (req) => device.cabState(Number(req.params.eid)));
 

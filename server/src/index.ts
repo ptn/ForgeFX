@@ -111,6 +111,10 @@ app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/raw', async (req, repl
 app.post<{ Params: { eid: string }; Body: { pids: number[] } }>('/preset/blocks/:eid/read', async (req, reply) => {
   try { return await device.readParams(Number(req.params.eid), req.body?.pids ?? []); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
+// FC read path: sub 0x1a range-read returning the normalized (0..1) value per pid
+app.post<{ Params: { eid: string }; Body: { pids: number[] } }>('/preset/blocks/:eid/readrange', async (req, reply) => {
+  try { return await device.readRange(Number(req.params.eid), req.body?.pids ?? []); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 // current state of a cab block (mode / per-slot bank + IR + dyna type) for the picker
 app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/cab', (req) => device.cabState(Number(req.params.eid)));
 

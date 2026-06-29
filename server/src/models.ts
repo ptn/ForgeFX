@@ -26,3 +26,18 @@ export const DEVICE_MODELS: Record<number, DeviceModel> = {
 };
 
 export const MODEL_BROADCAST = 0x7f; // address used to ask "who is there?" (fn 0x00)
+
+/** Best-effort model byte from a MIDI/serial port name (e.g. "Axe-Fx III MIDI In" → 0x10). Used as a
+ *  fallback when the fn-0x00 broadcast handshake is silent (USB-MIDI on Windows, where the III has no
+ *  serial node). Only devices with a live codec are matched, longest name first so "Axe-Fx III" wins
+ *  over the substring "Axe-Fx II". */
+export function modelFromPortName(portName: string): number | null {
+  const n = portName.toLowerCase();
+  const byLongestName = Object.entries(DEVICE_MODELS)
+    .map(([k, v]) => [Number(k), v] as const)
+    .sort((a, b) => b[1].name.length - a[1].name.length);
+  for (const [model, info] of byLongestName) {
+    if (info.codec && n.includes(info.name.toLowerCase())) return model;
+  }
+  return null;
+}

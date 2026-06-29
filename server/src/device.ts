@@ -30,7 +30,7 @@ import { listConnections, resolveConn, openConn, getConnOverride, setConnOverrid
 import { midiAvailable } from './transport/midi.js';
 import type { Transport, Conn } from './transport/types.js';
 import { decodePresetDump, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
-import { DEVICE_MODELS, MODEL_BROADCAST } from './models.js';
+import { DEVICE_MODELS, MODEL_BROADCAST, modelFromPortName } from './models.js';
 import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile, type TypeModel, type DeviceLayout } from './devices.js';
 
 // slug → { name, page=base effect id } from the authoritative codec base table (replaces the old
@@ -293,7 +293,14 @@ class Device {
       const hdr = (f: number[]) => f[1] === 0x00 && f[2] === 0x01 && f[3] === 0x74 && f.length > 5;
       const frames = await dev.request(probe, { timeoutMs: 1500, quietMs: 60, match: (fs) => fs.some(hdr) });
       const f = frames.find(hdr);
-      const modelId = f ? f[4]! : -1;
+      let modelId = f ? f[4]! : -1;
+      // MIDI fallback: USB-MIDI Fractal units (Axe-Fx III on Windows, which has no serial node) may not
+      // answer the 0x7F broadcast — infer the model from the port name so the profile still switches.
+      if (modelId < 0 && conn.transport === 'midi') {
+        const inferred = modelFromPortName(conn.inId ?? conn.id);
+        if (inferred != null) modelId = inferred;
+      }
+      console.log(`[forgefx] detect: transport=${conn.transport} frames=${frames.length} modelId=0x${modelId >= 0 ? modelId.toString(16) : '?'} (handshake=${f ? 'reply' : 'silent'})`);
       const m = DEVICE_MODELS[modelId];
       // adopt the detected unit's profile so all reads/writes use its model byte, grid + ranges
       // (profileForModel falls back to FM3, so only switch when there's a real profile for this model)
@@ -558,6 +565,41 @@ class Device {
         }
       } catch {
         /* skip unreadable pid */
+      }
+    }
+    return out;
+  }
+
+  /** FC read path: sub 0x1a range-read (the opcode FM3-Edit uses on FC-page entry; the plain 01 00 GET
+   *  returns junk for eid 199). The 60-byte response carries a NORMALIZED float32 at byte 12 (0..1 over
+   *  the param's range). Returns {pid: norm}; logs the raw frame when FORGEFX_GETDUMP is set (calibration). */
+  async readRange(eid: number, pids: number[]): Promise<Record<number, number>> {
+    await this.#ready();
+    const dev = await this.#conn();
+    const out: Record<number, number> = {};
+    const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
+    const unpackF32 = (b: number[]): number => {
+      const v = ((b[0] ?? 0) | ((b[1] ?? 0) << 7) | ((b[2] ?? 0) << 14) | ((b[3] ?? 0) << 21) | ((b[4] ?? 0) << 28)) >>> 0;
+      return new Float32Array(new Uint32Array([v]).buffer)[0]!;
+    };
+    const buildGet = (e: number, p: number): number[] => {
+      const f = [0xf0, 0x00, 0x01, 0x74, this.#prof.model, 0x01, 0x1a, 0x00, ...enc14(e), ...enc14(p), 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      let cs = 0;
+      for (const b of f) cs ^= b;
+      f.push(cs & 0x7f, 0xf7);
+      return f;
+    };
+    for (const pid of pids) {
+      try {
+        const match = (f: number[]) => f[5] === 0x01 && f[6] === 0x1a && f[7] === 0x00 && (f[8]! | (f[9]! << 7)) === eid && (f[10]! | (f[11]! << 7)) === pid;
+        const frames = await dev.request(buildGet(eid, pid), { timeoutMs: 800, quietMs: 50, match: (fs) => fs.some(match) });
+        const f = frames.find(match);
+        if (f) {
+          if (process.env.FORGEFX_GETDUMP) console.log(`RANGEDUMP eid=${eid} pid=${pid} raw=${f.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`);
+          out[pid] = unpackF32(f.slice(12, 17));
+        }
+      } catch {
+        /* skip */
       }
     }
     return out;

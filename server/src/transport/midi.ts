@@ -121,8 +121,11 @@ export class MidiTransport implements Transport {
     const ii = findPort(inp, this.#inId);
     const oi = findPort(out, this.#outId);
     if (ii < 0 || oi < 0) {
+      const ins = Array.from({ length: inp.getPortCount() }, (_, i) => inp.getPortName(i));
+      const outs = Array.from({ length: out.getPortCount() }, (_, i) => out.getPortName(i));
       inp.destroy();
       out.destroy();
+      console.warn(`[forgefx][midi] open failed — port not found: in="${this.#inId}"(${ii}) out="${this.#outId}"(${oi}); available in=${JSON.stringify(ins)} out=${JSON.stringify(outs)}`);
       throw new Error(`MIDI port not found: in="${this.#inId}" (${ii}) / out="${this.#outId}" (${oi})`);
     }
     inp.ignoreTypes(false, true, true); // RECEIVE SysEx (ignored by default)
@@ -130,14 +133,25 @@ export class MidiTransport implements Transport {
       if (msg[0] === SYSEX_START) {
         const frame = msg as number[];
         this.#logTap('RX', frame);
+        if (this.#debug) console.log(`[forgefx][midi] RX ${frame.length}B: ${frame.slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join(' ')}…`);
         for (const h of this.#handlers) h(frame);
       }
     });
-    inp.openPort(ii);
-    out.openPort(oi);
+    try {
+      inp.openPort(ii);
+      out.openPort(oi);
+    } catch (e) {
+      // Windows MIDI is exclusive: if another app (Axe-Edit III, a DAW) holds the port, openPort throws.
+      inp.destroy();
+      out.destroy();
+      console.warn(`[forgefx][midi] openPort failed (port busy / held by another app?): ${(e as Error).message}`);
+      throw e;
+    }
     this.#in = inp;
     this.#out = out;
+    console.log(`[forgefx][midi] opened: in="${this.#inId}"(${ii}) out="${this.#outId}"(${oi})`);
   }
+  #debug = !!process.env.FORGEFX_MIDI_DEBUG;
 
   async close(): Promise<void> {
     try {

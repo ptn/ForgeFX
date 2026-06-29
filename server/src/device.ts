@@ -277,10 +277,15 @@ class Device {
    * model 0x7F; the device replies with its own header, whose model byte (f[4]) identifies it.
    * Lets clients auto-connect and know whether a live codec exists for what's attached. */
   async detect(): Promise<{ connected: boolean; modelId: number; name: string; short: string; gen: number; supported: boolean; port: string | null }> {
-    const port = this.port;
-    if (!port) return { connected: false, modelId: -1, name: 'No device', short: '—', gen: 0, supported: false, port: null };
+    // Gate on a connection resolvable over ANY transport — serial CDC (FM3) OR USB-MIDI (Axe-Fx III /
+    // FM9). The old guard used the serial-only `this.port`, which is null for a MIDI-only unit, so the
+    // handshake was skipped and the profile stayed on the default model byte — the Windows Axe-Fx III
+    // "device offline" bug (macOS worked only because the III also exposes a serial node there).
+    const conn = await resolveConn();
+    if (!conn) return { connected: false, modelId: -1, name: 'No device', short: '—', gen: 0, supported: false, port: null };
     try {
       const dev = await this.#conn();
+      const port = this.#transport?.label ?? conn.id;
       const body = [0xf0, 0x00, 0x01, 0x74, MODEL_BROADCAST, 0x00];
       let cs = 0;
       for (const b of body) cs ^= b;
@@ -305,7 +310,7 @@ class Device {
         port
       };
     } catch {
-      return { connected: false, modelId: -1, name: 'No device', short: '—', gen: 0, supported: false, port };
+      return { connected: false, modelId: -1, name: 'No device', short: '—', gen: 0, supported: false, port: this.#transport?.label ?? conn.id };
     }
   }
 

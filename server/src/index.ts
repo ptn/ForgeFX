@@ -83,6 +83,16 @@ app.get('/device/detect', () => device.detect());
 
 // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — for the cab IR picker
 app.get('/cab/irs', () => device.profile.cabIrs());
+
+// Foot Controller + Modifier address models (field bases + config formula + enums). FM3-decoded;
+// null where the device's model isn't decoded yet. The client computes (eid,pid) from these and
+// reads/writes via the normal raw-read + setParam path.
+app.get('/fc/model', () => device.profile.fcModel ?? null);
+app.get('/mod/model', () => device.profile.modModel ?? null);
+// raw param values for an effect (for FC eid 199 / Modifier eid 3, whose params have no display range)
+app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/raw', async (req, reply) => {
+  try { return await device.rawBlock(Number(req.params.eid)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 // current state of a cab block (mode / per-slot bank + IR + dyna type) for the picker
 app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/cab', (req) => device.cabState(Number(req.params.eid)));
 

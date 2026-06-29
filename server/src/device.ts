@@ -487,6 +487,25 @@ class Device {
     return { block: blockName, slug, page, named, enums, type, layout };
   }
 
+  /** Raw bulk-read of any effect's param values indexed by paramId — for FC (eid 199) / Modifier
+   *  (eid 3), whose params carry no display range so blockParams returns them empty. Sparse
+   *  (only non-zero pids), first channel. The client computes pids from the FC/Modifier model. */
+  async rawBlock(eid: number): Promise<{ eid: number; values: Record<number, number> }> {
+    await this.#ready();
+    const dev = await this.#conn();
+    const frames = await dev.request(buildBlockBulkReadPoll(eid, this.#prof.model), {
+      timeoutMs: 2500,
+      quietMs: 120,
+      match: (fs) => fs.some((f) => f[5] === 0x76)
+    });
+    const bulk = assembleGen3BlockBulkRead(frames, this.#prof.model);
+    const values: Record<number, number> = {};
+    bulk.values.forEach((v, i) => {
+      if (v) values[i] = v;
+    });
+    return { eid, values };
+  }
+
   /** Cab block state for the IR picker: current mode (Legacy / DynaCab), per-slot bank + IR index +
    * dyna type, plus the option lists. IR names come from fractal-midi (profile.cabIrs() / GET /cab/irs).
    * Writes are plain setParam calls: bank = ord at param 0|1, IR index = raw index at param 4|5,

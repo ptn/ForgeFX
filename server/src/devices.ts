@@ -10,6 +10,17 @@ import {
   FM3_FAMILY_BY_EFFECT_ID,
   FM3_LAYOUTS,
   type Fm3TypeModel,
+  FM3_FC_EFFECT_ID,
+  FM3_FC_SWITCHES,
+  FM3_FC_VIEWS,
+  FM3_FC_LAYOUTS as FM3_FC_LAYOUT_COUNT,
+  FM3_FC_CONFIGS_PER_LAYOUT,
+  FM3_FC_LABEL_LEN,
+  FM3_FC_FIELDS,
+  FM3_FC_CATEGORIES,
+  FM3_FC_COLORS,
+  FM3_MOD_EFFECT_ID,
+  FM3_MOD_FIELDS,
 } from 'fractal-midi/gen3/fm3';
 import { FM9_RANGES, FM9_PARAMS_BY_FAMILY, FM9_ENUM_OVERRIDES, FM9_FAMILY_BY_EFFECT_ID, FM9_LAYOUTS } from 'fractal-midi/gen3/fm9';
 import { PARAMS_BY_FAMILY as AXE3_PARAMS, resolveEnumValues as axe3Enum, AXE3_LAYOUTS } from 'fractal-midi/gen3/axe-fx-iii';
@@ -23,6 +34,33 @@ type LayoutMap = Record<string, DeviceLayout>;
 const VIRTUAL_EID_FAMILY: Record<number, string> = { 1: 'GLOBAL', 2: 'CONTROLLERS', 3: 'MOD', 190: 'MIDIBLOCK', 199: 'FC' };
 const eidFamily = (map?: Record<number, string>) => (eid: number): string | undefined => map?.[eid] ?? VIRTUAL_EID_FAMILY[eid];
 const layoutOf = (layouts: LayoutMap) => (family: string): DeviceLayout | undefined => layouts[family];
+
+// FC + Modifier address models (FM3-decoded; other devices not decoded yet). Lets the client compute
+// (eid,pid) for any footswitch field / modifier field without hard-coding paramIds.
+export type FcModel = {
+  effectId: number;
+  switches: number;
+  views: number;
+  layouts: number;
+  configsPerLayout: number;
+  labelLen: number;
+  fields: typeof FM3_FC_FIELDS;
+  categories: Readonly<Record<number, string>>;
+  colors: Readonly<Record<number, string>>;
+};
+export type ModModel = { effectId: number; fields: typeof FM3_MOD_FIELDS };
+const FM3_FC_MODEL: FcModel = {
+  effectId: FM3_FC_EFFECT_ID,
+  switches: FM3_FC_SWITCHES,
+  views: FM3_FC_VIEWS,
+  layouts: FM3_FC_LAYOUT_COUNT,
+  configsPerLayout: FM3_FC_CONFIGS_PER_LAYOUT,
+  labelLen: FM3_FC_LABEL_LEN,
+  fields: FM3_FC_FIELDS,
+  categories: FM3_FC_CATEGORIES,
+  colors: FM3_FC_COLORS,
+};
+const FM3_MOD_MODEL: ModModel = { effectId: FM3_MOD_EFFECT_ID, fields: FM3_MOD_FIELDS };
 
 // The model-roster entry shape ForgeFX surfaces to the UI (value + name + lineage). FM3's
 // fractal-midi rosters already carry this exact shape (Fm3TypeModel); FM9/III synthesize it.
@@ -69,6 +107,10 @@ export interface DeviceProfile {
   familyForEffectId(eid: number): string | undefined;
   /** Editor-authentic UI layout (pages → controls) for a family, or undefined. */
   layoutFor(family: string): DeviceLayout | undefined;
+  /** Foot Controller address model (FM3-decoded; undefined where not decoded). */
+  fcModel?: FcModel;
+  /** Modifier address model (FM3-decoded; undefined where not decoded). */
+  modModel?: ModModel;
 }
 
 // FM9 enum data ships as FM9_ENUM_OVERRIDES, keyed by the param's NAME → { ordinal: label }.
@@ -160,7 +202,9 @@ export const PROFILES: Record<number, DeviceProfile> = {
     enumLabelsFor: fm3EnumLabels,
     cabIrs: () => fm3CabIrs, // device-true IR names per bank (fractal-midi FM3_CAB_IRS)
     familyForEffectId: eidFamily(FM3_FAMILY_BY_EFFECT_ID as Record<number, string>),
-    layoutFor: layoutOf(FM3_LAYOUTS as unknown as LayoutMap)
+    layoutFor: layoutOf(FM3_LAYOUTS as unknown as LayoutMap),
+    fcModel: FM3_FC_MODEL,
+    modModel: FM3_MOD_MODEL
   },
   0x12: {
     model: 0x12, key: 'fm9', name: 'FM9', rows: 6, cols: 14,

@@ -14,8 +14,10 @@ await app.register(cors, { origin: true });
 // ── system ──
 app.get('/healthz', () => device.health());
 app.get('/device', () => device.deviceInfo());
-app.get('/serial/ports', () => device.serialPorts()); // all ports (Fractal flagged) + chosen + override
-app.post<{ Body: { path: string | null } }>('/serial/select', (req) => device.selectPort(req.body?.path ?? null)); // manual pick
+app.get('/ports', () => device.connections()); // serial + MIDI connections (Fractal flagged) + chosen + override
+app.post<{ Body: { transport?: 'serial' | 'midi'; id?: string | null } }>('/ports/select', (req) =>
+  device.selectConnection(req.body?.id ? { transport: req.body.transport === 'midi' ? 'midi' : 'serial', id: req.body.id } : null)
+); // manual pick (null id clears back to auto)
 
 // ── preset ──
 app.get('/preset', () => device.presetRef());

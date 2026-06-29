@@ -25,7 +25,9 @@ import {
 } from 'fractal-midi/gen3/axe-fx-iii';
 import { resolveEnumValues } from 'fractal-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'fractal-midi/shared';
-import { FractalSerial, autoDetectPath, detectPath, listAllPorts, getPortOverride, setPortOverride } from './transport/serial.js';
+import { autoDetectPath } from './transport/serial.js';
+import { listConnections, resolveConn, openConn, getConnOverride, setConnOverride } from './transport/connection.js';
+import type { Transport, Conn } from './transport/types.js';
 import { decodePresetDump, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
 import { packBySlug, cabIrBanks, type TypeModel } from './defs.js';
 import { DEVICE_MODELS, MODEL_BROADCAST } from './models.js';
@@ -100,8 +102,8 @@ function paramLabel(p: { displayLabel?: string; name: string }): string {
 }
 
 class Device {
-  #serial: FractalSerial | null = null;
-  #connecting: Promise<FractalSerial> | null = null;
+  #transport: Transport | null = null;
+  #connecting: Promise<Transport> | null = null;
   // active device profile (model byte, grid size, params, ranges, rosters). Starts from FORGEFX_DEVICE
   // if set, otherwise FM3, and is corrected to the real unit on the first detect.
   #prof: DeviceProfile = (process.env.FORGEFX_DEVICE ? profileForKey(process.env.FORGEFX_DEVICE) : undefined) ?? DEFAULT_PROFILE;
@@ -128,20 +130,20 @@ class Device {
     }
   }
 
-  get port() { return this.#serial?.path ?? autoDetectPath(); }
+  get port() { return this.#transport?.label ?? autoDetectPath(); }
 
-  async #conn(): Promise<FractalSerial> {
-    if (this.#serial?.isOpen) return this.#serial;
+  async #conn(): Promise<Transport> {
+    if (this.#transport?.isOpen) return this.#transport;
     // share a single open across concurrent callers — the UI fires many requests on load, and
-    // opening the same tty twice fails serialport's exclusive lock ("Cannot lock port").
+    // opening the same port twice fails the exclusive lock ("Cannot lock port").
     if (!this.#connecting) {
       this.#connecting = (async () => {
-        const path = await detectPath(); // cross-platform: Windows COM / macOS cu.usbmodem / Linux ttyACM
-        if (!path) throw new Error('No Fractal device found on any serial port (USB VID 2466). Connect the unit and quit other editors.');
-        const s = new FractalSerial({ path });
-        await s.open();
-        this.#serial = s;
-        return s;
+        const conn = await resolveConn(); // serial (FM3 CDC) or MIDI (Axe-Fx III), manual override wins
+        if (!conn) throw new Error('No Fractal device found on any serial or MIDI port. Connect the unit, quit other editors, or pick it under Connection.');
+        const t = openConn(conn);
+        await t.open();
+        this.#transport = t;
+        return t;
       })().catch((e) => {
         this.#connecting = null; // allow a retry on the next request
         throw e;
@@ -197,25 +199,25 @@ class Device {
   }
 
   async health() {
-    const path = await detectPath();
-    return { ok: !!path, device: this.#prof.name };
+    const conn = await resolveConn();
+    return { ok: !!conn, device: this.#prof.name };
   }
 
-  /** Every serial port (Fractal flagged) + the chosen path + any manual override — for the picker. */
-  async serialPorts() {
-    return { chosen: await detectPath(), override: getPortOverride(), ports: await listAllPorts() };
+  /** Every connection (serial + MIDI, Fractal flagged) + the chosen one + any manual override. */
+  async connections() {
+    return { chosen: await resolveConn(), override: getConnOverride(), ports: await listConnections() };
   }
-  /** Manually pick a serial port (persisted); null clears it back to auto-detect. Drops the live
+  /** Manually pick a connection (persisted); null clears it back to auto-detect. Drops the live
    *  connection so the next request reconnects on the chosen port and re-runs the model handshake. */
-  async selectPort(path: string | null) {
-    setPortOverride(path);
-    if (this.#serial) {
-      await this.#serial.close().catch(() => {});
-      this.#serial = null;
+  async selectConnection(conn: Conn | null) {
+    setConnOverride(conn);
+    if (this.#transport) {
+      await this.#transport.close().catch(() => {});
+      this.#transport = null;
     }
     this.#connecting = null;
     this.#detected = false;
-    return { ok: true, chosen: await detectPath() };
+    return { ok: true, chosen: await resolveConn() };
   }
   async deviceInfo() {
     return { model: this.#prof.name, modelByte: `0x${this.#prof.model.toString(16)}`, firmware: null as null | { version: string; build: string }, port: this.port };

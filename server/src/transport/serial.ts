@@ -3,8 +3,8 @@
 // retired C# ForgeFX used. fractal-midi builds/parses the SysEx; this layer just
 // does framed serial I/O with request/response correlation.
 import { SerialPort } from 'serialport';
-import { existsSync, readdirSync, appendFileSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, readdirSync, appendFileSync } from 'node:fs';
+import type { Transport, RequestOpts } from './types.js';
 
 const SYSEX_START = 0xf0;
 const SYSEX_END = 0xf7;
@@ -56,27 +56,6 @@ const looksFractal = (p: FractalPortInfo): boolean =>
 const isMidiIface = (p: FractalPortInfo): boolean =>
   /if0?3\b/i.test(p.pnpId ?? '') || /MI_0?3/i.test(p.pnpId ?? '') || /if0?3\b/i.test(p.path);
 
-// User-chosen port override (persisted) — wins over auto-detection. Lets the UI offer a manual
-// "connect to this port" fallback when auto-detect picks wrong (or for non-CDC units).
-const OVERRIDE_FILE = process.env.FORGEFX_PORT_FILE ?? `${homedir()}/.forgefx-port`;
-let override: string | null = (() => {
-  try {
-    return readFileSync(OVERRIDE_FILE, 'utf8').trim() || null;
-  } catch {
-    return null;
-  }
-})();
-export const getPortOverride = (): string | null => override;
-export function setPortOverride(p: string | null): void {
-  override = p && p.trim() ? p.trim() : null;
-  try {
-    if (override) writeFileSync(OVERRIDE_FILE, override);
-    else if (existsSync(OVERRIDE_FILE)) unlinkSync(OVERRIDE_FILE);
-  } catch {
-    /* persistence is best-effort */
-  }
-}
-
 export type SerialPortInfo = FractalPortInfo & { fractal: boolean };
 /** Every serial port on the system (for the manual picker), with Fractal nodes flagged. */
 export async function listAllPorts(): Promise<SerialPortInfo[]> {
@@ -101,8 +80,6 @@ export async function detectPath(): Promise<string | null> {
   const env = process.env.FORGEFX_SERIAL;
   if (env && existsSync(env)) return env;
   const all = await listAllPorts();
-  // honor the user's manual pick when it's currently present; else fall through to auto-detect
-  if (override && all.some((p) => p.path === override)) return override;
   let fractal = all.filter((p) => p.fractal);
   // macOS lists both /dev/tty.* and /dev/cu.* for one node — keep only the callout (cu) device
   fractal = fractal.filter((p) => !(p.path.startsWith('/dev/tty.') && fractal.some((q) => q.path === p.path.replace('/dev/tty.', '/dev/cu.'))));
@@ -125,11 +102,14 @@ export async function detectPath(): Promise<string | null> {
   return existsSync('/dev/ttyACM0') ? '/dev/ttyACM0' : null;
 }
 
-export class FractalSerial {
+export class FractalSerial implements Transport {
   #port: SerialPort | null = null;
   #rx: number[] = [];
   #frameHandlers = new Set<(frame: number[]) => void>();
   readonly path: string;
+  get label(): string {
+    return this.path;
+  }
 
   constructor(opts: TransportOpts = {}) {
     const path = opts.path ?? autoDetectPath();
@@ -204,10 +184,7 @@ export class FractalSerial {
    * Resolves once a quiet gap (`quietMs`) passes after the last frame, or `match` is
    * satisfied, or `timeoutMs` elapses. Handles single-frame replies and multi-frame dumps.
    */
-  request(
-    bytes: readonly number[],
-    opts: { timeoutMs?: number; quietMs?: number; match?: (frames: number[][]) => boolean } = {}
-  ): Promise<number[][]> {
+  request(bytes: readonly number[], opts: RequestOpts = {}): Promise<number[][]> {
     const task = () => this.#once(bytes, opts);
     const p = this.#chain.then(task, task);
     this.#chain = p.then(
@@ -236,10 +213,7 @@ export class FractalSerial {
     return p;
   }
 
-  #once(
-    bytes: readonly number[],
-    { timeoutMs = 1500, quietMs = 90, match }: { timeoutMs?: number; quietMs?: number; match?: (frames: number[][]) => boolean } = {}
-  ): Promise<number[][]> {
+  #once(bytes: readonly number[], { timeoutMs = 1500, quietMs = 90, match }: RequestOpts = {}): Promise<number[][]> {
     this.#rx = []; // drop any stale partial frame before a fresh exchange
     return new Promise((resolve) => {
       const frames: number[][] = [];

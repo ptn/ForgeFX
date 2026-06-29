@@ -16,9 +16,11 @@ import {
   FM3_FC_LAYOUTS as FM3_FC_LAYOUT_COUNT,
   FM3_FC_CONFIGS_PER_LAYOUT,
   FM3_FC_LABEL_LEN,
+  FM3_FC_PARAMS_WIDTH,
   FM3_FC_FIELDS,
   FM3_FC_CATEGORIES,
   FM3_FC_COLORS,
+  FM3_FC_LABEL_MODES,
   FM3_MOD_EFFECT_ID,
   FM3_MOD_FIELDS,
 } from 'fractal-midi/gen3/fm3';
@@ -44,9 +46,11 @@ export type FcModel = {
   layouts: number;
   configsPerLayout: number;
   labelLen: number;
+  paramsWidth: number;
   fields: typeof FM3_FC_FIELDS;
   categories: Readonly<Record<number, string>>;
-  colors: Readonly<Record<number, string>>;
+  colors: Readonly<Record<number, { name: string; hex: string }>>;
+  labelModes: Readonly<Record<number, string>>;
 };
 export type ModModel = { effectId: number; fields: typeof FM3_MOD_FIELDS };
 const FM3_FC_MODEL: FcModel = {
@@ -56,9 +60,11 @@ const FM3_FC_MODEL: FcModel = {
   layouts: FM3_FC_LAYOUT_COUNT,
   configsPerLayout: FM3_FC_CONFIGS_PER_LAYOUT,
   labelLen: FM3_FC_LABEL_LEN,
+  paramsWidth: FM3_FC_PARAMS_WIDTH,
   fields: FM3_FC_FIELDS,
   categories: FM3_FC_CATEGORIES,
   colors: FM3_FC_COLORS,
+  labelModes: FM3_FC_LABEL_MODES,
 };
 const FM3_MOD_MODEL: ModModel = { effectId: FM3_MOD_EFFECT_ID, fields: FM3_MOD_FIELDS };
 

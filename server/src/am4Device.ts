@@ -19,7 +19,7 @@ import {
   isCommandAck,
   type ParamKey
 } from 'fractal-midi/am4';
-import { device } from './device.js';
+import { device, type PresetGridDTO } from './device.js';
 
 export interface Am4Slot {
   slot: number; // 1..4 signal-chain position
@@ -49,6 +49,22 @@ class Am4Device {
     }
     this.#log(`slots: ${out.map((s) => `${s.slot}:${s.blockType}`).join(' ')}`);
     return out;
+  }
+
+  /** The 4 slots as a PresetGridDTO (1 row × 4, linear chain) so Axis renders the AM4 on the existing
+   *  Signal Grid — no separate view needed to get it on screen + testable. */
+  async grid(): Promise<PresetGridDTO> {
+    const slots = await this.slots();
+    const cells = slots.map((s, i) => ({
+      row: 0,
+      col: i,
+      effectId: s.pidLow,
+      name: s.blockType === 'none' ? '' : s.blockType,
+      isShunt: s.blockType === 'none',
+      routeFlag: 0,
+      fromRows: i > 0 ? [0] : [] // linear: each slot feeds from the previous
+    }));
+    return { model: 'am4', name: '', crcValid: true, rows: 1, cols: 4, scenes: [], cells, source: 'dump' };
   }
 
   /** Stored preset name at a location (0..103). */

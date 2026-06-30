@@ -113,6 +113,10 @@ app.get('/mod/model', () => device.profile.modModel ?? null);
 app.get('/am4/slots', async (_req, reply) => {
   try { return await am4.slots(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
+// AM4 4 slots as a 1×4 grid DTO → reuses the existing Signal Grid renderer in Axis
+app.get('/am4/grid', async (_req, reply) => {
+  try { return await am4.grid(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 app.get<{ Params: { n: string } }>('/am4/presets/:n/name', async (req, reply) => {
   try { return await am4.presetName(Number(req.params.n)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });

@@ -82,6 +82,20 @@ export function decodePresetBody(frames: readonly (readonly number[])[], expecte
   return { modelId, body: huffmanUncompress(comp, decompSize), decompSize };
 }
 
+// Amp model in the decompressed body — device-diff confirmed (setType N → byte at 0x123c = N exactly).
+// u16 LE; the amp's 4 channels (A-D) are at +0x120 (288) stride. (FM3 layout, model 0x11.)
+const AMP_MODEL_OFFSET = 0x123c;
+const AMP_CHANNEL_STRIDE = 0x120;
+/** The amp model ordinal for each of the 4 channels (A-D). Map via FM3_ROSTERS.amp for names. */
+export function readAmpModels(body: Uint8Array): number[] {
+  const out: number[] = [];
+  for (let n = 0; n < 4; n++) {
+    const o = AMP_MODEL_OFFSET + n * AMP_CHANNEL_STRIDE;
+    if (o + 1 < body.length) out.push(body[o]! | (body[o + 1]! << 8));
+  }
+  return out;
+}
+
 // ---- 1. dump frames → 0x78 chunk payloads ----
 function collectChunks(frames: readonly (readonly number[])[], expectedModel?: number) {
   const chunks: number[][] = [];

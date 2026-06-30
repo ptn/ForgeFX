@@ -29,7 +29,8 @@ import { autoDetectPath } from './transport/serial.js';
 import { listConnections, resolveConn, openConn, getConnOverride, setConnOverride } from './transport/connection.js';
 import { midiAvailable } from './transport/midi.js';
 import type { Transport, Conn } from './transport/types.js';
-import { decodePresetDump, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
+import { decodePresetDump, decodePresetBody, readAmpModels, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
+import { FM3_ROSTERS } from 'fractal-midi/gen3/fm3';
 import { DEVICE_MODELS, MODEL_BROADCAST, modelFromPortName } from './models.js';
 import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile, type TypeModel, type DeviceLayout } from './devices.js';
 
@@ -51,6 +52,8 @@ export type PresetSummary = {
   crcValid: boolean;
   scenes: string[];
   blocks: { effectId: number; slug: string | null; name: string; instance: number | null }[];
+  /** Amp model names in use (distinct across the amp's 4 channels) — for "presets using amp X". FM3 only. */
+  amps: string[];
 };
 const CH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
@@ -403,7 +406,7 @@ class Device {
       quietMs: 180,
       match: (fs) => fs.some((f) => f[5] === 0x79)
     });
-    return this.#summarizeDump(decodePresetDump(frames, this.#prof.model), presetNumber);
+    return this.#summarizeDump(decodePresetDump(frames, this.#prof.model), this.#ampNames(frames), presetNumber);
   }
 
   /** Decode a preset from raw .syx bytes (a saved/exported dump) — offline, no device needed. Splits
@@ -421,17 +424,46 @@ class Device {
         }
       }
     }
-    return this.#summarizeDump(decodePresetDump(frames, this.#prof.model), -1);
+    return this.#summarizeDump(decodePresetDump(frames, this.#prof.model), this.#ampNames(frames), -1);
   }
 
-  #summarizeDump(d: ReturnType<typeof decodePresetDump>, presetNumber: number): PresetSummary {
+  /** Distinct amp-model names used across the amp's 4 channels (FM3 body layout). Empty for non-FM3. */
+  #ampNames(frames: readonly (readonly number[])[]): string[] {
+    if (this.#prof.model !== 0x11) return [];
+    try {
+      const { body } = decodePresetBody(frames, this.#prof.model);
+      const names = new Set<string>();
+      for (const ord of readAmpModels(body)) {
+        const m = FM3_ROSTERS.amp?.find((a) => a.value === ord);
+        if (m) names.add(m.name);
+      }
+      return [...names];
+    } catch {
+      return [];
+    }
+  }
+
+  #summarizeDump(d: ReturnType<typeof decodePresetDump>, amps: string[], presetNumber: number): PresetSummary {
     const seen = new Map<number, { effectId: number; slug: string | null; name: string; instance: number | null }>();
     for (const c of d.grid) {
       if (c.isShunt || !c.effectId || seen.has(c.effectId)) continue;
       const ref = blockRefForEid(c.effectId);
       seen.set(c.effectId, { effectId: c.effectId, slug: ref?.slug ?? null, name: c.name, instance: ref?.instance ?? null });
     }
-    return { number: presetNumber, name: d.name, model: d.modelName, crcValid: d.crcValid, scenes: d.sceneNames, blocks: [...seen.values()] };
+    return { number: presetNumber, name: d.name, model: d.modelName, crcValid: d.crcValid, scenes: d.sceneNames, blocks: [...seen.values()], amps };
+  }
+
+  /** Decompressed preset body as hex — for per-block param-decode RE (diff bodies across known param
+   *  changes to locate offsets). Dumps the active edit buffer. */
+  async presetBodyHex(): Promise<{ len: number; hex: string }> {
+    const dev = await this.#conn();
+    const frames = await dev.request(buildRequestPresetDump(EDIT_BUFFER, this.#prof.model), {
+      timeoutMs: 5000,
+      quietMs: 180,
+      match: (fs) => fs.some((f) => f[5] === 0x79)
+    });
+    const { body } = decodePresetBody(frames, this.#prof.model);
+    return { len: body.length, hex: Buffer.from(body).toString('hex') };
   }
 
   async #statusByEffectId(): Promise<Map<number, { bypassed: boolean; channel: number }>> {

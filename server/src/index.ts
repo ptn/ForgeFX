@@ -110,6 +110,10 @@ app.get('/mod/model', () => device.profile.modModel ?? null);
 
 // ── AM4 (model 0x15) — flat 4-slot device, its own codec (fractal-midi/am4). Axis routes here when
 //    /device/detect reports an AM4. Shares the one open connection with the gen-3 path. ──
+// decompressed preset body (hex) — for per-block param-decode RE (offset diffs)
+app.get('/preset/body', async (_req, reply) => {
+  try { return await device.presetBodyHex(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 app.get('/am4/slots', async (_req, reply) => {
   try { return await am4.slots(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });

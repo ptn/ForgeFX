@@ -42,6 +42,16 @@ const BLOCK_META: Record<string, { name: string; page: number }> = (() => {
 })();
 
 const EDIT_BUFFER = 0x3fff; // preset number sentinel = current edit buffer
+
+/** Library-friendly decoded preset: name, scenes, and the unique effect blocks it contains. */
+export type PresetSummary = {
+  number: number;
+  name: string;
+  model: string;
+  crcValid: boolean;
+  scenes: string[];
+  blocks: { effectId: number; slug: string | null; name: string; instance: number | null }[];
+};
 const CH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 // catalog unit code → display label (blank = show the bare number)
@@ -373,6 +383,49 @@ class Device {
       cells: d.grid.map((c) => ({ row: c.row, col: c.col, effectId: c.effectId, name: c.name, isShunt: c.isShunt, routeFlag: c.routeFlag, fromRows: c.fromRows })),
       source: 'dump'
     };
+  }
+
+  /** Decode any preset by number (non-disruptive — does NOT switch the active preset) into a
+   *  library-friendly summary: name, scene names, and the unique effect blocks it contains. The
+   *  foundation for a preset browser/library (search by block, collections, tags). Param-level facts
+   *  (amp model etc.) are a follow-up once the per-block param decode lands. */
+  async presetSummary(presetNumber: number): Promise<PresetSummary> {
+    await this.#ready();
+    const dev = await this.#conn();
+    const frames = await dev.request(buildRequestPresetDump(presetNumber, this.#prof.model), {
+      timeoutMs: 5000,
+      quietMs: 180,
+      match: (fs) => fs.some((f) => f[5] === 0x79)
+    });
+    return this.#summarizeDump(decodePresetDump(frames, this.#prof.model), presetNumber);
+  }
+
+  /** Decode a preset from raw .syx bytes (a saved/exported dump) — offline, no device needed. Splits
+   *  the byte stream into F0..F7 SysEx frames and runs the same decoder. For a file-based library. */
+  decodePresetBytes(bytes: Uint8Array): PresetSummary {
+    const frames: number[][] = [];
+    let cur: number[] | null = null;
+    for (const b of bytes) {
+      if (b === 0xf0) cur = [b];
+      else if (cur) {
+        cur.push(b);
+        if (b === 0xf7) {
+          frames.push(cur);
+          cur = null;
+        }
+      }
+    }
+    return this.#summarizeDump(decodePresetDump(frames, this.#prof.model), -1);
+  }
+
+  #summarizeDump(d: ReturnType<typeof decodePresetDump>, presetNumber: number): PresetSummary {
+    const seen = new Map<number, { effectId: number; slug: string | null; name: string; instance: number | null }>();
+    for (const c of d.grid) {
+      if (c.isShunt || !c.effectId || seen.has(c.effectId)) continue;
+      const ref = blockRefForEid(c.effectId);
+      seen.set(c.effectId, { effectId: c.effectId, slug: ref?.slug ?? null, name: c.name, instance: ref?.instance ?? null });
+    }
+    return { number: presetNumber, name: d.name, model: d.modelName, crcValid: d.crcValid, scenes: d.sceneNames, blocks: [...seen.values()] };
   }
 
   async #statusByEffectId(): Promise<Map<number, { bypassed: boolean; channel: number }>> {

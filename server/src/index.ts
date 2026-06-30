@@ -9,6 +9,8 @@ import { device } from './device.js';
 const PORT = Number(process.env.PORT ?? 5056);
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 await app.register(cors, { origin: true });
+// accept raw .syx bytes (preset files) on POST /preset/decode
+app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
 
 // ── system ──
 app.get('/healthz', () => device.health());
@@ -26,6 +28,16 @@ app.post<{ Body: { transport?: 'serial' | 'midi'; id?: string | null; inId?: str
 // ── preset ──
 app.get('/preset', () => device.presetRef());
 app.get<{ Params: { n: string } }>('/presets/:n', (req) => ({ number: Number(req.params.n), name: '' }));
+// Decode any preset by number (non-disruptive) → library summary: name, scenes, unique blocks.
+app.get<{ Params: { n: string } }>('/presets/:n/summary', async (req, reply) => {
+  try { return await device.presetSummary(Number(req.params.n)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+// Decode an uploaded preset .syx file (raw bytes, application/octet-stream) → library summary. Offline.
+app.post('/preset/decode', (req, reply) => {
+  const buf = req.body as Buffer | undefined;
+  if (!buf || !buf.length) { reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream' }; }
+  try { return device.decodePresetBytes(new Uint8Array(buf)); } catch (e) { reply.code(422); return { error: (e as Error).message }; }
+});
 app.get('/preset/grid', async (_req, reply) => {
   try { return await device.grid(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });

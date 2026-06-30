@@ -40,6 +40,13 @@ export function delDoc(collection: string, id: string): void {
   const m = loadColl(collection);
   if (m[id]) { m[id] = { ...m[id], deleted: true, updatedAt: Date.now(), rev: m[id]!.rev + 1 }; saveColl(collection, m); }
 }
+/** Apply a doc verbatim (keeping the given updatedAt/rev) — for sync PULLs, where bumping the envelope
+ *  would make a just-pulled record look locally-newer and bounce back on the next push. */
+export function putDocRaw(collection: string, id: string, data: unknown, updatedAt: number, rev: number, deleted = false): void {
+  const m = loadColl(collection);
+  m[id] = { id, collection, data, updatedAt, rev, deleted };
+  saveColl(collection, m);
+}
 /** Records changed since `since` (for sync push). Includes tombstones. */
 export function docsChangedSince(collection: string, since: number): Doc[] { return Object.values(loadColl(collection)).filter((d) => d.updatedAt > since); }
 

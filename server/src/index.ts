@@ -245,6 +245,19 @@ if (STATIC) {
   });
 }
 
+// ── cloud sync (GATED: only when AXIS_CLOUD=1; release builds never load supabase-js) ──
+if (process.env.AXIS_CLOUD === '1') {
+  const { cloud } = await import('./cloud.js');
+  type Creds = { email: string; password: string };
+  app.get('/cloud/status', async () => cloud.status());
+  app.post<{ Body: Creds }>('/cloud/register', async (req, reply) => { try { return await cloud.register(req.body.email, req.body.password); } catch (e) { reply.code(400); return { error: (e as Error).message }; } });
+  app.post<{ Body: Creds }>('/cloud/login', async (req, reply) => { try { return await cloud.login(req.body.email, req.body.password); } catch (e) { reply.code(401); return { error: (e as Error).message }; } });
+  app.post('/cloud/logout', async () => cloud.logout());
+  app.post('/cloud/sync', async (req, reply) => { try { return await cloud.syncConfig(); } catch (e) { reply.code(503); return { error: (e as Error).message }; } });
+} else {
+  app.get('/cloud/status', async () => ({ enabled: false, user: null })); // so Axis can gate its UI without erroring
+}
+
 // Auto port allocation: try PORT; if it's taken, let the OS assign a free one (port 0).
 // The actual bound port is logged (and the desktop app picks a free port up front anyway).
 async function listen(port: number, fellBack = false): Promise<void> {

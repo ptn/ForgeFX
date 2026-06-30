@@ -111,14 +111,22 @@ app.post('/preset/decode', (req, reply) => {
   if (!buf || !buf.length) { reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream' }; }
   try { return device.decodePresetBytes(new Uint8Array(buf)); } catch (e) { reply.code(422); return { error: (e as Error).message }; }
 });
+// Decode-path errors are surfaced to the client AND logged (console.error → the desktop debug log),
+// so a failing grid/blocks decode (e.g. on Axe-Fx III presets) shows WHY in the user's log, not just 503.
+const decodeFail = (reply: import('fastify').FastifyReply, where: string, e: unknown) => {
+  const err = e as Error;
+  console.error(`[forgefx] ${where} failed: ${err?.message ?? e}${err?.stack ? `\n${err.stack}` : ''}`);
+  reply.code(503);
+  return { error: err?.message ?? String(e) };
+};
 app.get('/preset/grid', async (_req, reply) => {
-  try { return await device.grid(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+  try { return await device.grid(); } catch (e) { return decodeFail(reply, 'grid decode', e); }
 });
 app.get<{ Params: { n: string } }>('/presets/:n/grid', async (_req, reply) => {
-  try { return await device.grid(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+  try { return await device.grid(); } catch (e) { return decodeFail(reply, 'grid decode', e); }
 });
 app.get('/preset/blocks', async (_req, reply) => {
-  try { return await device.placedBlocks(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+  try { return await device.placedBlocks(); } catch (e) { return decodeFail(reply, 'blocks decode', e); }
 });
 app.post<{ Body: { number: number } }>('/preset/select', async (req) => {
   const r = await device.selectPreset(req.body.number);

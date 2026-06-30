@@ -71,6 +71,17 @@ export function decodePresetDump(frames: readonly (readonly number[])[], expecte
   return { modelId, modelName: dim.name, name, crcValid: storedCrc === computedCrc, rows: dim.rows, cols: dim.cols, grid, sceneNames };
 }
 
+/** Decompressed preset body (+ model + grid), for per-block param decoding. The body holds each
+ *  block's params after the grid region (0x104..); exposes the internals decodePresetDump consumes. */
+export function decodePresetBody(frames: readonly (readonly number[])[], expectedModel?: number): { modelId: number; body: Uint8Array; decompSize: number } {
+  const { modelId, chunks } = collectChunks(frames, expectedModel);
+  const rawPatch = reassemble(chunks);
+  const decompSize = u16(rawPatch, DECOMP_SIZE_OFFSET);
+  const compSize = u16(rawPatch, COMP_SIZE_OFFSET);
+  const comp = rawPatch.subarray(BODY_OFFSET, BODY_OFFSET + Math.min(compSize, rawPatch.length - BODY_OFFSET));
+  return { modelId, body: huffmanUncompress(comp, decompSize), decompSize };
+}
+
 // ---- 1. dump frames → 0x78 chunk payloads ----
 function collectChunks(frames: readonly (readonly number[])[], expectedModel?: number) {
   const chunks: number[][] = [];

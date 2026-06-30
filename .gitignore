@@ -484,3 +484,6 @@ $RECYCLE.BIN/
 # Private: cache-extraction generators (the METHOD stays local; only the generated
 # definitions/*.json DATA is published). See privacy policy.
 server/scripts/*-from-cache.ts
+
+# local reverse-engineering notes — never publish
+*FINDINGS*.md

@@ -73,6 +73,54 @@ class Cloud {
     }
     return { pushed: toPush.length, pulled };
   }
+
+  /** Sync preset version snapshots: push local-only ones (blob → Storage, metadata → preset_versions),
+   *  pull cloud-only ones (download blob → local store). Versions are immutable (id = location+crc+ts),
+   *  so this is a simple set-difference, no LWW. This is what enables cloud-only presets + cross-device. */
+  async syncVersions() {
+    const c = this.#c();
+    const user = (await c.auth.getUser()).data.user;
+    if (!user) throw new Error('not logged in');
+    const bucket = c.storage.from('preset-blobs');
+
+    const { data: remoteRows, error: rerr } = await c.from('preset_versions').select('*');
+    if (rerr) throw new Error(`versions pull-list: ${rerr.message}`);
+    const remoteIds = new Set((remoteRows ?? []).map((r) => r.id as string));
+
+    let pushed = 0;
+    for (const v of store.listPresetVersions()) {
+      if (remoteIds.has(v.id)) continue; // immutable → already synced
+      const packed = store.getPresetVersionPacked(v.id);
+      if (!packed) continue;
+      const path = `${user.id}/${v.location}/${v.id}.syx.br`;
+      const { error: upErr } = await bucket.upload(path, packed, { upsert: true, contentType: 'application/octet-stream' });
+      if (upErr) throw new Error(`blob upload: ${upErr.message}`);
+      const { error: mErr } = await c.from('preset_versions').upsert({
+        user_id: user.id, id: v.id, location: v.location, crc: v.crc, name: v.name, model: v.model,
+        captured_at: v.capturedAt, source: v.source, backup_id: v.backupId ?? null, bytes: v.bytes, stored: v.stored, blob_path: path
+      });
+      if (mErr) throw new Error(`version meta: ${mErr.message}`);
+      pushed++;
+    }
+
+    let pulled = 0;
+    for (const r of remoteRows ?? []) {
+      if (store.hasPresetVersion(r.id)) continue;
+      const { data: blob, error: dErr } = await bucket.download(r.blob_path);
+      if (dErr || !blob) continue;
+      const packed = new Uint8Array(await blob.arrayBuffer());
+      store.addVersionRaw({ id: r.id, location: r.location, crc: r.crc, name: r.name, model: r.model, capturedAt: r.captured_at, source: r.source, backupId: r.backup_id ?? undefined, bytes: r.bytes, stored: r.stored }, packed);
+      pulled++;
+    }
+    return { pushed, pulled };
+  }
+
+  /** Full sync: config + preset versions/blobs. */
+  async sync() {
+    const config = await this.syncConfig();
+    const versions = await this.syncVersions();
+    return { config, versions };
+  }
 }
 
 export const cloud = new Cloud();

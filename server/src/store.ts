@@ -92,6 +92,22 @@ export function getPresetVersionBytes(id: string): Uint8Array | null {
   if (!v) return null;
   try { return unpackSyx(readFileSync(blobPath(v))); } catch { return null; }
 }
+/** Raw compressed (.syx.br) bytes for a version — for cloud upload (kept compressed in Storage). */
+export function getPresetVersionPacked(id: string): Uint8Array | null {
+  const v = vIndex().find((x) => x.id === id);
+  if (!v) return null;
+  try { return readFileSync(blobPath(v)); } catch { return null; }
+}
+export const hasPresetVersion = (id: string): boolean => vIndex().some((x) => x.id === id);
+/** Write a version pulled from the cloud verbatim (id + compressed blob already known). Skips if present. */
+export function addVersionRaw(v: PresetVersion, packed: Uint8Array): void {
+  const all = vIndex();
+  if (all.some((x) => x.id === v.id)) return;
+  ensure(join(VERSIONS_DIR, String(v.location)));
+  writeFileSync(blobPath(v), Buffer.from(packed));
+  all.push(v);
+  saveVIndex(all);
+}
 
 // ─────────────────────────── full-device backups ───────────────────────────
 export interface Backup { id: string; createdAt: number; label: string; model: string; count: number }

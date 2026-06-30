@@ -4,9 +4,10 @@
 // caring. Every record carries a sync-ready envelope ({id, updatedAt, rev, deleted}) so the future
 // Supabase sync is just a diff on `updatedAt`. Preset versions are immutable .syx snapshots → version
 // control + restore. See the storage architecture notes.
-import { mkdirSync, readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { brotliCompressSync, brotliDecompressSync, constants as zc } from 'node:zlib';
 
 // Preset .syx is 7-bit-padded SysEx → compresses ~3-4x. Brotli at rest (small local footprint) AND so the
@@ -54,33 +55,55 @@ export function docsChangedSince(collection: string, since: number): Doc[] { ret
 export interface PresetVersion {
   id: string;
   location: number; // preset slot (-1 = edit buffer)
-  crc: number; // content fingerprint
+  crc: number; // content fingerprint (device CRC16 — for sync-state comparison)
+  hash: string; // sha256 of the raw .syx — the content-address key (identical presets share one blob)
   name: string;
   model: string;
   capturedAt: number;
   source: 'manual' | 'auto' | 'backup';
   backupId?: string; // set when captured as part of a full-device backup
   bytes: number; // raw .syx size
-  stored: number; // compressed (brotli) size on disk / synced
+  stored: number; // compressed (brotli) size of the blob
 }
+/** Keep at most this many distinct versions per slot; older ones are pruned (and their blobs GC'd if
+ *  unreferenced). Dedup means most slots stay well under this; the cap bounds a heavily-edited preset. */
+const RETENTION_PER_SLOT = 30;
+const sha256 = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
 const vIndex = (): PresetVersion[] => readJSON(join(VERSIONS_DIR, 'index.json'), []);
 const saveVIndex = (v: PresetVersion[]) => { ensure(VERSIONS_DIR); writeJSON(join(VERSIONS_DIR, 'index.json'), v); };
-const blobPath = (v: PresetVersion) => join(VERSIONS_DIR, String(v.location), `${v.id}.syx.br`); // brotli
+const BLOBS_DIR = join(VERSIONS_DIR, 'blobs');
+/** Content-addressed blob path: identical preset content → identical hash → one stored blob, shared by
+ *  every version (and every full-backup) that references it. This is what makes repeat backups ~free. */
+const blobPathByHash = (hash: string) => join(BLOBS_DIR, `${hash}.syx.br`);
 
-/** Snapshot a preset. Skips if the latest snapshot for this slot has the same CRC (no churn) — unless
- *  it's part of a full backup, where we always record the slot. */
-export function addPresetVersion(meta: Omit<PresetVersion, 'id' | 'capturedAt' | 'bytes' | 'stored'>, syx: Uint8Array): PresetVersion | null {
-  const all = vIndex();
-  if (!meta.backupId) {
-    const latest = all.filter((x) => x.location === meta.location).sort((a, b) => b.capturedAt - a.capturedAt)[0];
-    if (latest && latest.crc === meta.crc) return latest; // unchanged → reuse
-  }
-  const id = `${meta.location}-${(meta.crc >>> 0).toString(16)}-${Date.now().toString(36)}`;
+/** Prune `location`'s versions beyond the retention cap (newest kept) and delete any blob no other
+ *  surviving version references. Mutates + returns the index array. */
+function pruneLocation(all: PresetVersion[], location: number): PresetVersion[] {
+  const forLoc = all.filter((v) => v.location === location).sort((a, b) => b.capturedAt - a.capturedAt);
+  if (forLoc.length <= RETENTION_PER_SLOT) return all;
+  const dropIds = new Set(forLoc.slice(RETENTION_PER_SLOT).map((v) => v.id));
+  const kept = all.filter((v) => !dropIds.has(v.id));
+  const liveHashes = new Set(kept.map((v) => v.hash));
+  for (const v of all) if (dropIds.has(v.id) && !liveHashes.has(v.hash)) { try { unlinkSync(blobPathByHash(v.hash)); } catch { /* already gone */ } }
+  return kept;
+}
+
+/** Snapshot a preset. Dedup by content: if the slot's newest version has identical content (same hash),
+ *  reuse it — no new record, no new blob. Applies to full backups too, so backing up an unchanged device
+ *  costs ~nothing. The blob is written once per unique content (content-addressed). */
+export function addPresetVersion(meta: Omit<PresetVersion, 'id' | 'hash' | 'capturedAt' | 'bytes' | 'stored'>, syx: Uint8Array): PresetVersion | null {
+  const hash = sha256(syx);
+  let all = vIndex();
+  const latest = all.filter((x) => x.location === meta.location).sort((a, b) => b.capturedAt - a.capturedAt)[0];
+  if (latest && latest.hash === hash) return latest; // identical content → reuse
   const packed = packSyx(syx);
-  const v: PresetVersion = { id, capturedAt: Date.now(), bytes: syx.length, stored: packed.length, ...meta };
-  ensure(join(VERSIONS_DIR, String(meta.location)));
-  writeFileSync(blobPath(v), packed);
-  all.push(v); saveVIndex(all);
+  const id = `${meta.location}-${(meta.crc >>> 0).toString(16)}-${Date.now().toString(36)}`;
+  const v: PresetVersion = { id, hash, capturedAt: Date.now(), bytes: syx.length, stored: packed.length, ...meta };
+  ensure(BLOBS_DIR);
+  if (!existsSync(blobPathByHash(hash))) writeFileSync(blobPathByHash(hash), packed); // store unique content once
+  all.push(v);
+  all = pruneLocation(all, meta.location);
+  saveVIndex(all);
   return v;
 }
 export function listPresetVersions(location?: number): PresetVersion[] {
@@ -93,21 +116,22 @@ export function getPresetVersion(id: string): PresetVersion | null {
 export function getPresetVersionBytes(id: string): Uint8Array | null {
   const v = vIndex().find((x) => x.id === id);
   if (!v) return null;
-  try { return unpackSyx(readFileSync(blobPath(v))); } catch { return null; }
+  try { return unpackSyx(readFileSync(blobPathByHash(v.hash))); } catch { return null; }
 }
 /** Raw compressed (.syx.br) bytes for a version — for cloud upload (kept compressed in Storage). */
 export function getPresetVersionPacked(id: string): Uint8Array | null {
   const v = vIndex().find((x) => x.id === id);
   if (!v) return null;
-  try { return readFileSync(blobPath(v)); } catch { return null; }
+  try { return readFileSync(blobPathByHash(v.hash)); } catch { return null; }
 }
 export const hasPresetVersion = (id: string): boolean => vIndex().some((x) => x.id === id);
-/** Write a version pulled from the cloud verbatim (id + compressed blob already known). Skips if present. */
+/** Write a version pulled from the cloud (compressed blob already known; hash carried on the record).
+ *  Content-addressed: the blob is written once per unique hash. Skips if this version id is already local. */
 export function addVersionRaw(v: PresetVersion, packed: Uint8Array): void {
   const all = vIndex();
   if (all.some((x) => x.id === v.id)) return;
-  ensure(join(VERSIONS_DIR, String(v.location)));
-  writeFileSync(blobPath(v), Buffer.from(packed));
+  ensure(BLOBS_DIR);
+  if (!existsSync(blobPathByHash(v.hash))) writeFileSync(blobPathByHash(v.hash), Buffer.from(packed));
   all.push(v);
   saveVIndex(all);
 }
@@ -126,5 +150,3 @@ export function setBackupCount(id: string, count: number): void {
   const all = listBackups(); const b = all.find((x) => x.id === id);
   if (b) { b.count = count; writeJSON(bkPath(), all); }
 }
-
-void readdirSync; void existsSync; // reserved for upcoming list/prune helpers

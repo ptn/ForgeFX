@@ -116,17 +116,25 @@ class Cloud {
 
     // A full-device backup creates 100+ versions; the first sync must push them all. Do it in
     // concurrent batches (instead of one-at-a-time) so a fresh backup syncs in seconds, not minutes.
+    // A full-device backup creates many version records, but content-addressed blobs mean unchanged
+    // presets share one blob — upload each unique hash once. Concurrent batches keep it fast.
     const toPush = local.filter((v) => !remoteIds.has(v.id));
-    console.log(`[cloud] syncVersions: pushing ${toPush.length} new version(s)`);
+    console.log(`[cloud] syncVersions: pushing ${toPush.length} new version record(s)`);
     let pushed = 0;
+    const uploaded = new Set<string>(); // hashes already uploaded this run → skip duplicate blob writes
+    const blobPath = (hash: string) => `${user.id}/blobs/${hash}.syx.br`;
     const CONCURRENCY = 6;
     for (let i = 0; i < toPush.length; i += CONCURRENCY) {
       await Promise.all(toPush.slice(i, i + CONCURRENCY).map(async (v) => {
-        const packed = store.getPresetVersionPacked(v.id);
-        if (!packed) return;
-        const path = `${user.id}/${v.location}/${v.id}.syx.br`;
-        const { error: upErr } = await withTimeout(bucket.upload(path, packed, { upsert: true, contentType: 'application/octet-stream' }), 20000, `blob upload ${v.id}`);
-        if (upErr) throw new Error(`blob upload: ${upErr.message}`);
+        const path = blobPath(v.hash);
+        if (!uploaded.has(v.hash)) {
+          uploaded.add(v.hash);
+          const packed = store.getPresetVersionPacked(v.id);
+          if (packed) {
+            const { error: upErr } = await withTimeout(bucket.upload(path, packed, { upsert: true, contentType: 'application/octet-stream' }), 20000, `blob upload ${v.hash}`);
+            if (upErr) throw new Error(`blob upload: ${upErr.message}`);
+          }
+        }
         const { error: mErr } = await c.from('preset_versions').upsert({
           user_id: user.id, id: v.id, location: v.location, crc: v.crc, name: v.name, model: v.model,
           captured_at: v.capturedAt, source: v.source, backup_id: v.backupId ?? null, bytes: v.bytes, stored: v.stored, blob_path: path
@@ -140,11 +148,12 @@ class Cloud {
     let pulled = 0;
     for (const r of remoteRows ?? []) {
       if (store.hasPresetVersion(r.id)) continue;
-      console.log(`[cloud] syncVersions: downloading ${r.id}…`);
+      // blob_path is `<uid>/blobs/<hash>.syx.br` — recover the content hash from it.
+      const hash = String(r.blob_path).split('/').pop()?.replace(/\.syx\.br$/, '') ?? '';
       const { data: blob, error: dErr } = await withTimeout(bucket.download(r.blob_path), 20000, `blob download ${r.id}`);
       if (dErr || !blob) continue;
       const packed = new Uint8Array(await blob.arrayBuffer());
-      store.addVersionRaw({ id: r.id, location: r.location, crc: r.crc, name: r.name, model: r.model, capturedAt: r.captured_at, source: r.source, backupId: r.backup_id ?? undefined, bytes: r.bytes, stored: r.stored }, packed);
+      store.addVersionRaw({ id: r.id, location: r.location, crc: r.crc, hash, name: r.name, model: r.model, capturedAt: r.captured_at, source: r.source, backupId: r.backup_id ?? undefined, bytes: r.bytes, stored: r.stored }, packed);
       pulled++;
     }
     return { pushed, pulled };

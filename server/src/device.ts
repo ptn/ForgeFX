@@ -378,6 +378,7 @@ class Device {
       const p = profileForModel(modelId);
       if (p.model === modelId) this.#prof = p;
       this.#detected = true;
+      console.log(`[forgefx] active profile: ${this.#prof.key} (model 0x${this.#prof.model.toString(16)}, ${this.#prof.rows}x${this.#prof.cols}) ${p.model === modelId ? 'adopted' : 'kept default — no profile for 0x' + (modelId >= 0 ? modelId.toString(16) : '?')}`);
       return {
         connected: modelId >= 0,
         modelId,

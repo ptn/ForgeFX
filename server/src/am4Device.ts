@@ -77,6 +77,14 @@ class Am4Device {
       const f = frames.find(isStructResponse);
       if (!f) return null;
       const b = unpackMsb(f.slice(16, f.length - 2), STRUCT_BYTES); // 16-byte header … <septets> cksum F7
+      if (process.env.AM4_DEBUG !== '0') {
+        // DEBUG: dump the unpacked structure + auto-locate block-type codes at every offset, so we can
+        // confirm/fix the slot offset against a real preset. Remove once the slot layout is pinned.
+        this.#log(`struct[192]: ${[...b].map((x) => x.toString(16).padStart(2, '0')).join('')}`);
+        const hits: string[] = [];
+        for (let o = 0; o + 4 <= STRUCT_BYTES; o++) { const v = int32LE(b, o); if (v && BLOCK_NAMES_BY_VALUE[v]) hits.push(`0x${o.toString(16)}=${BLOCK_NAMES_BY_VALUE[v]}`); }
+        this.#log(`block-code scan: ${hits.join(' ') || '(none)'}`);
+      }
       const slots: Am4Slot[] = STRUCT_SLOT_OFFSETS.map((off, i) => {
         const code = int32LE(b, off);
         return { slot: i + 1, blockType: BLOCK_NAMES_BY_VALUE[code] ?? (code ? `0x${code.toString(16)}` : 'none'), pidLow: code };

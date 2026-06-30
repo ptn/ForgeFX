@@ -24,7 +24,13 @@ class Cloud {
   #client: SupabaseClient | null = null;
   #c(): SupabaseClient {
     if (!this.#client) this.#client = createClient(URL, KEY, {
-      auth: { storage: sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+      auth: { storage: sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      global: {
+        // supabase-js has no fetch timeout — a stalled REST/Storage call would hang the request
+        // forever (the client just sees "signal timed out"). Cap each call so it fails fast + loud.
+        fetch: (input: Parameters<typeof fetch>[0], init: RequestInit = {}) =>
+          fetch(input, { ...init, signal: init.signal ?? AbortSignal.timeout(15000) })
+      }
     });
     return this.#client;
   }

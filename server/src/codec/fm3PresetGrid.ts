@@ -82,18 +82,89 @@ export function decodePresetBody(frames: readonly (readonly number[])[], expecte
   return { modelId, body: huffmanUncompress(comp, decompSize), decompSize };
 }
 
-// Amp model in the decompressed body — device-diff confirmed (setType N → byte at 0x123c = N exactly).
-// u16 LE; the amp's 4 channels (A-D) are at +0x120 (288) stride. (FM3 layout, model 0x11.)
-const AMP_MODEL_OFFSET = 0x123c;
-const AMP_CHANNEL_STRIDE = 0x120;
-/** The amp model ordinal for each of the 4 channels (A-D). Map via FM3_ROSTERS.amp for names. */
-export function readAmpModels(body: Uint8Array): number[] {
+// Per-block MODEL offsets in the decompressed body (FM3 layout, model 0x11). Device-diff confirmed:
+// setType(eid, N) → the u16 LE at <block-header + rel> becomes N exactly (cross-checked: the decoded
+// model names are sensible across ≥2 presets / .syx files).
+//
+// Block param regions are NOT at fixed absolute offsets — they shift per preset (a block only occupies
+// space when placed). What IS stable is each block's HEADER and the model's offset RELATIVE to it.
+// A block header = the family's grid effectId as a u16 LE followed by ≥8 zero bytes, located in the
+// param region (offset ≥ PARAM_REGION_BASE = the always-present amp block's header at 0x1202). The model
+// for a placed block is then the u16 at header+rel. Absent blocks have no header → no model (correct).
+//
+// `eid` is the family's BASE grid effectId (instance 1); instances 2..N use eid+1..eid+3, each with its
+// own header — readBlockModels finds every instance. `stride`/`channels`: amp stores its model per
+// channel (A-D) at +0x120; the other confirmed families store ONE model per block (channels:1). Only
+// offsets verified by device-diff are listed — families without a confirmed entry are simply not decoded
+// (missing > wrong: a bad offset would poison the library's model search).
+export const FM3_BLOCK_MODEL_OFFSETS: Record<string, { eid: number; rel: number; stride: number; channels: number }> = {
+  amp: { eid: 58, rel: 0x3a, stride: 0x120, channels: 4 },
+  drive: { eid: 118, rel: 0x42, stride: 0, channels: 1 },
+  cab: { eid: 62, rel: 0x84, stride: 0, channels: 1 },
+  geq: { eid: 50, rel: 0x4c, stride: 0, channels: 1 },
+  comp: { eid: 46, rel: 0x46, stride: 0, channels: 1 },
+  reverb: { eid: 66, rel: 0x2e, stride: 0, channels: 1 },
+  delay: { eid: 70, rel: 0x3c, stride: 0, channels: 1 },
+  wah: { eid: 94, rel: 0x2e, stride: 0, channels: 1 }
+};
+// The always-present amp block header (0x1202) is the floor of the audio-block param region. Headers
+// below it live in the fixed setup/global prelude (eids 30-34) whose values can collide with audio eids.
+const PARAM_REGION_BASE = 0x1202;
+const INSTANCE_SPAN = 4; // a family reserves eid..eid+3 (instances 1..4) in the grid id space
+
+/** Locate a block's header in the param region: its effectId as u16 LE + ≥8 zero bytes, at/after
+ *  PARAM_REGION_BASE. Returns the lowest match (a placed block has exactly one). null if absent. */
+function findBlockHeader(body: Uint8Array, eid: number): number | null {
+  for (let i = PARAM_REGION_BASE; i + 10 < body.length; i++) {
+    if ((body[i]! | (body[i + 1]! << 8)) !== eid) continue;
+    let zeros = true;
+    for (let k = 2; k < 10; k++) if (body[i + k] !== 0) { zeros = false; break; }
+    if (zeros) return i;
+  }
+  return null;
+}
+
+/** Per-channel model ordinals for one placed block instance, given its header + family layout.
+ *  Reads `channels` u16 values at `stride` apart starting from header+rel. */
+function readModelsAt(body: Uint8Array, header: number, rel: number, stride: number, channels: number): number[] {
   const out: number[] = [];
-  for (let n = 0; n < 4; n++) {
-    const o = AMP_MODEL_OFFSET + n * AMP_CHANNEL_STRIDE;
+  for (let n = 0; n < channels; n++) {
+    const o = header + rel + n * stride;
     if (o + 1 < body.length) out.push(body[o]! | (body[o + 1]! << 8));
   }
   return out;
+}
+
+/** Every placed block's model ordinals per family slug (e.g. amp/drive/cab/…), across all instances
+ *  and channels. Only families in FM3_BLOCK_MODEL_OFFSETS are decoded; a family with no placed block
+ *  is omitted. Map ordinals→names via FM3_ROSTERS[slug] (the caller does, to keep this layer roster-free).
+ *  Validate ordinals against the roster size at the call site — this returns raw ordinals.
+ *
+ *  `placedEids` (the grid's placed effectIds, from decodePresetDump) gates which instances are read:
+ *  it's REQUIRED for correctness, because a small effectId (e.g. geq=50) can appear with the header's
+ *  zero-byte signature inside another block's param data (a phantom). Decoding only blocks the grid
+ *  actually places eliminates those false positives. */
+export function readBlockModels(body: Uint8Array, placedEids: ReadonlySet<number>): Record<string, number[]> {
+  const out: Record<string, number[]> = {};
+  for (const [slug, { eid, rel, stride, channels }] of Object.entries(FM3_BLOCK_MODEL_OFFSETS)) {
+    const ords: number[] = [];
+    for (let inst = 0; inst < INSTANCE_SPAN; inst++) {
+      if (!placedEids.has(eid + inst)) continue; // skip unplaced instances (avoids phantom-header reads)
+      const header = findBlockHeader(body, eid + inst);
+      if (header == null) continue;
+      ords.push(...readModelsAt(body, header, rel, stride, channels));
+    }
+    if (ords.length) out[slug] = ords;
+  }
+  return out;
+}
+
+/** The amp model ordinal for each of the 4 channels (A-D). Map via FM3_ROSTERS.amp for names.
+ *  Kept for back-compat; re-implemented via the FM3_BLOCK_MODEL_OFFSETS table. */
+export function readAmpModels(body: Uint8Array): number[] {
+  const { eid, rel, stride, channels } = FM3_BLOCK_MODEL_OFFSETS.amp!;
+  const header = findBlockHeader(body, eid);
+  return header == null ? [] : readModelsAt(body, header, rel, stride, channels);
 }
 
 // ---- 1. dump frames → 0x78 chunk payloads ----

@@ -29,7 +29,7 @@ import { autoDetectPath } from './transport/serial.js';
 import { listConnections, resolveConn, openConn, getConnOverride, setConnOverride } from './transport/connection.js';
 import { midiAvailable } from './transport/midi.js';
 import type { Transport, Conn } from './transport/types.js';
-import { decodePresetDump, decodePresetBody, readAmpModels, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
+import { decodePresetDump, decodePresetBody, readBlockModels, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
 import { FM3_ROSTERS } from 'fractal-midi/gen3/fm3';
 import { DEVICE_MODELS, MODEL_BROADCAST, modelFromPortName } from './models.js';
 import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile, type TypeModel, type DeviceLayout } from './devices.js';
@@ -52,7 +52,11 @@ export type PresetSummary = {
   crcValid: boolean;
   scenes: string[];
   blocks: { effectId: number; slug: string | null; name: string; instance: number | null }[];
-  /** Amp model names in use (distinct across the amp's 4 channels) — for "presets using amp X". FM3 only. */
+  /** Distinct model names in use per block family (amp/drive/cab/reverb/…) — for "presets using model X".
+   *  Keyed by family slug; only families with a decoded model are present. FM3 only. */
+  models: Record<string, string[]>;
+  /** Amp model names in use (distinct across the amp's 4 channels) — for "presets using amp X". FM3 only.
+   *  Back-compat alias of `models.amp` (the library still binds to this). */
   amps: string[];
 };
 const CH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -406,7 +410,8 @@ class Device {
       quietMs: 180,
       match: (fs) => fs.some((f) => f[5] === 0x79)
     });
-    return this.#summarizeDump(decodePresetDump(frames, this.#prof.model), this.#ampNames(frames), presetNumber);
+    const decoded = decodePresetDump(frames, this.#prof.model);
+    return this.#summarizeDump(decoded, this.#blockModelNames(frames, decoded), presetNumber);
   }
 
   /** Decode a preset from raw .syx bytes (a saved/exported dump) — offline, no device needed. Splits
@@ -424,33 +429,45 @@ class Device {
         }
       }
     }
-    return this.#summarizeDump(decodePresetDump(frames, this.#prof.model), this.#ampNames(frames), -1);
+    const decoded = decodePresetDump(frames, this.#prof.model);
+    return this.#summarizeDump(decoded, this.#blockModelNames(frames, decoded), -1);
   }
 
-  /** Distinct amp-model names used across the amp's 4 channels (FM3 body layout). Empty for non-FM3. */
-  #ampNames(frames: readonly (readonly number[])[]): string[] {
-    if (this.#prof.model !== 0x11) return [];
+  /** Distinct model names per block family (amp/drive/cab/reverb/…) decoded from the body. Maps each
+   *  family's ordinals→names via FM3_ROSTERS, dropping ordinals outside the roster (uninitialised slots /
+   *  unplaced-instance noise). `decoded` supplies the grid's placed effectIds so only placed blocks are
+   *  read (the model scan needs that to reject phantom headers). Empty for non-FM3. */
+  #blockModelNames(frames: readonly (readonly number[])[], decoded: ReturnType<typeof decodePresetDump>): Record<string, string[]> {
+    if (this.#prof.model !== 0x11) return {};
     try {
       const { body } = decodePresetBody(frames, this.#prof.model);
-      const names = new Set<string>();
-      for (const ord of readAmpModels(body)) {
-        const m = FM3_ROSTERS.amp?.find((a) => a.value === ord);
-        if (m) names.add(m.name);
+      const placedEids = new Set<number>(decoded.grid.filter((c) => !c.isShunt && c.effectId).map((c) => c.effectId));
+      const out: Record<string, string[]> = {};
+      const rosters = FM3_ROSTERS as Readonly<Record<string, readonly { value: number; name: string }[]>>;
+      for (const [slug, ords] of Object.entries(readBlockModels(body, placedEids))) {
+        const roster = rosters[slug];
+        if (!roster) continue;
+        const names = new Set<string>();
+        for (const ord of ords) {
+          const m = roster.find((r) => r.value === ord);
+          if (m) names.add(m.name);
+        }
+        if (names.size) out[slug] = [...names];
       }
-      return [...names];
+      return out;
     } catch {
-      return [];
+      return {};
     }
   }
 
-  #summarizeDump(d: ReturnType<typeof decodePresetDump>, amps: string[], presetNumber: number): PresetSummary {
+  #summarizeDump(d: ReturnType<typeof decodePresetDump>, models: Record<string, string[]>, presetNumber: number): PresetSummary {
     const seen = new Map<number, { effectId: number; slug: string | null; name: string; instance: number | null }>();
     for (const c of d.grid) {
       if (c.isShunt || !c.effectId || seen.has(c.effectId)) continue;
       const ref = blockRefForEid(c.effectId);
       seen.set(c.effectId, { effectId: c.effectId, slug: ref?.slug ?? null, name: c.name, instance: ref?.instance ?? null });
     }
-    return { number: presetNumber, name: d.name, model: d.modelName, crcValid: d.crcValid, scenes: d.sceneNames, blocks: [...seen.values()], amps };
+    return { number: presetNumber, name: d.name, model: d.modelName, crcValid: d.crcValid, scenes: d.sceneNames, blocks: [...seen.values()], models, amps: models.amp ?? [] };
   }
 
   /** Decompressed preset body as hex — for per-block param-decode RE (diff bodies across known param

@@ -133,7 +133,7 @@ export class MidiTransport implements Transport {
       if (msg[0] === SYSEX_START) {
         const frame = msg as number[];
         this.#logTap('RX', frame);
-        if (this.#debug) console.log(`[forgefx][midi] RX ${frame.length}B: ${frame.slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join(' ')}…`);
+        console.log(`[forgefx][midi] RX ${frame.length}B: ${frame.slice(0, 10).map((b) => b.toString(16).padStart(2, '0')).join(' ')}${frame.length > 10 ? '…' : ''}`);
         for (const h of this.#handlers) h(frame);
       }
     });
@@ -151,7 +151,6 @@ export class MidiTransport implements Transport {
     this.#out = out;
     console.log(`[forgefx][midi] opened: in="${this.#inId}"(${ii}) out="${this.#outId}"(${oi})`);
   }
-  #debug = !!process.env.FORGEFX_MIDI_DEBUG;
 
   async close(): Promise<void> {
     try {
@@ -177,6 +176,7 @@ export class MidiTransport implements Transport {
   send(bytes: readonly number[]): void {
     if (!this.#out) throw new Error('midi port not open');
     this.#logTap('TX', bytes);
+    console.log(`[forgefx][midi] TX ${bytes.length}B: ${bytes.slice(0, 10).map((b) => b.toString(16).padStart(2, '0')).join(' ')}${bytes.length > 10 ? '…' : ''}`);
     this.#out.send([...bytes]);
   }
 

@@ -357,6 +357,11 @@ class Device {
       quietMs: 180,
       match: (fs) => fs.some((f) => f[5] === 0x79) // 0x79 = dump terminator
     });
+    // diagnostic: did the dump arrive? (Windows MIDI large-SysEx debugging) — frame count, the function
+    // bytes seen, total bytes, and whether the 0x79 terminator came through.
+    const fns = [...new Set(frames.map((f) => f[5]))].map((x) => '0x' + (x ?? 0).toString(16));
+    const bytes = frames.reduce((n, f) => n + f.length, 0);
+    console.log(`[forgefx] presetDump: frames=${frames.length} bytes=${bytes} fns=[${fns.join(',')}] terminator=${frames.some((f) => f[5] === 0x79)}`);
     const d = decodePresetDump(frames, this.#prof.model);
     return {
       model: 'fm3',

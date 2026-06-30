@@ -3,6 +3,9 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
+# Local-only Claude Code context (documents RE/capture methods — never commit)
+CLAUDE.md
+
 # dotenv files
 .env
 

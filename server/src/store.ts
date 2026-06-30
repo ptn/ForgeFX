@@ -7,6 +7,13 @@
 import { mkdirSync, readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { brotliCompressSync, brotliDecompressSync, constants as zc } from 'node:zlib';
+
+// Preset .syx is 7-bit-padded SysEx → compresses ~3-4x. Brotli at rest (small local footprint) AND so the
+// blob is already compressed when synced to the cloud (storage = money). Quality 9 ≈ near-max, fast enough
+// for ~25 KB blobs. Restore/download decompresses back to a valid .syx.
+const packSyx = (b: Uint8Array) => brotliCompressSync(b, { params: { [zc.BROTLI_PARAM_QUALITY]: 9 } });
+const unpackSyx = (b: Buffer) => new Uint8Array(brotliDecompressSync(b));
 
 export const DATA_DIR = process.env.FORGEFX_DATA_DIR ?? join(homedir(), '.axis');
 const STORE_DIR = join(DATA_DIR, 'store'); // documents: one JSON map per collection
@@ -46,24 +53,26 @@ export interface PresetVersion {
   capturedAt: number;
   source: 'manual' | 'auto' | 'backup';
   backupId?: string; // set when captured as part of a full-device backup
-  bytes: number; // .syx size
+  bytes: number; // raw .syx size
+  stored: number; // compressed (brotli) size on disk / synced
 }
 const vIndex = (): PresetVersion[] => readJSON(join(VERSIONS_DIR, 'index.json'), []);
 const saveVIndex = (v: PresetVersion[]) => { ensure(VERSIONS_DIR); writeJSON(join(VERSIONS_DIR, 'index.json'), v); };
-const blobPath = (v: PresetVersion) => join(VERSIONS_DIR, String(v.location), `${v.id}.syx`);
+const blobPath = (v: PresetVersion) => join(VERSIONS_DIR, String(v.location), `${v.id}.syx.br`); // brotli
 
 /** Snapshot a preset. Skips if the latest snapshot for this slot has the same CRC (no churn) — unless
  *  it's part of a full backup, where we always record the slot. */
-export function addPresetVersion(meta: Omit<PresetVersion, 'id' | 'capturedAt' | 'bytes'>, syx: Uint8Array): PresetVersion | null {
+export function addPresetVersion(meta: Omit<PresetVersion, 'id' | 'capturedAt' | 'bytes' | 'stored'>, syx: Uint8Array): PresetVersion | null {
   const all = vIndex();
   if (!meta.backupId) {
     const latest = all.filter((x) => x.location === meta.location).sort((a, b) => b.capturedAt - a.capturedAt)[0];
     if (latest && latest.crc === meta.crc) return latest; // unchanged → reuse
   }
   const id = `${meta.location}-${(meta.crc >>> 0).toString(16)}-${Date.now().toString(36)}`;
-  const v: PresetVersion = { id, capturedAt: Date.now(), bytes: syx.length, ...meta };
+  const packed = packSyx(syx);
+  const v: PresetVersion = { id, capturedAt: Date.now(), bytes: syx.length, stored: packed.length, ...meta };
   ensure(join(VERSIONS_DIR, String(meta.location)));
-  writeFileSync(blobPath(v), Buffer.from(syx));
+  writeFileSync(blobPath(v), packed);
   all.push(v); saveVIndex(all);
   return v;
 }
@@ -74,7 +83,7 @@ export function listPresetVersions(location?: number): PresetVersion[] {
 export function getPresetVersionBytes(id: string): Uint8Array | null {
   const v = vIndex().find((x) => x.id === id);
   if (!v) return null;
-  try { return readFileSync(blobPath(v)); } catch { return null; }
+  try { return unpackSyx(readFileSync(blobPath(v))); } catch { return null; }
 }
 
 // ─────────────────────────── full-device backups ───────────────────────────

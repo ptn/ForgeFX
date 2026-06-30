@@ -11,6 +11,13 @@ import * as store from './store.js';
 const PORT = Number(process.env.PORT ?? 5056);
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 await app.register(cors, { origin: true });
+// tolerate an empty JSON body (no-body POSTs like /cloud/sync, /cloud/logout, /tempo/tap send
+// content-type: application/json with no payload → Fastify would 400 by default).
+app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+  const s = body as string;
+  if (!s || !s.length) return done(null, {});
+  try { done(null, JSON.parse(s)); } catch (e) { done(e as Error); }
+});
 // accept raw .syx bytes (preset files) on POST /preset/decode
 app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
 

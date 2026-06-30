@@ -37,7 +37,10 @@ class Am4Device {
     const dev = await device.openTransport();
     const out: Am4Slot[] = [];
     for (let i = 1; i <= 4; i++) {
-      const read = buildReadParam({ pidLow: BLOCK_SLOT_PID_LOW, pidHigh: BLOCK_SLOT_PID_HIGH_BASE + i });
+      // Slot position 1..4 maps to pidHigh 0x0F..0x12 (wire-confirmed in buildSetBlockType). The old
+      // `BASE + i` read 0x10..0x13 — i.e. device slots 2,3,4 mislabeled as 1,2,3,4, plus the INVALID
+      // 0x13 register (which can cause side effects on unrelated slots). Use BASE + (i-1).
+      const read = buildReadParam({ pidLow: BLOCK_SLOT_PID_LOW, pidHigh: BLOCK_SLOT_PID_HIGH_BASE + (i - 1) });
       const frames = await dev.request(read, { timeoutMs: 800, quietMs: 60, match: (fs) => fs.some((f) => isReadResponse(read, f)) });
       const f = frames.find((fr) => isReadResponse(read, fr));
       if (!f) {

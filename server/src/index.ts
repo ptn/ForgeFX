@@ -33,6 +33,10 @@ app.get<{ Params: { n: string } }>('/presets/:n', (req) => ({ number: Number(req
 app.get<{ Params: { n: string } }>('/presets/:n/summary', async (req, reply) => {
   try { return await device.presetSummary(Number(req.params.n)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
+// Full per-block decoded params for one preset (every family/param) — deep-search + browser detail.
+app.get<{ Params: { n: string } }>('/presets/:n/params', async (req, reply) => {
+  try { return { blocks: await device.presetParams(Number(req.params.n)) }; } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 // Decode an uploaded preset .syx file (raw bytes, application/octet-stream) → library summary. Offline.
 app.post('/preset/decode', (req, reply) => {
   const buf = req.body as Buffer | undefined;

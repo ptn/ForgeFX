@@ -29,8 +29,8 @@ import { autoDetectPath } from './transport/serial.js';
 import { listConnections, resolveConn, openConn, getConnOverride, setConnOverride } from './transport/connection.js';
 import { midiAvailable } from './transport/midi.js';
 import type { Transport, Conn } from './transport/types.js';
-import { decodePresetDump, decodePresetBody, readBlockModels, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
-import { FM3_ROSTERS } from 'fractal-midi/gen3/fm3';
+import { decodePresetDump, decodePresetBody, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
+import { readBlockParamsFull, modelsFromBlocks, type DecodedBlock } from './codec/fm3BlockParams.js';
 import { DEVICE_MODELS, MODEL_BROADCAST, modelFromPortName } from './models.js';
 import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile, type TypeModel, type DeviceLayout } from './devices.js';
 
@@ -58,6 +58,10 @@ export type PresetSummary = {
   /** Amp model names in use (distinct across the amp's 4 channels) — for "presets using amp X". FM3 only.
    *  Back-compat alias of `models.amp` (the library still binds to this). */
   amps: string[];
+  /** Full per-block decoded params (every family, every param) — for deep search ("amp gain > 7").
+   *  Populated for offline file decode + the on-demand /params endpoint; omitted from the bulk device
+   *  scan to keep summaries light (use `models` for type search there, fetch /params for deep queries). */
+  params?: DecodedBlock[];
 };
 const CH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
@@ -411,7 +415,20 @@ class Device {
       match: (fs) => fs.some((f) => f[5] === 0x79)
     });
     const decoded = decodePresetDump(frames, this.#prof.model);
-    return this.#summarizeDump(decoded, this.#blockModelNames(frames, decoded), presetNumber);
+    const blocks = this.#decodeBlocks(frames, decoded);
+    return this.#summarizeDump(decoded, modelsFromBlocks(blocks), presetNumber); // light: models only (bulk scan)
+  }
+
+  /** Full per-block params (every family/param) for one device preset — the deep-search / detail source. */
+  async presetParams(presetNumber: number): Promise<DecodedBlock[]> {
+    await this.#ready();
+    const dev = await this.#conn();
+    const frames = await dev.request(buildRequestPresetDump(presetNumber, this.#prof.model), {
+      timeoutMs: 5000,
+      quietMs: 180,
+      match: (fs) => fs.some((f) => f[5] === 0x79)
+    });
+    return this.#decodeBlocks(frames, decodePresetDump(frames, this.#prof.model));
   }
 
   /** Decode a preset from raw .syx bytes (a saved/exported dump) — offline, no device needed. Splits
@@ -430,33 +447,25 @@ class Device {
       }
     }
     const decoded = decodePresetDump(frames, this.#prof.model);
-    return this.#summarizeDump(decoded, this.#blockModelNames(frames, decoded), -1);
+    const blocks = this.#decodeBlocks(frames, decoded);
+    const summary = this.#summarizeDump(decoded, modelsFromBlocks(blocks), -1);
+    summary.params = blocks; // offline files embed full params (few files → fine for search/storage)
+    return summary;
   }
 
-  /** Distinct model names per block family (amp/drive/cab/reverb/…) decoded from the body. Maps each
-   *  family's ordinals→names via FM3_ROSTERS, dropping ordinals outside the roster (uninitialised slots /
-   *  unplaced-instance noise). `decoded` supplies the grid's placed effectIds so only placed blocks are
-   *  read (the model scan needs that to reject phantom headers). Empty for non-FM3. */
-  #blockModelNames(frames: readonly (readonly number[])[], decoded: ReturnType<typeof decodePresetDump>): Record<string, string[]> {
-    if (this.#prof.model !== 0x11) return {};
-    try {
-      const { body } = decodePresetBody(frames, this.#prof.model);
+  /** Decode every placed block's full params from the preset body, table-driven via the universal
+   *  layout (u16 array @ header+0x2e, paramId order) + the fractal-midi catalog (FM3_PARAMS/RANGES/
+   *  ENUM_OVERRIDES/ROSTERS). `decoded` supplies the grid's placed effectIds so only placed blocks are
+   *  read (rejects phantom headers). Empty for non-FM3. The model/type search index is derived from
+   *  this via `modelsFromBlocks`. */
+  #decodeBlocks(frames: readonly (readonly number[])[], decoded: ReturnType<typeof decodePresetDump>): DecodedBlock[] {
+    if (decoded.modelId !== 0x11) return []; // gate on the PRESET's model (not the connected device) — so
+    try {                                    // an offline FM3 .syx decodes even when no FM3 is attached
+      const { body } = decodePresetBody(frames, decoded.modelId);
       const placedEids = new Set<number>(decoded.grid.filter((c) => !c.isShunt && c.effectId).map((c) => c.effectId));
-      const out: Record<string, string[]> = {};
-      const rosters = FM3_ROSTERS as Readonly<Record<string, readonly { value: number; name: string }[]>>;
-      for (const [slug, ords] of Object.entries(readBlockModels(body, placedEids))) {
-        const roster = rosters[slug];
-        if (!roster) continue;
-        const names = new Set<string>();
-        for (const ord of ords) {
-          const m = roster.find((r) => r.value === ord);
-          if (m) names.add(m.name);
-        }
-        if (names.size) out[slug] = [...names];
-      }
-      return out;
+      return readBlockParamsFull(body, placedEids);
     } catch {
-      return {};
+      return [];
     }
   }
 

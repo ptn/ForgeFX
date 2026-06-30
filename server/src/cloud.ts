@@ -20,14 +20,30 @@ const sessionStorage = {
   removeItem: (k: string): void => { store.delDoc('cloud', k); }
 };
 
+/** Reject if a promise doesn't settle in time. storage-js runs its own fetch (no client timeout), so a
+ *  stalled blob upload/download would otherwise hang the whole sync forever. */
+function withTimeout<T>(p: PromiseLike<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms))
+  ]);
+}
+
 class Cloud {
   #client: SupabaseClient | null = null;
   #c(): SupabaseClient {
     if (!this.#client) this.#client = createClient(URL, KEY, {
-      auth: { storage: sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      auth: {
+        storage: sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false,
+        // supabase-js's default auth lock (navigatorLock/process lock) can DEADLOCK in a long-lived
+        // Node process: a stalled token refresh holds the lock and every later getUser()/query waits
+        // on it forever — surfacing as "signal timed out" with no recovery until restart. We're
+        // single-process, so a passthrough lock is safe and removes the deadlock entirely.
+        lock: <R>(_name: string, _acquireTimeout: number, fn: () => Promise<R>) => fn()
+      },
       global: {
         // supabase-js has no fetch timeout — a stalled REST/Storage call would hang the request
-        // forever (the client just sees "signal timed out"). Cap each call so it fails fast + loud.
+        // forever. Cap each call so it fails fast + loud instead.
         fetch: (input: Parameters<typeof fetch>[0], init: RequestInit = {}) =>
           fetch(input, { ...init, signal: init.signal ?? AbortSignal.timeout(15000) })
       }
@@ -91,30 +107,41 @@ class Cloud {
     if (!user) throw new Error('not logged in');
     const bucket = c.storage.from('preset-blobs');
 
+    console.log('[cloud] syncVersions: listing remote…');
     const { data: remoteRows, error: rerr } = await c.from('preset_versions').select('*');
     if (rerr) throw new Error(`versions pull-list: ${rerr.message}`);
     const remoteIds = new Set((remoteRows ?? []).map((r) => r.id as string));
+    const local = store.listPresetVersions();
+    console.log(`[cloud] syncVersions: ${remoteIds.size} remote, ${local.length} local`);
 
+    // A full-device backup creates 100+ versions; the first sync must push them all. Do it in
+    // concurrent batches (instead of one-at-a-time) so a fresh backup syncs in seconds, not minutes.
+    const toPush = local.filter((v) => !remoteIds.has(v.id));
+    console.log(`[cloud] syncVersions: pushing ${toPush.length} new version(s)`);
     let pushed = 0;
-    for (const v of store.listPresetVersions()) {
-      if (remoteIds.has(v.id)) continue; // immutable → already synced
-      const packed = store.getPresetVersionPacked(v.id);
-      if (!packed) continue;
-      const path = `${user.id}/${v.location}/${v.id}.syx.br`;
-      const { error: upErr } = await bucket.upload(path, packed, { upsert: true, contentType: 'application/octet-stream' });
-      if (upErr) throw new Error(`blob upload: ${upErr.message}`);
-      const { error: mErr } = await c.from('preset_versions').upsert({
-        user_id: user.id, id: v.id, location: v.location, crc: v.crc, name: v.name, model: v.model,
-        captured_at: v.capturedAt, source: v.source, backup_id: v.backupId ?? null, bytes: v.bytes, stored: v.stored, blob_path: path
-      });
-      if (mErr) throw new Error(`version meta: ${mErr.message}`);
-      pushed++;
+    const CONCURRENCY = 6;
+    for (let i = 0; i < toPush.length; i += CONCURRENCY) {
+      await Promise.all(toPush.slice(i, i + CONCURRENCY).map(async (v) => {
+        const packed = store.getPresetVersionPacked(v.id);
+        if (!packed) return;
+        const path = `${user.id}/${v.location}/${v.id}.syx.br`;
+        const { error: upErr } = await withTimeout(bucket.upload(path, packed, { upsert: true, contentType: 'application/octet-stream' }), 20000, `blob upload ${v.id}`);
+        if (upErr) throw new Error(`blob upload: ${upErr.message}`);
+        const { error: mErr } = await c.from('preset_versions').upsert({
+          user_id: user.id, id: v.id, location: v.location, crc: v.crc, name: v.name, model: v.model,
+          captured_at: v.capturedAt, source: v.source, backup_id: v.backupId ?? null, bytes: v.bytes, stored: v.stored, blob_path: path
+        });
+        if (mErr) throw new Error(`version meta: ${mErr.message}`);
+        pushed++;
+      }));
+      console.log(`[cloud] syncVersions: pushed ${pushed}/${toPush.length}`);
     }
 
     let pulled = 0;
     for (const r of remoteRows ?? []) {
       if (store.hasPresetVersion(r.id)) continue;
-      const { data: blob, error: dErr } = await bucket.download(r.blob_path);
+      console.log(`[cloud] syncVersions: downloading ${r.id}…`);
+      const { data: blob, error: dErr } = await withTimeout(bucket.download(r.blob_path), 20000, `blob download ${r.id}`);
       if (dErr || !blob) continue;
       const packed = new Uint8Array(await blob.arrayBuffer());
       store.addVersionRaw({ id: r.id, location: r.location, crc: r.crc, name: r.name, model: r.model, capturedAt: r.captured_at, source: r.source, backupId: r.backup_id ?? undefined, bytes: r.bytes, stored: r.stored }, packed);
@@ -149,8 +176,11 @@ class Cloud {
   async sync(scopes?: { config?: boolean; presets?: boolean }) {
     const doConfig = scopes?.config ?? true;
     const doPresets = scopes?.presets ?? true;
+    console.log(`[cloud] sync: start (config=${doConfig} presets=${doPresets})`);
     const config = doConfig ? await this.syncConfig() : { pushed: 0, pulled: 0 };
+    console.log('[cloud] sync: config done, versions…');
     const versions = doPresets ? await this.syncVersions() : { pushed: 0, pulled: 0 };
+    console.log('[cloud] sync: done');
     return { config, versions };
   }
 }

@@ -16,6 +16,9 @@ export interface Transport {
   send(bytes: readonly number[]): void;
   /** Serialized fire-and-forget (won't inject mid-read). */
   sendQueued(bytes: readonly number[], settleMs?: number): Promise<void>;
+  /** Serialized large paced send (chunked) for big payloads like a preset-dump → edit buffer.
+   *  Optional: transports that don't need pacing (USB-MIDI) can omit it; callers fall back to sendQueued. */
+  sendPaced?(bytes: readonly number[], chunk?: number, delayMs?: number): Promise<void>;
   /** Send a request and collect reply frames (serialized against other requests). */
   request(bytes: readonly number[], opts?: RequestOpts): Promise<number[][]>;
   /** Subscribe to every inbound SysEx frame; returns an unsubscribe fn. */

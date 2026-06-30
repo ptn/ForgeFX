@@ -1077,6 +1077,24 @@ class Device {
   async store(n: number) {
     return this.#write(buildStorePreset(n, this.#prof.model));
   }
+
+  /** Load a raw preset dump (.syx bytes) straight into the device's EDIT BUFFER — no slot is touched
+   *  (only `store` writes a slot). This is how you play a preset that isn't on the device (e.g. a
+   *  cloud-only backup), sidestepping the slot limit. Sent paced (the FM3 CDC drops a flooded write). */
+  async loadPresetBytes(syx: Uint8Array): Promise<{ ok: boolean }> {
+    const dev = await this.#conn();
+    const bytes = Array.from(syx);
+    if (dev.sendPaced) await dev.sendPaced(bytes);
+    else await dev.sendQueued(bytes);
+    this.#gridCache = null; // edit buffer changed → next grid/blocks read reflects it
+    return { ok: true };
+  }
+  /** Load a stored version snapshot into the edit buffer. */
+  async loadVersion(id: string): Promise<{ ok: boolean }> {
+    const bytes = store.getPresetVersionBytes(id);
+    if (!bytes) throw new Error('version not found');
+    return this.loadPresetBytes(bytes);
+  }
 }
 
 function clamp01(v: number) { return Math.max(0, Math.min(1, v)); }

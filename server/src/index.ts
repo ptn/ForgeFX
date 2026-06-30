@@ -67,6 +67,16 @@ app.post<{ Body: { label?: string; from?: number; to?: number } }>('/backup/devi
   catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
 app.get('/backups', () => ({ backups: store.listBackups() }));
+// load a stored version into the EDIT BUFFER (play it without occupying a slot)
+app.post<{ Params: { id: string } }>('/version/:id/load', async (req, reply) => {
+  try { return await device.loadVersion(req.params.id); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+// load arbitrary raw .syx bytes (e.g. a cloud/file preset) into the edit buffer
+app.post('/preset/load', async (req, reply) => {
+  const buf = req.body as Buffer | undefined;
+  if (!buf || !buf.length) { reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream' }; }
+  try { return await device.loadPresetBytes(new Uint8Array(buf)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 // version history (all, or for one slot via ?location=)
 app.get<{ Querystring: { location?: string } }>('/versions', (req) => ({ versions: store.listPresetVersions(req.query.location != null ? Number(req.query.location) : undefined) }));
 // download a stored snapshot's raw .syx

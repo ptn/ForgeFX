@@ -175,6 +175,29 @@ export class FractalSerial implements Transport {
     this.#port.write(Buffer.from(bytes));
   }
 
+  /** Send a large payload (e.g. a full preset dump → edit buffer) in small paced chunks. The FM3's CDC
+   *  serial drops bytes if flooded — the editor bridge paces at ~64 B / 3 ms, so we match that. Serialized
+   *  on the request chain so it never interleaves with a read. */
+  sendPaced(bytes: readonly number[], chunk = 64, delayMs = 3): Promise<void> {
+    const task = () =>
+      new Promise<void>((resolve, reject) => {
+        if (!this.#port?.isOpen) return reject(new Error('port not open'));
+        this.#logTap('TX', bytes);
+        const buf = Buffer.from(bytes);
+        let off = 0;
+        const pump = () => {
+          if (off >= buf.length) { setTimeout(resolve, 20); return; } // settle before the next request
+          this.#port!.write(buf.subarray(off, off + chunk));
+          off += chunk;
+          setTimeout(pump, delayMs);
+        };
+        pump();
+      });
+    const p = this.#chain.then(task, task);
+    this.#chain = p.then(() => {}, () => {});
+    return p;
+  }
+
   // serial is a single shared stream — requests MUST run one at a time, or reply
   // frames from concurrent requests interleave and corrupt each other.
   #chain: Promise<unknown> = Promise.resolve();

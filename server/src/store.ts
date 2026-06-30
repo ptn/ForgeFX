@@ -13,7 +13,9 @@ import { brotliCompressSync, brotliDecompressSync, constants as zc } from 'node:
 // Preset .syx is 7-bit-padded SysEx → compresses ~3-4x. Brotli at rest (small local footprint) AND so the
 // blob is already compressed when synced to the cloud (storage = money). Quality 9 ≈ near-max, fast enough
 // for ~25 KB blobs. Restore/download decompresses back to a valid .syx.
-const packSyx = (b: Uint8Array) => brotliCompressSync(b, { params: { [zc.BROTLI_PARAM_QUALITY]: 9 } });
+// Quality 11 (max) — ~8% smaller than q9 on preset dumps; slower to compress, but dedup means only
+// changed presets are ever compressed, and decompress cost is identical. SIZE_HINT helps the encoder.
+const packSyx = (b: Uint8Array) => brotliCompressSync(b, { params: { [zc.BROTLI_PARAM_QUALITY]: 11, [zc.BROTLI_PARAM_SIZE_HINT]: b.length } });
 const unpackSyx = (b: Buffer) => new Uint8Array(brotliDecompressSync(b));
 
 export const DATA_DIR = process.env.FORGEFX_DATA_DIR ?? join(homedir(), '.axis');

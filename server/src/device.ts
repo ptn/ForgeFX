@@ -248,15 +248,12 @@ class Device {
     try {
       const dev = await this.#conn();
       const req = this.#envelope(0x01, [0x2e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-      const frames = await dev.request(req, {
-        timeoutMs: 400,
-        quietMs: 25,
-        match: (fs) => fs.some((f) => f[5] === 0x01 && f[6] === 0x2e && f.length > 590)
-      });
-      const f = frames.find((x) => x[5] === 0x01 && x[6] === 0x2e && x.length > 590);
+      const big = (f: number[]) => f[5] === 0x01 && f[6] === 0x2e && f.length > 100; // the ~590B meters frame
+      const frames = await dev.request(req, { timeoutMs: 400, quietMs: 25, match: (fs) => fs.some(big) });
+      const f = frames.find(big);
       if (f) {
-        this.#emit({ type: 'cpu', percent: Math.round((Device.CPU_BASE + f[37]! * Device.CPU_SLOPE) * 10) / 10 });
-        this.#emit({ type: 'meters', input: f[588]! / 127, outL: f[35]! / 127, outR: f[36]! / 127 });
+        if (f.length > 37) this.#emit({ type: 'cpu', percent: Math.round((Device.CPU_BASE + f[37]! * Device.CPU_SLOPE) * 10) / 10 });
+        if (f.length > 588) this.#emit({ type: 'meters', input: f[588]! / 127, outL: f[35]! / 127, outR: f[36]! / 127 });
       }
     } catch {
       /* transient — keep polling */

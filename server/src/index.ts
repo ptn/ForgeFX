@@ -8,6 +8,7 @@ import { device } from './device.js';
 import { am4 } from './am4Device.js';
 import * as store from './store.js';
 import { registerHelpRoutes } from './help.js';
+import { telemetryStatus, uploadDebugReport, type DebugReport } from './telemetry.js';
 
 // Load ./.env if present (Supabase creds for the cloud layer) — keeps secrets out of source so the
 // public repo never ships a hosted instance's keys. No-op when there's no .env (env from the OS).
@@ -310,6 +311,14 @@ if (process.env.AXIS_CLOUD === '1') {
 } else {
   app.get('/cloud/status', async () => ({ enabled: false, user: null })); // so Axis can gate its UI without erroring
 }
+
+// ── telemetry / diagnostics ── status is always served (so Axis gates its UI without erroring). The
+// on-demand "Upload Debug Log" report is INDEPENDENT of live telemetry — it works whenever Supabase is
+// configured, as a per-incident explicit upload, even if the user declined live telemetry.
+app.get('/telemetry/status', async () => telemetryStatus());
+app.post<{ Body: DebugReport }>('/telemetry/report', async (req, reply) => {
+  try { return await uploadDebugReport(req.body ?? {}); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 
 // Auto port allocation: try PORT; if it's taken, let the OS assign a free one (port 0).
 // The actual bound port is logged (and the desktop app picks a free port up front anyway).

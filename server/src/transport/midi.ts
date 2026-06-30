@@ -129,6 +129,12 @@ export class MidiTransport implements Transport {
       throw new Error(`MIDI port not found: in="${this.#inId}" (${ii}) / out="${this.#outId}" (${oi})`);
     }
     inp.ignoreTypes(false, true, true); // RECEIVE SysEx (ignored by default)
+    // The incoming-SysEx buffer defaults to 2048 bytes, which TRUNCATES larger messages. Gen-3 preset
+    // dumps arrive as ~3082-byte 0x78 chunks (Axe-Fx III / FM9 6x14 presets) — at the default they were
+    // silently cut to 2048, so the dump's Huffman body was incomplete and the grid/blocks decode threw
+    // (FM3 chunks are smaller, so the FM3 was unaffected — which is why only the III showed an empty grid).
+    // 16 KB per message with extra buffers comfortably holds the largest chunk and the 18-chunk dump burst.
+    inp.setBufferSize(16384, 16);
     inp.on('message', (_dt, msg) => {
       if (msg[0] === SYSEX_START) {
         const frame = msg as number[];

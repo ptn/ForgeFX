@@ -6,9 +6,11 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import * as store from './store.js';
 
-const URL = process.env.SUPABASE_URL ?? 'https://zvhnpuafgytyapaqatcg.supabase.co';
-const KEY = process.env.SUPABASE_ANON_KEY ?? 'sb_publishable_jpDgqVy8gEpvL4ATrcD1Lg_Okvsc_aJ';
-export const cloudEnabled = () => process.env.AXIS_CLOUD === '1';
+// Env-only — no hardcoded instance. The hosted Axis build injects these at build/run time; self-hosters
+// set them (e.g. in ForgeFX/server/.env, loaded by index.ts). Publishable key only; never a secret.
+const URL = process.env.SUPABASE_URL ?? '';
+const KEY = process.env.SUPABASE_ANON_KEY ?? '';
+export const cloudEnabled = () => process.env.AXIS_CLOUD === '1' && !!URL && !!KEY;
 
 // supabase-js persists the auth session via a Web Storage-like API; Node has none, so back it with the
 // local store (one doc under the `cloud` collection). Sync get/set/remove is fine for our use.

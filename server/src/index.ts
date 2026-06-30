@@ -9,6 +9,10 @@ import { am4 } from './am4Device.js';
 import * as store from './store.js';
 import { registerHelpRoutes } from './help.js';
 
+// Load ./.env if present (Supabase creds for the cloud layer) — keeps secrets out of source so the
+// public repo never ships a hosted instance's keys. No-op when there's no .env (env from the OS).
+try { process.loadEnvFile(); } catch { /* no .env — rely on the ambient environment */ }
+
 const PORT = Number(process.env.PORT ?? 5056);
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 await app.register(cors, { origin: true });

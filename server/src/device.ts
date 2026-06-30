@@ -422,13 +422,27 @@ class Device {
     }
   }
 
-  async #dumpGrid(): Promise<PresetGridDTO> {
+  /** Read a preset dump, retrying when it arrives incomplete. On Windows USB-MIDI a big multi-packet
+   *  dump (Axe-Fx III presets ≈ 18 frames / 32 KB) intermittently drops its 0x78 payload chunks between
+   *  the 0x77 header and the 0x79 terminator → "no 0x78 chunks found". A re-read almost always succeeds. */
+  async #dumpFrames(target: number): Promise<number[][]> {
     const dev = await this.#conn();
-    const frames = await dev.request(buildRequestPresetDump(EDIT_BUFFER, this.#prof.model), {
-      timeoutMs: 5000,
-      quietMs: 180,
-      match: (fs) => fs.some((f) => f[5] === 0x79) // 0x79 = dump terminator
-    });
+    let frames: number[][] = [];
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      frames = await dev.request(buildRequestPresetDump(target, this.#prof.model), {
+        timeoutMs: 5000,
+        quietMs: 180,
+        match: (fs) => fs.some((f) => f[5] === 0x79) // 0x79 = dump terminator
+      });
+      const ok = frames.some((f) => f[5] === 0x78) && frames.some((f) => f[5] === 0x79);
+      if (ok) return frames;
+      console.log(`[forgefx] presetDump: incomplete attempt ${attempt}/3 (frames=${frames.length}, 0x78=${frames.some((f) => f[5] === 0x78)}, 0x79=${frames.some((f) => f[5] === 0x79)}) — retrying`);
+    }
+    return frames; // still incomplete → let decodePresetDump throw its clear error
+  }
+
+  async #dumpGrid(): Promise<PresetGridDTO> {
+    const frames = await this.#dumpFrames(EDIT_BUFFER);
     // diagnostic: did the dump arrive? (Windows MIDI large-SysEx debugging) — frame count, the function
     // bytes seen, total bytes, and whether the 0x79 terminator came through.
     const fns = [...new Set(frames.map((f) => f[5]))].map((x) => '0x' + (x ?? 0).toString(16));
@@ -453,12 +467,7 @@ class Device {
    *  (amp model etc.) are a follow-up once the per-block param decode lands. */
   async presetSummary(presetNumber: number, withParams = false): Promise<PresetSummary> {
     await this.#ready();
-    const dev = await this.#conn();
-    const frames = await dev.request(buildRequestPresetDump(presetNumber, this.#prof.model), {
-      timeoutMs: 5000,
-      quietMs: 180,
-      match: (fs) => fs.some((f) => f[5] === 0x79)
-    });
+    const frames = await this.#dumpFrames(presetNumber);
     const decoded = decodePresetDump(frames, this.#prof.model);
     const blocks = this.#decodeBlocks(frames, decoded);
     const summary = this.#summarizeDump(decoded, modelsFromBlocks(blocks), presetNumber);
@@ -469,12 +478,7 @@ class Device {
   /** Full per-block params (every family/param) for one device preset — the deep-search / detail source. */
   async presetParams(presetNumber: number): Promise<DecodedBlock[]> {
     await this.#ready();
-    const dev = await this.#conn();
-    const frames = await dev.request(buildRequestPresetDump(presetNumber, this.#prof.model), {
-      timeoutMs: 5000,
-      quietMs: 180,
-      match: (fs) => fs.some((f) => f[5] === 0x79)
-    });
+    const frames = await this.#dumpFrames(presetNumber);
     return this.#decodeBlocks(frames, decodePresetDump(frames, this.#prof.model));
   }
 
@@ -482,10 +486,7 @@ class Device {
   /** Raw .syx bytes (the backup blob) + decoded summary for one slot. */
   async #dumpRaw(n: number): Promise<{ bytes: Uint8Array; summary: PresetSummary }> {
     await this.#ready();
-    const dev = await this.#conn();
-    const frames = await dev.request(buildRequestPresetDump(n, this.#prof.model), {
-      timeoutMs: 5000, quietMs: 180, match: (fs) => fs.some((f) => f[5] === 0x79)
-    });
+    const frames = await this.#dumpFrames(n);
     const decoded = decodePresetDump(frames, this.#prof.model);
     const summary = this.#summarizeDump(decoded, modelsFromBlocks(this.#decodeBlocks(frames, decoded)), n);
     return { bytes: Uint8Array.from(frames.flat()), summary };

@@ -31,6 +31,7 @@ import { midiAvailable } from './transport/midi.js';
 import type { Transport, Conn } from './transport/types.js';
 import { decodePresetDump, decodePresetBody, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
 import { readBlockParamsFull, modelsFromBlocks, type DecodedBlock } from './codec/fm3BlockParams.js';
+import * as store from './store.js';
 import { DEVICE_MODELS, MODEL_BROADCAST, modelFromPortName } from './models.js';
 import { DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile, type TypeModel, type DeviceLayout } from './devices.js';
 
@@ -50,6 +51,8 @@ export type PresetSummary = {
   name: string;
   model: string;
   crcValid: boolean;
+  /** Content fingerprint (stored CRC16) — changes when the preset changes; used to detect stale cache. */
+  crc: number;
   scenes: string[];
   blocks: { effectId: number; slug: string | null; name: string; instance: number | null }[];
   /** Distinct model names in use per block family (amp/drive/cab/reverb/…) — for "presets using model X".
@@ -447,7 +450,7 @@ class Device {
    *  library-friendly summary: name, scene names, and the unique effect blocks it contains. The
    *  foundation for a preset browser/library (search by block, collections, tags). Param-level facts
    *  (amp model etc.) are a follow-up once the per-block param decode lands. */
-  async presetSummary(presetNumber: number): Promise<PresetSummary> {
+  async presetSummary(presetNumber: number, withParams = false): Promise<PresetSummary> {
     await this.#ready();
     const dev = await this.#conn();
     const frames = await dev.request(buildRequestPresetDump(presetNumber, this.#prof.model), {
@@ -457,7 +460,9 @@ class Device {
     });
     const decoded = decodePresetDump(frames, this.#prof.model);
     const blocks = this.#decodeBlocks(frames, decoded);
-    return this.#summarizeDump(decoded, modelsFromBlocks(blocks), presetNumber); // light: models only (bulk scan)
+    const summary = this.#summarizeDump(decoded, modelsFromBlocks(blocks), presetNumber);
+    if (withParams) summary.params = blocks; // cache build: summary + full params in one dump
+    return summary;
   }
 
   /** Full per-block params (every family/param) for one device preset — the deep-search / detail source. */
@@ -470,6 +475,35 @@ class Device {
       match: (fs) => fs.some((f) => f[5] === 0x79)
     });
     return this.#decodeBlocks(frames, decodePresetDump(frames, this.#prof.model));
+  }
+
+  // ── backups / version control ──
+  /** Raw .syx bytes (the backup blob) + decoded summary for one slot. */
+  async #dumpRaw(n: number): Promise<{ bytes: Uint8Array; summary: PresetSummary }> {
+    await this.#ready();
+    const dev = await this.#conn();
+    const frames = await dev.request(buildRequestPresetDump(n, this.#prof.model), {
+      timeoutMs: 5000, quietMs: 180, match: (fs) => fs.some((f) => f[5] === 0x79)
+    });
+    const decoded = decodePresetDump(frames, this.#prof.model);
+    const summary = this.#summarizeDump(decoded, modelsFromBlocks(this.#decodeBlocks(frames, decoded)), n);
+    return { bytes: Uint8Array.from(frames.flat()), summary };
+  }
+  /** Snapshot one preset into the version store (dedup'd by CRC). Returns the version, or null if empty. */
+  async backupPreset(n: number, source: 'manual' | 'auto' | 'backup' = 'manual', backupId?: string): Promise<store.PresetVersion | null> {
+    const { bytes, summary } = await this.#dumpRaw(n);
+    if (!summary.crcValid || !summary.name.trim()) return null;
+    return store.addPresetVersion({ location: n, crc: summary.crc, name: summary.name, model: summary.model, source, backupId }, bytes);
+  }
+  /** Full-device backup: snapshot every populated slot under one backup id. */
+  async backupDevice(label: string, from = 0, to = 511): Promise<store.Backup> {
+    const b = store.createBackup(label || 'Device backup', this.#prof.name);
+    let count = 0;
+    for (let n = from; n <= to; n++) {
+      try { if (await this.backupPreset(n, 'backup', b.id)) count++; } catch { /* empty/unreadable slot */ }
+    }
+    store.setBackupCount(b.id, count);
+    return { ...b, count };
   }
 
   /** Decode a preset from raw .syx bytes (a saved/exported dump) — offline, no device needed. Splits
@@ -517,7 +551,7 @@ class Device {
       const ref = blockRefForEid(c.effectId);
       seen.set(c.effectId, { effectId: c.effectId, slug: ref?.slug ?? null, name: c.name, instance: ref?.instance ?? null });
     }
-    return { number: presetNumber, name: d.name, model: d.modelName, crcValid: d.crcValid, scenes: d.sceneNames, blocks: [...seen.values()], models, amps: models.amp ?? [] };
+    return { number: presetNumber, name: d.name, model: d.modelName, crcValid: d.crcValid, crc: d.crc, scenes: d.sceneNames, blocks: [...seen.values()], models, amps: models.amp ?? [] };
   }
 
   /** Decompressed preset body as hex — for per-block param-decode RE (diff bodies across known param

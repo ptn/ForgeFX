@@ -6,6 +6,7 @@ import { existsSync, statSync, createReadStream } from 'node:fs';
 import { join, resolve, extname } from 'node:path';
 import { device } from './device.js';
 import { am4 } from './am4Device.js';
+import * as store from './store.js';
 
 const PORT = Number(process.env.PORT ?? 5056);
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
@@ -30,13 +31,45 @@ app.post<{ Body: { transport?: 'serial' | 'midi'; id?: string | null; inId?: str
 app.get('/preset', () => device.presetRef());
 app.get<{ Params: { n: string } }>('/presets/:n', (req) => ({ number: Number(req.params.n), name: '' }));
 // Decode any preset by number (non-disruptive) → library summary: name, scenes, unique blocks.
-app.get<{ Params: { n: string } }>('/presets/:n/summary', async (req, reply) => {
-  try { return await device.presetSummary(Number(req.params.n)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+app.get<{ Params: { n: string }; Querystring: { full?: string } }>('/presets/:n/summary', async (req, reply) => {
+  try { return await device.presetSummary(Number(req.params.n), req.query.full === '1'); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
 // Full per-block decoded params for one preset (every family/param) — deep-search + browser detail.
 app.get<{ Params: { n: string } }>('/presets/:n/params', async (req, reply) => {
   try { return { blocks: await device.presetParams(Number(req.params.n)) }; } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
+// ── persistent store: documents (Axis config · library metadata · layouts) ──
+app.get<{ Params: { c: string } }>('/store/:c', (req) => ({ docs: store.listDocs(req.params.c) }));
+app.get<{ Params: { c: string; id: string } }>('/store/:c/:id', (req, reply) => {
+  const d = store.getDoc(req.params.c, req.params.id);
+  if (!d) { reply.code(404); return { error: 'not found' }; }
+  return d;
+});
+app.put<{ Params: { c: string; id: string }; Body: { data: unknown } }>('/store/:c/:id', (req) => store.putDoc(req.params.c, req.params.id, req.body?.data));
+app.delete<{ Params: { c: string; id: string } }>('/store/:c/:id', (req) => { store.delDoc(req.params.c, req.params.id); return { ok: true }; });
+
+// ── backups + version control ──
+// snapshot one preset (version control); body optional { source }
+app.post<{ Params: { n: string } }>('/backup/preset/:n', async (req, reply) => {
+  try { const v = await device.backupPreset(Number(req.params.n)); return v ? { version: v } : (reply.code(422), { error: 'empty/invalid preset' }); }
+  catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+// full-device backup (long-running): body { label, from?, to? }
+app.post<{ Body: { label?: string; from?: number; to?: number } }>('/backup/device', async (req, reply) => {
+  try { return await device.backupDevice(req.body?.label ?? 'Device backup', req.body?.from ?? 0, req.body?.to ?? 511); }
+  catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+app.get('/backups', () => ({ backups: store.listBackups() }));
+// version history (all, or for one slot via ?location=)
+app.get<{ Querystring: { location?: string } }>('/versions', (req) => ({ versions: store.listPresetVersions(req.query.location != null ? Number(req.query.location) : undefined) }));
+// download a stored snapshot's raw .syx
+app.get<{ Params: { id: string } }>('/version/:id/syx', (req, reply) => {
+  const bytes = store.getPresetVersionBytes(req.params.id);
+  if (!bytes) { reply.code(404); return { error: 'not found' }; }
+  reply.header('content-type', 'application/octet-stream');
+  return Buffer.from(bytes);
+});
+
 // Decode an uploaded preset .syx file (raw bytes, application/octet-stream) → library summary. Offline.
 app.post('/preset/decode', (req, reply) => {
   const buf = req.body as Buffer | undefined;

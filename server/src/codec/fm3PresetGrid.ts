@@ -38,6 +38,8 @@ export interface DecodedPreset {
   modelName: string;
   name: string;
   crcValid: boolean;
+  /** Stored CRC16 of the preset body — a content fingerprint (changes when the preset changes). */
+  crc: number;
   rows: number;
   cols: number;
   grid: GridCell[];
@@ -68,7 +70,7 @@ export function decodePresetDump(frames: readonly (readonly number[])[], expecte
   const sceneNames = readSceneNames(body);
   const name = asciiName(rawPatch, 0x08, 32);
 
-  return { modelId, modelName: dim.name, name, crcValid: storedCrc === computedCrc, rows: dim.rows, cols: dim.cols, grid, sceneNames };
+  return { modelId, modelName: dim.name, name, crcValid: storedCrc === computedCrc, crc: storedCrc, rows: dim.rows, cols: dim.cols, grid, sceneNames };
 }
 
 /** Decompressed preset body (+ model + grid), for per-block param decoding. The body holds each

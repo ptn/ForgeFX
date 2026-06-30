@@ -150,6 +150,12 @@ class Device {
 
   get port() { return this.#transport?.label ?? autoDetectPath(); }
 
+  /** Shared open transport — the parallel Am4Device reuses this so AM4 + gen-3 never double-open the
+   *  single exclusive MIDI/serial connection. */
+  openTransport(): Promise<Transport> {
+    return this.#conn();
+  }
+
   async #conn(): Promise<Transport> {
     if (this.#transport?.isOpen) return this.#transport;
     // share a single open across concurrent callers — the UI fires many requests on load, and

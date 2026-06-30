@@ -27,7 +27,7 @@ export const midiAvailable = (): boolean => midi() !== null;
 
 const SYSEX_START = 0xf0;
 // Fractal-looking MIDI port names (CoreMIDI/ALSA expose the unit by name).
-const FRACTAL_RE = /fractal|axe[ -]?fx|fm[ -]?3|fm[ -]?9|ax8|vp4/i;
+const FRACTAL_RE = /fractal|axe[ -]?fx|fm[ -]?3|fm[ -]?9|ax8|am[ -]?4|vp4/i;
 
 export interface MidiPortInfo {
   id: string; // the port name (used to reopen it)

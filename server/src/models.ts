@@ -6,7 +6,7 @@ export interface DeviceModel {
   name: string;
   short: string;
   gen: number; // 1 = Axe-Fx Std/Ultra, 2 = Axe-Fx II family, 3 = III/FM3/FM9/VP4, 4 = AM4
-  codec: "fm3" | "fm9" | "axe3" | null; // live device profile (null = recognized, editor not yet wired)
+  codec: "fm3" | "fm9" | "axe3" | "am4" | null; // live device profile (null = recognized, editor not yet wired)
 }
 
 export const DEVICE_MODELS: Record<number, DeviceModel> = {
@@ -22,7 +22,7 @@ export const DEVICE_MODELS: Record<number, DeviceModel> = {
   0x11: { name: "FM3", short: "FM3", gen: 3, codec: "fm3" },
   0x12: { name: "FM9", short: "FM9", gen: 3, codec: "fm9" },
   0x14: { name: "VP4", short: "VP4", gen: 3, codec: null }, // own value codec, no grid → separate path
-  0x15: { name: "AM4", short: "AM4", gen: 4, codec: null } // 4-slot, own codec → separate path
+  0x15: { name: "AM4", short: "AM4", gen: 4, codec: "am4" } // 4-slot, own codec (fractal-midi/am4), separate device path
 };
 
 export const MODEL_BROADCAST = 0x7f; // address used to ask "who is there?" (fn 0x00)

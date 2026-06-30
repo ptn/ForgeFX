@@ -5,6 +5,7 @@ import cors from '@fastify/cors';
 import { existsSync, statSync, createReadStream } from 'node:fs';
 import { join, resolve, extname } from 'node:path';
 import { device } from './device.js';
+import { am4 } from './am4Device.js';
 
 const PORT = Number(process.env.PORT ?? 5056);
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
@@ -106,6 +107,28 @@ app.get('/cab/irs', () => device.profile.cabIrs());
 // reads/writes via the normal raw-read + setParam path.
 app.get('/fc/model', () => device.profile.fcModel ?? null);
 app.get('/mod/model', () => device.profile.modModel ?? null);
+
+// ── AM4 (model 0x15) — flat 4-slot device, its own codec (fractal-midi/am4). Axis routes here when
+//    /device/detect reports an AM4. Shares the one open connection with the gen-3 path. ──
+app.get('/am4/slots', async (_req, reply) => {
+  try { return await am4.slots(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+app.get<{ Params: { n: string } }>('/am4/presets/:n/name', async (req, reply) => {
+  try { return await am4.presetName(Number(req.params.n)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+app.put<{ Body: { key: string; value: number } }>('/am4/param', async (req, reply) => {
+  if (!req.body?.key) { reply.code(400); return { error: 'key + value required' }; }
+  try { return await am4.setParam(req.body.key, req.body.value); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+app.post<{ Body: { pidLow: number; bypassed: boolean } }>('/am4/bypass', async (req, reply) => {
+  try { return await am4.setBypass(req.body.pidLow, req.body.bypassed); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+app.post<{ Body: { index: number } }>('/am4/scene', async (req, reply) => {
+  try { return await am4.switchScene(req.body.index); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+app.post<{ Body: { location: number } }>('/am4/preset', async (req, reply) => {
+  try { return await am4.switchPreset(req.body.location); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 // bind a modifier slot to a target parameter (writes targetEffectId + targetParam + source on the slot eid)
 app.post<{ Body: { slot: number; targetEffectId: number; targetParam: number; source: number } }>('/mod/bind', async (req, reply) => {
   const b = req.body;

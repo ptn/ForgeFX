@@ -87,6 +87,9 @@ export function listPresetVersions(location?: number): PresetVersion[] {
   const all = vIndex().filter((v) => location == null || v.location === location);
   return all.sort((a, b) => b.capturedAt - a.capturedAt);
 }
+export function getPresetVersion(id: string): PresetVersion | null {
+  return vIndex().find((x) => x.id === id) ?? null;
+}
 export function getPresetVersionBytes(id: string): Uint8Array | null {
   const v = vIndex().find((x) => x.id === id);
   if (!v) return null;

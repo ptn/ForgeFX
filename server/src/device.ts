@@ -1080,10 +1080,17 @@ class Device {
 
   /** Load a raw preset dump (.syx bytes) straight into the device's EDIT BUFFER — no slot is touched
    *  (only `store` writes a slot). This is how you play a preset that isn't on the device (e.g. a
-   *  cloud-only backup), sidestepping the slot limit. Sent paced (the FM3 CDC drops a flooded write). */
+   *  cloud-only backup), sidestepping the slot limit. Sent paced (the FM3 CDC drops a flooded write).
+   *
+   *  The dump's preset-dump header (func 0x77) carries the TARGET slot as a 14-bit, MSB-first
+   *  7-bit pair. A dump captured from slot N still names N — re-sending it verbatim makes the unit
+   *  treat it as a store-to-N, NOT a load. Retargeting the header to 0x3FFF (`7F 7F`, the
+   *  edit-buffer sentinel) is exactly what FM3-Edit's "Audition" does: the preset goes live in the
+   *  edit buffer, no slot is written. We patch that field and fix the frame checksum in place. */
   async loadPresetBytes(syx: Uint8Array): Promise<{ ok: boolean }> {
     const dev = await this.#conn();
     const bytes = Array.from(syx);
+    retargetDumpToEditBuffer(bytes);
     if (dev.sendPaced) await dev.sendPaced(bytes);
     else await dev.sendQueued(bytes);
     this.#gridCache = null; // edit buffer changed → next grid/blocks read reflects it
@@ -1095,9 +1102,42 @@ class Device {
     if (!bytes) throw new Error('version not found');
     return this.loadPresetBytes(bytes);
   }
+  /** Restore a version to its origin slot: load it into the edit buffer, then commit it to that slot
+   *  (DESTRUCTIVE for that slot). This is the "Restore this version to device" action — unlike
+   *  loadVersion, it persists to the preset's location, not just the edit buffer. */
+  async restoreVersion(id: string): Promise<{ ok: boolean; location: number }> {
+    const v = store.getPresetVersion(id);
+    if (!v) throw new Error('version not found');
+    if (v.location < 0) throw new Error('version has no slot to restore to');
+    await this.loadVersion(id);
+    await this.store(v.location);
+    return { ok: true, location: v.location };
+  }
 }
 
 function clamp01(v: number) { return Math.max(0, Math.min(1, v)); }
 function round3(v: number) { return Math.round(v * 1000) / 1000; }
+
+/** Fractal SysEx checksum: XOR of every byte from F0 up to (not including) the checksum, masked 0x7F. */
+function fractalChecksum(frame: number[], f0: number, cksumIdx: number): number {
+  let x = 0;
+  for (let i = f0; i < cksumIdx; i++) x ^= frame[i] ?? 0;
+  return x & 0x7f;
+}
+
+/** Rewrite a preset dump's header (func 0x77) to target the edit buffer (0x3FFF) instead of a slot,
+ *  fixing the header checksum in place. Mutates `bytes`. No-op if no 0x77 header is found. */
+function retargetDumpToEditBuffer(bytes: number[]): void {
+  for (let i = 0; i + 7 < bytes.length; i++) {
+    // Fractal preset-dump header: F0 00 01 74 <model> 77 <numHi> <numLo> ... <cksum> F7
+    if (bytes[i] !== 0xf0 || bytes[i + 1] !== 0x00 || bytes[i + 2] !== 0x01 || bytes[i + 3] !== 0x74) continue;
+    if (bytes[i + 5] !== 0x77) continue;
+    bytes[i + 6] = 0x7f; // numHi  ┐ 0x3FFF = edit-buffer sentinel
+    bytes[i + 7] = 0x7f; // numLo  ┘
+    const end = bytes.indexOf(0xf7, i); // checksum sits just before the frame's F7
+    if (end > i + 1) bytes[end - 1] = fractalChecksum(bytes, i, end - 1);
+    return; // only the first (dump-begin) header carries the target
+  }
+}
 
 export const device = new Device();

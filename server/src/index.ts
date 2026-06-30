@@ -7,6 +7,7 @@ import { join, resolve, extname } from 'node:path';
 import { device } from './device.js';
 import { am4 } from './am4Device.js';
 import * as store from './store.js';
+import { registerHelpRoutes } from './help.js';
 
 const PORT = Number(process.env.PORT ?? 5056);
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
@@ -20,6 +21,9 @@ app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body,
 });
 // accept raw .syx bytes (preset files) on POST /preset/decode
 app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+
+// ── block & parameter help (curated tooltips; see help.ts) ──
+registerHelpRoutes(app);
 
 // ── system ──
 app.get('/healthz', () => device.health());
@@ -70,6 +74,10 @@ app.get('/backups', () => ({ backups: store.listBackups() }));
 // load a stored version into the EDIT BUFFER (play it without occupying a slot)
 app.post<{ Params: { id: string } }>('/version/:id/load', async (req, reply) => {
   try { return await device.loadVersion(req.params.id); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+// restore a snapshot to its origin slot (load + commit to that slot — destructive for the slot)
+app.post<{ Params: { id: string } }>('/version/:id/restore', async (req, reply) => {
+  try { return await device.restoreVersion(req.params.id); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
 // load arbitrary raw .syx bytes (e.g. a cloud/file preset) into the edit buffer
 app.post('/preset/load', async (req, reply) => {
@@ -270,7 +278,8 @@ if (process.env.AXIS_CLOUD === '1') {
   app.post<{ Body: Creds }>('/cloud/register', async (req, reply) => { try { return await cloud.register(req.body.email, req.body.password); } catch (e) { reply.code(400); return { error: (e as Error).message }; } });
   app.post<{ Body: Creds }>('/cloud/login', async (req, reply) => { try { return await cloud.login(req.body.email, req.body.password); } catch (e) { reply.code(401); return { error: (e as Error).message }; } });
   app.post('/cloud/logout', async () => cloud.logout());
-  app.post('/cloud/sync', async (req, reply) => { try { return await cloud.sync(); } catch (e) { reply.code(503); return { error: (e as Error).message }; } });
+  app.post<{ Body: { scopes?: { config?: boolean; presets?: boolean } } }>('/cloud/sync', async (req, reply) => { try { return await cloud.sync(req.body?.scopes); } catch (e) { reply.code(503); return { error: (e as Error).message }; } });
+  app.get('/cloud/index', async (_req, reply) => { try { return await cloud.cloudIndex(); } catch (e) { reply.code(503); return { error: (e as Error).message }; } });
 } else {
   app.get('/cloud/status', async () => ({ enabled: false, user: null })); // so Axis can gate its UI without erroring
 }

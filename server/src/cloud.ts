@@ -115,10 +115,34 @@ class Cloud {
     return { pushed, pulled };
   }
 
-  /** Full sync: config + preset versions/blobs. */
-  async sync() {
-    const config = await this.syncConfig();
-    const versions = await this.syncVersions();
+  /** The cloud's view of every preset version this user has — metadata only (no blobs). Lets Axis
+   *  compute each preset's sync state (synced / local-edit / cloud-newer / cloud-only) by cross-referencing
+   *  device CRCs + local versions against what's actually backed up. Version ids are deterministic
+   *  (location+crc+ts), so a local version is "in cloud" iff its id appears here. */
+  async cloudIndex() {
+    if (!cloudEnabled()) return { versions: [] };
+    const c = this.#c();
+    const user = (await c.auth.getUser()).data.user;
+    if (!user) return { versions: [] };
+    const { data, error } = await c.from('preset_versions').select('id,location,crc,name,model,captured_at,source,bytes,stored');
+    if (error) throw new Error(`cloud index: ${error.message}`);
+    return {
+      versions: (data ?? []).map((r) => ({
+        id: r.id as string, location: r.location as number, crc: r.crc as number, name: r.name as string,
+        model: r.model as string, capturedAt: r.captured_at as number, source: r.source as string,
+        bytes: r.bytes as number, stored: r.stored as number
+      }))
+    };
+  }
+
+  /** Full sync: config + preset versions/blobs. `scopes` gates which halves run (per the account
+   *  panel's sync toggles); omitted = both. `config` covers tags/collections/favorites/filters/layouts;
+   *  `presets` covers version snapshots + blobs. */
+  async sync(scopes?: { config?: boolean; presets?: boolean }) {
+    const doConfig = scopes?.config ?? true;
+    const doPresets = scopes?.presets ?? true;
+    const config = doConfig ? await this.syncConfig() : { pushed: 0, pulled: 0 };
+    const versions = doPresets ? await this.syncVersions() : { pushed: 0, pulled: 0 };
     return { config, versions };
   }
 }

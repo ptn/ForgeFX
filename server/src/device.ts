@@ -88,7 +88,9 @@ export type DeviceEvent =
   | { type: 'tuner'; freq: number; note?: string; cents?: number; octave?: number }
   | { type: 'tempo'; bpm: number }
   | { type: 'scene'; index: number }
-  | { type: 'cpu'; percent: number };
+  | { type: 'cpu'; percent: number }
+  /** Live audio level meters (0..1) from the home meters frame. Labels provisional pending live ID. */
+  | { type: 'meters'; input: number; outL: number; outR: number };
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -145,9 +147,14 @@ class Device {
   // ── event bus (SSE source): live tuner/scene/tempo/cpu pushes ──
   #subscribers = new Set<(e: DeviceEvent) => void>();
   #tunerTimer: ReturnType<typeof setTimeout> | null = null;
+  #metersTimer: ReturnType<typeof setTimeout> | null = null;
   subscribe(fn: (e: DeviceEvent) => void): () => void {
     this.#subscribers.add(fn);
-    return () => this.#subscribers.delete(fn);
+    this.#startMeters(); // a listener is present → stream CPU + audio meters (gen-3 only)
+    return () => {
+      this.#subscribers.delete(fn);
+      if (this.#subscribers.size === 0) this.#stopMeters();
+    };
   }
   #emit(e: DeviceEvent) {
     for (const fn of this.#subscribers) {
@@ -218,6 +225,43 @@ class Device {
       /* transient — keep polling */
     }
     if (this.#tunerTimer) this.#tunerTimer = setTimeout(() => this.#pollTuner(), 55);
+  }
+
+  // Live CPU + audio meters: the FM3's home "meters" frame (fn 0x01 sub 0x2e, ~590 bytes), polled like
+  // FM3-Edit does. Reverse-engineered byte map (verified against FM3-Edit's readouts across presets):
+  //   byte 37 = block DSP load → CPU% ≈ CPU_BASE + byte37 * CPU_SLOPE  (fit: 32 + b37/2, 5 points, 2 captures)
+  //   bytes 35/36/588 = audio level meters (0..127). in/out/L-R labels PROVISIONAL — verified live in Axis.
+  // gen-3 only (the AM4 has no such frame). Runs while ≥1 SSE client is subscribed.
+  static CPU_BASE = 32;
+  static CPU_SLOPE = 0.5;
+  #startMeters() {
+    if (this.#metersTimer) return;
+    if (![0x10, 0x11, 0x12].includes(this.#prof.model)) return; // gen-3 only
+    this.#metersTimer = setTimeout(() => this.#pollMeters(), 120);
+  }
+  #stopMeters() {
+    if (this.#metersTimer) clearTimeout(this.#metersTimer);
+    this.#metersTimer = null;
+  }
+  async #pollMeters() {
+    if (!this.#metersTimer) return;
+    try {
+      const dev = await this.#conn();
+      const req = this.#envelope(0x01, [0x2e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+      const frames = await dev.request(req, {
+        timeoutMs: 400,
+        quietMs: 25,
+        match: (fs) => fs.some((f) => f[5] === 0x01 && f[6] === 0x2e && f.length > 590)
+      });
+      const f = frames.find((x) => x[5] === 0x01 && x[6] === 0x2e && x.length > 590);
+      if (f) {
+        this.#emit({ type: 'cpu', percent: Math.round((Device.CPU_BASE + f[37]! * Device.CPU_SLOPE) * 10) / 10 });
+        this.#emit({ type: 'meters', input: f[588]! / 127, outL: f[35]! / 127, outR: f[36]! / 127 });
+      }
+    } catch {
+      /* transient — keep polling */
+    }
+    if (this.#metersTimer) this.#metersTimer = setTimeout(() => this.#pollMeters(), 120);
   }
 
   /** Fire-and-forget write, serialized on the request chain (so it never injects mid-read). */

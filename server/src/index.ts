@@ -180,13 +180,13 @@ app.get('/cab/irs', () => device.profile.cabIrs());
 app.get('/fc/model', () => device.profile.fcModel ?? null);
 app.get('/mod/model', () => device.profile.modModel ?? null);
 // FC current switch state via the sub-0x01 structured config-selector read (the read FM3-Edit uses on
-// FC-page entry). Returns the tap+hold records for one (layout,view,switch). config/side are device-
-// confirmed; the interior field bytes are returned raw (see Device.fcReadSwitch for the decode status).
+// FC-page entry). Returns the decoded current state (category/function/display/color + labels) for one
+// (layout,view,switch), read via the sub-0x1b value channel that tracks param edits (Device.fcReadState).
 app.get<{ Querystring: { layout?: string; view?: string; switch?: string } }>('/fc/state', async (req, reply) => {
   const layout = Number(req.query.layout ?? 0);
   const view = Number(req.query.view ?? 0);
   const sw = Number(req.query.switch ?? 0);
-  try { return await device.fcReadSwitch(layout, view, sw); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+  try { return await device.fcReadState(layout, view, sw); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
 
 // ── AM4 (model 0x15) — flat 4-slot device, its own codec (fractal-midi/am4). Axis routes here when

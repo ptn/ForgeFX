@@ -95,6 +95,15 @@ export interface FcSwitchState {
   layout: number; view: number; switch: number; config: number;
   tap: FcSideState; hold: FcSideState;
 }
+/** Decoded current switch state read back from the unit (via the sub-0x1b value channel). Field values
+ *  are raw ordinals (category/function/display/color) keyed by FC field name; labels are decoded text.
+ *  `null` = the field could not be read. This is the read that actually tracks param edits. */
+export interface FcReadState {
+  effectId: number;
+  layout: number; view: number; switch: number; config: number;
+  fields: Record<string, number | null>;
+  tapLabel: string; holdLabel: string;
+}
 
 // Live pushes streamed to Axis over SSE.
 export type DeviceEvent =
@@ -898,6 +907,59 @@ class Device {
       tap: { selector: config * 2, present: tap.present, empty: emptyOf(tap.raw), raw: tap.raw },
       hold: { selector: config * 2 + 1, present: hold.present, empty: emptyOf(hold.raw), raw: hold.raw }
     };
+  }
+
+  /**
+   * FC current-state read via the **sub-0x1b value channel** — the one that actually reflects param
+   * edits. Request `F0 00 01 74 <model> 01 1b 00 <eid:2×7bit> <pid:2×7bit> 0*9 cs F7`; the response
+   * carries the field's **raw value as a little-endian 7-bit int at body byte 12** (ordinal for enums,
+   * ASCII for label chars) — verified live (category→1=Bank, colour→ordinal) and against the FM3-Edit
+   * capture (colour tracked 3/5/1). This is distinct from `readRange` (sub 0x1a → normalized 0..1) and
+   * from `fcReadSwitch` (sub 0x01 → a compiled snapshot that does NOT track edits).
+   */
+  async fcReadState(layout: number, view: number, sw: number): Promise<FcReadState> {
+    await this.#ready();
+    const dev = await this.#conn();
+    const model = this.#prof.fcModel;
+    if (!model) throw new Error('device has no decoded Foot Controller model');
+    const eid = model.effectId;
+    const config = layout * model.configsPerLayout + view * model.switches + sw;
+    const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
+    const build = (pid: number): number[] => {
+      const f = [0xf0, 0x00, 0x01, 0x74, this.#prof.model, 0x01, 0x1b, 0x00, ...enc14(eid), ...enc14(pid), 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      let cs = 0;
+      for (const b of f) cs ^= b;
+      f.push(cs & 0x7f, 0xf7);
+      return f;
+    };
+    const read = async (pid: number): Promise<number | null> => {
+      const match = (f: number[]) =>
+        f[5] === 0x01 && f[6] === 0x1b && f[7] === 0x00 && (f[8]! | (f[9]! << 7)) === eid && (f[10]! | (f[11]! << 7)) === pid;
+      try {
+        const frames = await dev.request(build(pid), { timeoutMs: 800, quietMs: 40, match: (fs) => fs.some(match) });
+        const f = frames.find(match);
+        return f ? (f[12]! | (f[13]! << 7)) : null; // raw ordinal / ASCII, LE 7-bit
+      } catch {
+        return null;
+      }
+    };
+    const pidOf = (field: string, idx = 0): number => {
+      const fd = model.fields[field as keyof typeof model.fields];
+      return fd.base + config * fd.stride + idx;
+    };
+    const readLabel = async (field: string): Promise<string> => {
+      let s = '';
+      for (let i = 0; i < model.labelLen; i++) {
+        const c = await read(pidOf(field, i));
+        if (c && c > 0) s += String.fromCharCode(c); // 0 = NUL pad
+      }
+      return s;
+    };
+    const fields: Record<string, number | null> = {};
+    for (const field of ['tapCategory', 'tapFunction', 'tapDisplay', 'holdCategory', 'holdFunction', 'holdDisplay', 'color']) {
+      fields[field] = await read(pidOf(field));
+    }
+    return { effectId: eid, layout, view, switch: sw, config, fields, tapLabel: await readLabel('tapLabel'), holdLabel: await readLabel('holdLabel') };
   }
 
   /** Raw bulk-read of any effect's param values indexed by paramId — for FC (eid 199) / Modifier

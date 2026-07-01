@@ -95,8 +95,15 @@ class Cloud {
    *  connection is authorized for that user's private channel. */
   async remoteSession(): Promise<{ client: SupabaseClient; userId: string } | null> {
     if (!cloudEnabled()) return null;
-    const { data } = await this.#c().auth.getUser();
-    return data.user ? { client: this.#c(), userId: data.user.id } : null;
+    const c = this.#c();
+    const { data } = await c.auth.getUser();
+    if (!data.user) return null;
+    // Private Realtime channels authorize via RLS against the JWT — the socket must carry the user's
+    // access token, or the authz check runs as anon and the channel errors. setAuth it explicitly (a
+    // session loaded from storage doesn't fire the sign-in event that would set it automatically).
+    const { data: s } = await c.auth.getSession();
+    if (s.session?.access_token) { try { await c.realtime.setAuth(s.session.access_token); } catch { /* */ } }
+    return { client: c, userId: data.user.id };
   }
 
   /** Two-way last-write-wins sync of the `config` collection (tags/collections/favorites/savedFilters/

@@ -106,6 +106,7 @@ export class FractalSerial implements Transport {
   #port: SerialPort | null = null;
   #rx: number[] = [];
   #frameHandlers = new Set<(frame: number[]) => void>();
+  readonly kind = 'serial' as const;
   readonly path: string;
   get label(): string {
     return this.path;

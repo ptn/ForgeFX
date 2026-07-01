@@ -9,6 +9,9 @@ export interface RequestOpts {
 export interface Transport {
   /** Human-readable identifier (serial path or MIDI port name) for display. */
   readonly label: string;
+  /** Transport kind — 'midi' is a slow link (5-pin DIN ≈ 31.25 kbaud) vs 'serial' (USB CDC). Used to
+   *  throttle high-rate polling (live meters) that would otherwise saturate a MIDI cable. */
+  readonly kind: ConnKind;
   readonly isOpen: boolean;
   open(): Promise<void>;
   close(): Promise<void>;

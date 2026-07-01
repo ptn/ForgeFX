@@ -281,20 +281,28 @@ class Device {
   }
   async #pollMeters() {
     if (!this.#metersTimer) return;
+    let slow = false;
     try {
       const dev = await this.#conn();
-      const req = this.#envelope(0x01, [0x2e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-      const big = (f: number[]) => f[5] === 0x01 && f[6] === 0x2e && f.length > 100; // the ~590B meters frame
-      const frames = await dev.request(req, { timeoutMs: 400, quietMs: 25, match: (fs) => fs.some(big) });
-      const f = frames.find(big);
-      if (f) {
-        if (f.length > 37) this.#emit({ type: 'cpu', percent: Math.round((Device.CPU_BASE + f[37]! * Device.CPU_SLOPE) * 10) / 10 });
-        if (f.length > 588) this.#emit({ type: 'meters', input: f[588]! / 127, outL: f[35]! / 127, outR: f[36]! / 127 });
+      // Live meters are polled ~8×/s (a ~590B frame). A 5-pin MIDI link (≈31.25 kbaud, ~3 KB/s) can't
+      // carry that without saturating — it inflates every other request's latency to seconds. So over a
+      // MIDI transport we SKIP meter polling entirely (editing + preset load stay snappy); a cheap 2s
+      // re-check resumes meters immediately if the connection switches back to a fast USB/serial link.
+      slow = dev.kind === 'midi';
+      if (!slow) {
+        const req = this.#envelope(0x01, [0x2e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        const big = (f: number[]) => f[5] === 0x01 && f[6] === 0x2e && f.length > 100; // the ~590B meters frame
+        const frames = await dev.request(req, { timeoutMs: 400, quietMs: 25, match: (fs) => fs.some(big) });
+        const f = frames.find(big);
+        if (f) {
+          if (f.length > 37) this.#emit({ type: 'cpu', percent: Math.round((Device.CPU_BASE + f[37]! * Device.CPU_SLOPE) * 10) / 10 });
+          if (f.length > 588) this.#emit({ type: 'meters', input: f[588]! / 127, outL: f[35]! / 127, outR: f[36]! / 127 });
+        }
       }
     } catch {
       /* transient — keep polling */
     }
-    if (this.#metersTimer) this.#metersTimer = setTimeout(() => this.#pollMeters(), 120);
+    if (this.#metersTimer) this.#metersTimer = setTimeout(() => this.#pollMeters(), slow ? 2000 : 120);
   }
 
   /** Fire-and-forget write, serialized on the request chain (so it never injects mid-read). */

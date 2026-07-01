@@ -101,6 +101,7 @@ export class MidiTransport implements Transport {
   #in: MidiInput | null = null;
   #out: MidiOutput | null = null;
   #handlers = new Set<(frame: number[]) => void>();
+  readonly kind = 'midi' as const;
   readonly label: string;
   #inId: string;
   #outId: string;

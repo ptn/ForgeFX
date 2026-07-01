@@ -90,6 +90,15 @@ class Cloud {
     return { enabled: true, url: URL, user, subscription };
   }
 
+  /** For Axis Cloud Remote: the authed Supabase client + current user id (for the Realtime host channel),
+   *  or null when cloud is off / signed out. The client carries the user's session, so its Realtime
+   *  connection is authorized for that user's private channel. */
+  async remoteSession(): Promise<{ client: SupabaseClient; userId: string } | null> {
+    if (!cloudEnabled()) return null;
+    const { data } = await this.#c().auth.getUser();
+    return data.user ? { client: this.#c(), userId: data.user.id } : null;
+  }
+
   /** Two-way last-write-wins sync of the `config` collection (tags/collections/favorites/savedFilters/
    *  layouts/swipe). Reconciles per doc by `updatedAt`: push the ones where local is newer/new, pull the
    *  ones where remote is newer/new. Tombstones (deleted) sync both ways. */

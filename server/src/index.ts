@@ -325,8 +325,17 @@ if (process.env.AXIS_CLOUD === '1') {
   app.post('/cloud/delete-account', async (_req, reply) => { try { return await cloud.deleteAccount(); } catch (e) { reply.code(500); return { error: (e as Error).message }; } });
   app.post<{ Body: { scopes?: { config?: boolean; presets?: boolean } } }>('/cloud/sync', async (req, reply) => { try { return await cloud.sync(req.body?.scopes); } catch (e) { reply.code(503); return { error: (e as Error).message }; } });
   app.get('/cloud/index', async (_req, reply) => { try { return await cloud.cloudIndex(); } catch (e) { reply.code(503); return { error: (e as Error).message }; } });
+
+  // ── Axis Cloud Remote — host agent (off by default; toggled by the Axis UI) ──
+  const { RemoteHost } = await import('./remote.js');
+  const remoteHost = new RemoteHost(app, () => cloud.remoteSession());
+  app.get('/remote/status', async () => remoteHost.status());
+  app.post<{ Body: { on?: boolean } }>('/remote/enable', async (req, reply) => {
+    try { return await remoteHost.enable(!!req.body?.on); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+  });
 } else {
   app.get('/cloud/status', async () => ({ enabled: false, user: null })); // so Axis can gate its UI without erroring
+  app.get('/remote/status', async () => ({ enabled: false, connected: false, userId: null }));
 }
 
 // ── telemetry / diagnostics ── status is always served (so Axis gates its UI without erroring). The

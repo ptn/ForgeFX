@@ -71,10 +71,23 @@ class Cloud {
     await c.auth.signOut();
     return { ok: true, ...(data ?? {}) };
   }
+  /** Read a user's subscription (RLS: they can only read their own; only the service role can write it, so
+   *  the flag can't be spoofed client-side). `active` also honours an expiry if `current_period_end` is set.
+   *  No row / no subscription → free tier. */
+  async #subscription(userId: string): Promise<{ active: boolean; plan: string | null }> {
+    try {
+      const { data } = await this.#c().from('subscriptions').select('active,plan,current_period_end').eq('user_id', userId).maybeSingle();
+      if (!data) return { active: false, plan: null };
+      const notExpired = !data.current_period_end || new Date(data.current_period_end as string).getTime() > Date.now();
+      return { active: !!data.active && notExpired, plan: (data.plan as string) ?? null };
+    } catch { return { active: false, plan: null }; }
+  }
   async status() {
     if (!cloudEnabled()) return { enabled: false, user: null };
     const { data } = await this.#c().auth.getUser();
-    return { enabled: true, url: URL, user: data.user ? { id: data.user.id, email: data.user.email } : null };
+    const user = data.user ? { id: data.user.id, email: data.user.email } : null;
+    const subscription = user ? await this.#subscription(user.id) : { active: false, plan: null };
+    return { enabled: true, url: URL, user, subscription };
   }
 
   /** Two-way last-write-wins sync of the `config` collection (tags/collections/favorites/savedFilters/
@@ -194,8 +207,12 @@ class Cloud {
    *  `presets` covers version snapshots + blobs. */
   async sync(scopes?: { config?: boolean; presets?: boolean }) {
     const doConfig = scopes?.config ?? true;
-    const doPresets = scopes?.presets ?? true;
-    console.log(`[cloud] sync: start (config=${doConfig} presets=${doPresets})`);
+    // Preset-blob sync is a paid-tier feature. Enforce it here (not just in the UI): even if the client
+    // asks for presets, only run it for an active subscriber. Free tier = config only.
+    const user = (await this.#c().auth.getUser()).data.user;
+    const sub = user ? await this.#subscription(user.id) : { active: false, plan: null };
+    const doPresets = (scopes?.presets ?? true) && sub.active;
+    console.log(`[cloud] sync: start (config=${doConfig} presets=${doPresets} plan=${sub.plan ?? 'free'})`);
     const config = doConfig ? await this.syncConfig() : { pushed: 0, pulled: 0 };
     console.log('[cloud] sync: config done, versions…');
     const versions = doPresets ? await this.syncVersions() : { pushed: 0, pulled: 0 };

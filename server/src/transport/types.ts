@@ -9,9 +9,11 @@ export interface RequestOpts {
 export interface Transport {
   /** Human-readable identifier (serial path or MIDI port name) for display. */
   readonly label: string;
-  /** Transport kind — 'midi' is a slow link (5-pin DIN ≈ 31.25 kbaud) vs 'serial' (USB CDC). Used to
-   *  throttle high-rate polling (live meters) that would otherwise saturate a MIDI cable. */
   readonly kind: ConnKind;
+  /** True for a bandwidth-constrained link that can't sustain high-rate polling (live meters). This is a
+   *  generic MIDI interface into a device's 5-pin DIN (≈31.25 kbaud) — NOT a device's own fast USB-MIDI
+   *  endpoint (Axe-Fx III / FM9), which is full USB speed. Serial (USB CDC) is always fast. */
+  readonly slow: boolean;
   readonly isOpen: boolean;
   open(): Promise<void>;
   close(): Promise<void>;

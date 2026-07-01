@@ -107,6 +107,7 @@ export class FractalSerial implements Transport {
   #rx: number[] = [];
   #frameHandlers = new Set<(frame: number[]) => void>();
   readonly kind = 'serial' as const;
+  readonly slow = false; // USB CDC serial is a fast link
   readonly path: string;
   get label(): string {
     return this.path;

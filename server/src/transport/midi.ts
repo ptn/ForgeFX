@@ -102,6 +102,9 @@ export class MidiTransport implements Transport {
   #out: MidiOutput | null = null;
   #handlers = new Set<(frame: number[]) => void>();
   readonly kind = 'midi' as const;
+  /** A Fractal-named MIDI endpoint (Axe-Fx III / FM9) is the device's own fast USB-MIDI port; anything
+   *  else is a generic interface bridging to 5-pin DIN (≈31.25 kbaud) → a slow link. */
+  readonly slow: boolean;
   readonly label: string;
   #inId: string;
   #outId: string;
@@ -111,6 +114,7 @@ export class MidiTransport implements Transport {
     this.#inId = inId;
     this.#outId = outId;
     this.label = inId === outId ? inId : `${inId} ⇄ ${outId}`;
+    this.slow = !FRACTAL_RE.test(inId) && !FRACTAL_RE.test(outId);
   }
 
   async open(): Promise<void> {

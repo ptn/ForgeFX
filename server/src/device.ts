@@ -284,11 +284,11 @@ class Device {
     let slow = false;
     try {
       const dev = await this.#conn();
-      // Live meters are polled ~8×/s (a ~590B frame). A 5-pin MIDI link (≈31.25 kbaud, ~3 KB/s) can't
-      // carry that without saturating — it inflates every other request's latency to seconds. So over a
-      // MIDI transport we SKIP meter polling entirely (editing + preset load stay snappy); a cheap 2s
-      // re-check resumes meters immediately if the connection switches back to a fast USB/serial link.
-      slow = dev.kind === 'midi';
+      // Live meters are polled ~8×/s (a ~590B frame). A slow link — a generic MIDI interface into 5-pin
+      // DIN (≈31.25 kbaud, ~3 KB/s) — can't carry that without saturating and inflating every other
+      // request to seconds, so we SKIP meter polling there (a cheap 2s re-check resumes it instantly on a
+      // fast link). Fast USB-MIDI (Axe-Fx III / FM9) and USB-CDC serial are NOT slow → meters run normally.
+      slow = dev.slow;
       if (!slow) {
         const req = this.#envelope(0x01, [0x2e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         const big = (f: number[]) => f[5] === 0x01 && f[6] === 0x2e && f.length > 100; // the ~590B meters frame
@@ -476,7 +476,7 @@ class Device {
     await this.#ready();
     const dev = await this.#conn();
     const frames = await dev.request(buildQueryPatchName('current', this.#prof.model), {
-      timeoutMs: 1200,
+      timeoutMs: dev.slow ? 4000 : 1200, // slow link: give the reply time to arrive (match returns early)
       match: (fs) => fs.some((f) => isQueryPatchNameResponse(f, this.#prof.model))
     });
     const f = frames.find((x) => isQueryPatchNameResponse(x, this.#prof.model));
@@ -505,11 +505,16 @@ class Device {
    *  the 0x77 header and the 0x79 terminator → "no 0x78 chunks found". A re-read almost always succeeds. */
   async #dumpFrames(target: number): Promise<number[][]> {
     const dev = await this.#conn();
+    // A slow link (5-pin MIDI) transfers each ~3082B dump chunk in ~1s, so a multi-chunk preset dump takes
+    // several seconds with ~1s gaps between chunks. The USB-tuned windows (5s / 180ms quiet) give up mid
+    // dump. Widen them so the transfer completes; the 0x79-terminator `match` still returns the instant the
+    // dump is whole, so a fast link isn't slowed.
+    const slow = dev.slow;
     let frames: number[][] = [];
     for (let attempt = 1; attempt <= 3; attempt++) {
       frames = await dev.request(buildRequestPresetDump(target, this.#prof.model), {
-        timeoutMs: 5000,
-        quietMs: 180,
+        timeoutMs: slow ? 25000 : 5000,
+        quietMs: slow ? 1500 : 180,
         match: (fs) => fs.some((f) => f[5] === 0x79) // 0x79 = dump terminator
       });
       const ok = frames.some((f) => f[5] === 0x78) && frames.some((f) => f[5] === 0x79);
@@ -769,7 +774,7 @@ class Device {
       const dev = await this.#conn();
       try {
         const activeCh = 0; // channel A (skip the per-open status dump — one fewer serial round-trip)
-        const frames = await dev.request(buildBlockBulkReadPoll(eid, this.#prof.model), { timeoutMs: 2500, quietMs: 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
+        const frames = await dev.request(buildBlockBulkReadPoll(eid, this.#prof.model), { timeoutMs: dev.slow ? 8000 : 2500, quietMs: dev.slow ? 600 : 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
         const bulk = assembleGen3BlockBulkRead(frames, this.#prof.model);
         const stride = Math.max(1, ...defs.map((p) => p.paramId)) + 1;
         const channelCount = Math.max(1, Math.floor(bulk.values.length / stride));

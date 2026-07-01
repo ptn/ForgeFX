@@ -26,7 +26,7 @@ import {
 import { resolveEnumValues } from 'fractal-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'fractal-midi/shared';
 import { autoDetectPath } from './transport/serial.js';
-import { listConnections, resolveConn, openConn, getConnOverride, setConnOverride } from './transport/connection.js';
+import { listConnections, resolveConn, openConn, getConnOverride, setConnOverride, getProfileOverride, setProfileOverride } from './transport/connection.js';
 import { midiAvailable } from './transport/midi.js';
 import type { Transport, Conn } from './transport/types.js';
 import { decodePresetDump, decodePresetBody, slugForEffectId, effectRoster, blockInstances, blockRefForEid } from './codec/fm3PresetGrid.js';
@@ -157,11 +157,25 @@ function paramLabel(p: { displayLabel?: string; name: string }): string {
 class Device {
   #transport: Transport | null = null;
   #connecting: Promise<Transport> | null = null;
-  // active device profile (model byte, grid size, params, ranges, rosters). Starts from FORGEFX_DEVICE
-  // if set, otherwise FM3, and is corrected to the real unit on the first detect.
-  #prof: DeviceProfile = (process.env.FORGEFX_DEVICE ? profileForKey(process.env.FORGEFX_DEVICE) : undefined) ?? DEFAULT_PROFILE;
+  // active device profile (model byte, grid size, params, ranges, rosters). Starts from a persisted
+  // manual profile override (Axis "Connection & Device"), then FORGEFX_DEVICE, else FM3; corrected to the
+  // real unit on the first auto-detect (only when no override is set).
+  #prof: DeviceProfile = ((): DeviceProfile => {
+    const forced = getProfileOverride();
+    if (forced) { const p = profileForKey(forced); if (p) return p; }
+    if (process.env.FORGEFX_DEVICE) { const p = profileForKey(process.env.FORGEFX_DEVICE); if (p) return p; }
+    return DEFAULT_PROFILE;
+  })();
   #detected = false;
   get profile() { return this.#prof; }
+  /** Map a manual profile-override key to a model byte. Gen-3 keys resolve via profileForKey; AM4 has no
+   *  gen-3 profile (it uses the separate am4 codec) so it maps to its model byte directly. -1 = unknown. */
+  #forcedModelId(key: string): number {
+    const p = profileForKey(key);
+    if (p) return p.model;
+    if (key === 'am4') return 0x15;
+    return -1;
+  }
   #gridCache: { grid: PresetGridDTO; at: number } | null = null;
   #gridInflight: Promise<PresetGridDTO> | null = null;
   static GRID_TTL_MS = 500; // coalesce the grid()+presetBlocks() burst on a single load
@@ -324,6 +338,7 @@ class Device {
         midiOut: midi.filter((p) => p.dir === 'output').map((p) => ({ id: p.id, fractal: p.fractal }))
       },
       override: getConnOverride(),
+      profileOverride: getProfileOverride(),
       resolved,
       transportOpen: !!this.#transport?.isOpen,
       transportLabel: this.#transport?.label ?? null,
@@ -333,19 +348,31 @@ class Device {
 
   /** Every connection (serial + MIDI, Fractal flagged) + the chosen one + any manual override. */
   async connections() {
-    return { chosen: await resolveConn(), override: getConnOverride(), ports: await listConnections() };
+    return {
+      chosen: await resolveConn(),
+      override: getConnOverride(),
+      profileOverride: getProfileOverride(),
+      profile: { key: this.#prof.key, name: this.#prof.name, model: `0x${this.#prof.model.toString(16)}` },
+      ports: await listConnections()
+    };
   }
-  /** Manually pick a connection (persisted); null clears it back to auto-detect. Drops the live
-   *  connection so the next request reconnects on the chosen port and re-runs the model handshake. */
-  async selectConnection(conn: Conn | null) {
+  /** Manually pick a connection (persisted); null clears it back to auto-detect. Optionally force the
+   *  device profile (`model` key: fm3/fm9/axe3/am4, or 'auto'/null to clear). Drops the live connection so
+   *  the next request reconnects on the chosen port; a forced profile skips the handshake in detect(). */
+  async selectConnection(conn: Conn | null, model?: string | null) {
     setConnOverride(conn);
+    if (model !== undefined) {
+      setProfileOverride(model && model !== 'auto' ? model : null);
+      const forced = getProfileOverride();
+      if (forced) { const p = profileForKey(forced); if (p) this.#prof = p; } // apply gen-3 profile now (AM4 handled in detect)
+    }
     if (this.#transport) {
       await this.#transport.close().catch(() => {});
       this.#transport = null;
     }
     this.#connecting = null;
     this.#detected = false;
-    return { ok: true, chosen: await resolveConn() };
+    return { ok: true, chosen: await resolveConn(), profileOverride: getProfileOverride() };
   }
   async deviceInfo() {
     return { model: this.#prof.name, modelByte: `0x${this.#prof.model.toString(16)}`, firmware: null as null | { version: string; build: string }, port: this.port };
@@ -373,6 +400,30 @@ class Device {
     // "device offline" bug (macOS worked only because the III also exposes a serial node there).
     const conn = await resolveConn();
     if (!conn) return { connected: false, modelId: -1, name: 'No device', short: '—', gen: 0, supported: false, port: null };
+    // Forced profile (Axis "Connection & Device" override): trust the chosen model, skip the handshake.
+    // This is the MIDI-DIN→USB-adapter case — a generic MIDI interface into an FM3 won't answer the 0x7F
+    // broadcast or carry a Fractal port name, so auto-detect can't ID it. We still open the transport (so a
+    // dead port is visible) but never let a silent handshake downgrade the user's explicit choice.
+    const forced = getProfileOverride();
+    if (forced) {
+      const modelId = this.#forcedModelId(forced);
+      const p = profileForModel(modelId);
+      if (p.model === modelId) this.#prof = p; // gen-3; AM4 keeps default profile but reports 0x15 below
+      this.#detected = true;
+      let port: string | null = null;
+      try { await this.#conn(); port = this.#transport?.label ?? conn.id; } catch { /* dead port — report best-effort */ }
+      const m = DEVICE_MODELS[modelId];
+      console.log(`[forgefx] detect: FORCED profile '${forced}' → model 0x${modelId >= 0 ? modelId.toString(16) : '?'} (handshake skipped)`);
+      return {
+        connected: modelId >= 0,
+        modelId,
+        name: m?.name ?? (modelId >= 0 ? `Unknown (0x${modelId.toString(16).padStart(2, '0')})` : 'No device'),
+        short: m?.short ?? (modelId >= 0 ? `0x${modelId.toString(16)}` : '—'),
+        gen: m?.gen ?? 0,
+        supported: !!m?.codec,
+        port: port ?? conn.id
+      };
+    }
     try {
       const dev = await this.#conn();
       const port = this.#transport?.label ?? conn.id;

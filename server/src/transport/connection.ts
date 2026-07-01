@@ -18,35 +18,57 @@ export interface ConnInfo {
 }
 
 const OVERRIDE_FILE = process.env.FORGEFX_PORT_FILE ?? `${homedir()}/.forgefx-conn`;
-let override: Conn | null = (() => {
+// Two independent, co-persisted overrides in ~/.forgefx-conn: the connection (transport + ports) and an
+// optional device-PROFILE key (fm3/fm9/axe3/am4) forced from the Axis "Connection & Device" page. Either
+// can be set alone (e.g. force FM3 but auto-pick the port, or a manual port with auto-detected profile).
+let override: Conn | null = null;
+let profileOverride: string | null = null;
+(function loadOverrideFile() {
   try {
     const raw = readFileSync(OVERRIDE_FILE, 'utf8').trim();
-    if (!raw) return null;
+    if (!raw) return;
     if (raw.startsWith('{')) {
       const j = JSON.parse(raw);
+      if (typeof j?.model === 'string' && j.model) profileOverride = j.model;
       if (j?.transport === 'midi') {
         const inId = j.inId ?? j.id;
         const outId = j.outId ?? j.id;
-        return inId && outId ? { transport: 'midi' as const, id: j.id ?? inId, inId: String(inId), outId: String(outId) } : null;
+        if (inId && outId) override = { transport: 'midi', id: j.id ?? inId, inId: String(inId), outId: String(outId) };
+      } else if (j?.id) {
+        override = { transport: 'serial', id: String(j.id) };
       }
-      return j?.id ? { transport: 'serial' as const, id: String(j.id) } : null;
+    } else {
+      override = { transport: 'serial', id: raw }; // legacy plain-path file
     }
-    return { transport: 'serial', id: raw }; // legacy plain-path file
   } catch {
-    return null;
+    /* no/invalid override file */
   }
 })();
+// Serialize both overrides into the one file (or delete it when both are cleared). Best-effort.
+function persistOverride(): void {
+  try {
+    if (!override && !profileOverride) {
+      if (existsSync(OVERRIDE_FILE)) unlinkSync(OVERRIDE_FILE);
+      return;
+    }
+    const obj: Record<string, unknown> = override ? { ...override } : {};
+    if (profileOverride) obj.model = profileOverride;
+    writeFileSync(OVERRIDE_FILE, JSON.stringify(obj));
+  } catch {
+    /* persistence is best-effort */
+  }
+}
 export const getConnOverride = (): Conn | null => override;
 export function setConnOverride(c: Conn | null): void {
   if (c && c.transport === 'midi' && c.inId && c.outId) override = { transport: 'midi', id: c.id || c.inId, inId: c.inId, outId: c.outId };
   else if (c && c.id) override = { transport: 'serial', id: c.id };
   else override = null;
-  try {
-    if (override) writeFileSync(OVERRIDE_FILE, JSON.stringify(override));
-    else if (existsSync(OVERRIDE_FILE)) unlinkSync(OVERRIDE_FILE);
-  } catch {
-    /* persistence is best-effort */
-  }
+  persistOverride();
+}
+export const getProfileOverride = (): string | null => profileOverride;
+export function setProfileOverride(key: string | null): void {
+  profileOverride = key && key !== 'auto' ? key : null;
+  persistOverride();
 }
 
 /** Every selectable connection (serial + MIDI), Fractal ones flagged — for the manual picker.

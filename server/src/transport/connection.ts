@@ -4,7 +4,7 @@
 import { homedir } from 'node:os';
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { detectPath, listAllPorts, FractalSerial } from './serial.js';
-import { listMidiPorts, MidiTransport, pairMidiOutput } from './midi.js';
+import { listMidiPorts, MidiTransport, pairMidiOutput, stripSeqId } from './midi.js';
 import type { Transport, Conn, ConnKind } from './types.js';
 
 export interface ConnInfo {
@@ -106,9 +106,18 @@ export async function resolveConn(): Promise<Conn | null> {
   // present manual override still valid?
   if (override) {
     if (override.transport === 'midi') {
-      const okIn = list.some((c) => c.transport === 'midi' && c.dir === 'input' && c.id === override!.inId);
-      const okOut = list.some((c) => c.transport === 'midi' && c.dir === 'output' && c.id === override!.outId);
-      if (okIn && okOut) return override;
+      // Match by exact id, else by stable name (ALSA renumbers the seq id across reboots/replugs).
+      const same = (a: string, b: string) => a === b || stripSeqId(a) === stripSeqId(b);
+      const curIn = list.find((c) => c.transport === 'midi' && c.dir === 'input' && same(c.id, override!.inId!));
+      const curOut = list.find((c) => c.transport === 'midi' && c.dir === 'output' && same(c.id, override!.outId!));
+      if (curIn && curOut) {
+        // Remap + persist if the port renumbered, so the saved override tracks the device, not the stale id.
+        if (curIn.id !== override.inId || curOut.id !== override.outId) {
+          override = { transport: 'midi', id: curIn.id, inId: curIn.id, outId: curOut.id };
+          persistOverride();
+        }
+        return override;
+      }
     } else if (list.some((c) => c.transport === 'serial' && c.id === override!.id)) {
       return override;
     }

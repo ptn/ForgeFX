@@ -60,12 +60,17 @@ export function pairMidiOutput(inputName: string, outputs: string[]): string | n
 }
 
 type PortLister = { getPortCount(): number; getPortName(i: number): string };
+// ALSA appends a "<client>:<port>" sequence id to MIDI port names (e.g. "… MIDI 1 28:0") that RENUMBERS
+// across reboots/replugs — so a saved port id goes stale. Strip it to match on the stable device name.
+export const stripSeqId = (s: string): string => s.replace(/\s+\d+:\d+$/, '').trim();
 function findPort(p: PortLister, id: string): number {
-  for (let i = 0; i < p.getPortCount(); i++) if (p.getPortName(i) === id) return i;
+  for (let i = 0; i < p.getPortCount(); i++) if (p.getPortName(i) === id) return i; // exact
   for (let i = 0; i < p.getPortCount(); i++) {
     const n = p.getPortName(i);
-    if (n.includes(id) || id.includes(n)) return i;
+    if (n.includes(id) || id.includes(n)) return i; // substring
   }
+  const nid = stripSeqId(id); // ALSA seq id renumbered → match on the stable name
+  for (let i = 0; i < p.getPortCount(); i++) if (stripSeqId(p.getPortName(i)) === nid) return i;
   return -1;
 }
 

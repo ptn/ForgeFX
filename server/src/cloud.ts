@@ -61,6 +61,16 @@ class Cloud {
     return { user: { id: data.user.id, email: data.user.email } };
   }
   async logout() { await this.#c().auth.signOut(); return { ok: true }; }
+  /** GDPR erasure (Art. 17): invoke the `delete-account` edge function (runs as service role, verifies
+   *  the caller's JWT so a user can only delete themselves) to wipe the account + all its data, then
+   *  sign out locally. */
+  async deleteAccount() {
+    const c = this.#c();
+    const { data, error } = await c.functions.invoke('delete-account', { method: 'POST' });
+    if (error) throw new Error(error.message ?? 'account deletion failed');
+    await c.auth.signOut();
+    return { ok: true, ...(data ?? {}) };
+  }
   async status() {
     if (!cloudEnabled()) return { enabled: false, user: null };
     const { data } = await this.#c().auth.getUser();

@@ -29,7 +29,7 @@ import {
   FM3_MOD_FIELDS,
 } from 'fractal-midi/gen3/fm3';
 import { FM9_RANGES, FM9_PARAMS_BY_FAMILY, FM9_ENUM_OVERRIDES, FM9_FAMILY_BY_EFFECT_ID, FM9_LAYOUTS } from 'fractal-midi/gen3/fm9';
-import { PARAMS_BY_FAMILY as AXE3_PARAMS, resolveEnumValues as axe3Enum, AXE3_LAYOUTS } from 'fractal-midi/gen3/axe-fx-iii';
+import { PARAMS_BY_FAMILY as AXE3_PARAMS, resolveEnumValues as axe3Enum, GEN3_READ_ROSTERS, AXE3_LAYOUTS } from 'fractal-midi/gen3/axe-fx-iii';
 
 // Editor-authentic UI layout (pages → controls), per family, from fractal-midi (*_LAYOUTS).
 export type LayoutControl = { label: string; paramName: string; paramId: number | null; col?: number };
@@ -192,17 +192,26 @@ const AXE3_RANGES: Ranges = (() => {
   }
   return out;
 })();
-// III enum labels via its overlay; model-type ROSTERS (250+ amps/cabs) are read live from the unit
-// (GEN3_READ_ROSTERS) on the III, not bundled — so type NAMES are a follow-up; degrades to ordinals.
+// III type ROSTERS + enum labels. Both fractal-midi sources here are `Record<number,string>` (ordinal →
+// name), NOT arrays — so normalize via recToRoster/recToLabels (same shape as the FM9 path), never `.map`.
+// Roster source order: GEN3_READ_ROSTERS carries the full model lists (e.g. DISTORT_TYPE = 284 amps);
+// families without a read-roster fall back to the effect-type enum overlay. Some (e.g. CABINET_TYPE) have
+// neither bundled — those correctly degrade to [] (III IR/cab names are read live) and render as ordinals.
+const axe3ReadRosters = GEN3_READ_ROSTERS as unknown as Record<string, Record<number, string>>;
 function axe3RosterFor(slug: string): TypeModel[] {
   const fam = SLUG_FAMILY[slug.toLowerCase()];
-  const vals = fam ? (axe3Enum(`${fam}_TYPE`)?.values as string[] | undefined) : undefined;
-  return vals ? vals.map((name, i) => ({ value: i, name, manufacturer: null, basedOn: null })) : [];
+  if (!fam) return [];
+  const read = axe3ReadRosters[`${fam}_TYPE`];
+  if (read) return recToRoster(read);
+  const ov = axe3Enum(`${fam}_TYPE`)?.values as Record<number, string> | undefined;
+  return ov ? recToRoster(ov) : [];
 }
 function axe3EnumLabels(family: string, paramId: number): string[] | undefined {
   const p = axe3Params[family]?.find((x) => x.paramId === paramId);
-  const vals = p ? (axe3Enum(p.name)?.values as string[] | undefined) : undefined;
-  return vals && vals.length ? vals : undefined;
+  const ov = p ? (axe3Enum(p.name)?.values as Record<number, string> | undefined) : undefined;
+  if (!ov) return undefined;
+  const labels = recToLabels(ov);
+  return labels.length ? labels : undefined;
 }
 
 export const PROFILES: Record<number, DeviceProfile> = {

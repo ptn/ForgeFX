@@ -3,16 +3,21 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { existsSync, statSync, createReadStream } from 'node:fs';
-import { join, resolve, extname } from 'node:path';
+import { join, resolve, extname, dirname } from 'node:path';
 import { device } from './device.js';
 import { am4 } from './am4Device.js';
 import * as store from './store.js';
 import { registerHelpRoutes } from './help.js';
 import { telemetryStatus, uploadDebugReport, type DebugReport } from './telemetry.js';
+import { fileURLToPath } from 'node:url';
 
-// Load ./.env if present (Supabase creds for the cloud layer) — keeps secrets out of source so the
-// public repo never ships a hosted instance's keys. No-op when there's no .env (env from the OS).
-try { process.loadEnvFile(); } catch { /* no .env — rely on the ambient environment */ }
+// Load the server's .env (Supabase creds + AXIS_CLOUD/AXIS_TELEMETRY/AXIS_FARO_URL) — keeps secrets out
+// of source so the public repo never ships a hosted instance's keys. Resolve it RELATIVE TO THIS MODULE
+// (server/.env, one level above dist/ or src/) so it's found regardless of the process cwd — the packaged
+// app imports us in-process from Electron, where cwd is not the server dir. Falls back to cwd, then to the
+// ambient OS env. The release build writes server/.env from CI secrets; in dev it's the local .env.
+try { process.loadEnvFile(join(dirname(fileURLToPath(import.meta.url)), '..', '.env')); }
+catch { try { process.loadEnvFile(); } catch { /* rely on the ambient environment */ } }
 
 const PORT = Number(process.env.PORT ?? 5056);
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });

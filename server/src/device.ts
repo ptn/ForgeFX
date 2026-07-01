@@ -111,6 +111,11 @@ export type DeviceEvent =
   | { type: 'tempo'; bpm: number }
   | { type: 'scene'; index: number }
   | { type: 'cpu'; percent: number }
+  // Live cross-UI sync (Axis Cloud Remote + multi-window): a mutation happened, so other UIs update.
+  // `param` carries the new normalized value (cheap knob update); `changed` = structural (grid/preset)
+  // change → reload. Emitted by the mutating methods below; streamed via SSE + the remote relay channel.
+  | { type: 'param'; effectId: number; paramId: number; norm: number }
+  | { type: 'changed'; scope: 'grid' | 'preset' }
   /** Live audio level meters (0..1) from the home meters frame. Labels provisional pending live ID. */
   | { type: 'meters'; input: number; outL: number; outR: number };
 
@@ -1179,23 +1184,30 @@ class Device {
   async setParam(eid: number, paramId: number, value: number, continuous: boolean) {
     // continuous knob writes stream at high frequency → fire-and-forget (instant);
     // a discrete write (enum) is rarer + worth confirming, so reject-watch it.
-    if (continuous) return this.#send(buildSetParameterContinuous(eid, paramId, clamp01(value), this.#prof.model));
-    return this.#write(buildSetParameter(eid, paramId, value, this.#prof.model));
+    const r = continuous ? await this.#send(buildSetParameterContinuous(eid, paramId, clamp01(value), this.#prof.model)) : await this.#write(buildSetParameter(eid, paramId, value, this.#prof.model));
+    this.#emit({ type: 'param', effectId: eid, paramId, norm: value }); // live: other UIs move the knob
+    return r;
   }
   /** Change a block's model/type (the family TYPE selector ordinal). */
   async setType(eid: number, value: number) {
     const family = SLUG_FAMILY[(slugForEffectId(eid) ?? '').toLowerCase()];
     const tid = family ? this.#paramId(family, 'type') : undefined;
     if (tid == null) return { ok: false };
-    return this.#write(buildSetParameter(eid, tid, value, this.#prof.model));
+    const r = await this.#write(buildSetParameter(eid, tid, value, this.#prof.model));
+    this.#emit({ type: 'changed', scope: 'grid' });
+    return r;
   }
   async setBypass(eid: number, bypassed: boolean) {
-    return this.#send(buildSetBypass(eid, bypassed, this.#prof.model)); // instant toggle
+    const r = await this.#send(buildSetBypass(eid, bypassed, this.#prof.model)); // instant toggle
+    this.#emit({ type: 'changed', scope: 'grid' });
+    return r;
   }
   async setChannel(eid: number, channel: string) {
     const idx = CH_LETTERS.indexOf(channel.toUpperCase());
     if (idx < 0 || idx > 3) return { ok: false };
-    return this.#send(buildSetChannel(eid, idx as 0 | 1 | 2 | 3, this.#prof.model)); // instant
+    const r = await this.#send(buildSetChannel(eid, idx as 0 | 1 | 2 | 3, this.#prof.model)); // instant
+    this.#emit({ type: 'changed', scope: 'grid' });
+    return r;
   }
 
   /**
@@ -1289,6 +1301,7 @@ class Device {
     await this.#write(buildClearBlock({ row, col, rows: this.#prof.rows }, this.#prof.model));
     const r = await this.#write(buildSetGridCell({ row, col, blockId, rows: this.#prof.rows }, this.#prof.model));
     this.#gridCache = null;
+    this.#emit({ type: 'changed', scope: 'grid' });
     return r;
   }
   /** Move the device's edit cursor to a cell (sub 0x30) so the FM3 screen follows the UI.
@@ -1299,11 +1312,14 @@ class Device {
   async cable(srcRow: number, srcCol: number, destRow: number, connect: boolean) {
     const r = await this.#write(buildSetGridRouting({ srcRow, srcCol, destRow, rows: this.#prof.rows, op: connect ? ROUTING_OP_CONNECT : ROUTING_OP_DISCONNECT }, this.#prof.model));
     this.#gridCache = null;
+    this.#emit({ type: 'changed', scope: 'grid' });
     return r;
   }
   async selectPreset(n: number) {
     this.#gridCache = null;
-    return this.#write(buildSwitchPresetSysEx(n, this.#prof.model));
+    const r = await this.#write(buildSwitchPresetSysEx(n, this.#prof.model));
+    this.#emit({ type: 'changed', scope: 'preset' });
+    return r;
   }
   async store(n: number) {
     return this.#write(buildStorePreset(n, this.#prof.model));

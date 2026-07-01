@@ -5,8 +5,10 @@
 // cross-user access is impossible by construction. OFF by default — started only via POST /remote/enable.
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
+import type { DeviceEvent } from './device.js';
 
 type Session = { client: SupabaseClient; userId: string };
+type Subscribe = (fn: (e: DeviceEvent) => void) => () => void;
 type ReqMsg = { id: string; method: string; path: string; body?: string };
 type ResMsg = { id: string; status: number; contentType: string; body: string; encoding: 'utf8' | 'base64' };
 
@@ -39,13 +41,16 @@ const TEXTY = /json|text|javascript|xml|svg/i;
 export class RemoteHost {
   #app: FastifyInstance;
   #getSession: () => Promise<Session | null>;
+  #subscribe: Subscribe;
   #chan: RealtimeChannel | null = null;
   #enabled = false;
   #userId: string | null = null;
+  #devUnsub: (() => void) | null = null;
 
-  constructor(app: FastifyInstance, getSession: () => Promise<Session | null>) {
+  constructor(app: FastifyInstance, getSession: () => Promise<Session | null>, subscribe: Subscribe) {
     this.#app = app;
     this.#getSession = getSession;
+    this.#subscribe = subscribe;
   }
 
   status(): { enabled: boolean; connected: boolean; userId: string | null } {
@@ -77,6 +82,14 @@ export class RemoteHost {
       });
     }).catch((e) => { this.#chan = null; throw e; });
     this.#chan = chan;
+    // Bridge CHANGE events → the channel, so the remote UI reflects host/device changes instantly. Only
+    // discrete changes (param edits, grid/preset/scene, tempo) — NOT the high-frequency meter/CPU/tuner
+    // poll (~8×/s), which would flood the relay. Those live-telemetry streams are a Phase 1.5 item.
+    const RELAYED = new Set(['param', 'changed', 'scene', 'tempo']);
+    this.#devUnsub = this.#subscribe((e) => {
+      if (!RELAYED.has(e.type)) return;
+      chan.send({ type: 'broadcast', event: 'evt', payload: e }).catch(() => {});
+    });
     console.log(`[forgefx][remote] host online on remote:${s.userId}`);
     return this.status();
   }
@@ -102,6 +115,7 @@ export class RemoteHost {
   }
 
   async #teardown(): Promise<void> {
+    if (this.#devUnsub) { try { this.#devUnsub(); } catch { /* */ } this.#devUnsub = null; }
     if (this.#chan) {
       try { await this.#chan.unsubscribe(); } catch { /* */ }
       this.#chan = null;

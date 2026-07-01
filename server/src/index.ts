@@ -328,7 +328,7 @@ if (process.env.AXIS_CLOUD === '1') {
 
   // ── Axis Cloud Remote — host agent (off by default; toggled by the Axis UI) ──
   const { RemoteHost } = await import('./remote.js');
-  const remoteHost = new RemoteHost(app, () => cloud.remoteSession());
+  const remoteHost = new RemoteHost(app, () => cloud.remoteSession(), (fn) => device.subscribe(fn));
   app.get('/remote/status', async () => remoteHost.status());
   app.post<{ Body: { on?: boolean } }>('/remote/enable', async (req, reply) => {
     try { return await remoteHost.enable(!!req.body?.on); } catch (e) { reply.code(503); return { error: (e as Error).message }; }

@@ -82,6 +82,7 @@ export class RemoteHost {
   }
 
   async #handle(chan: RealtimeChannel, rq: ReqMsg): Promise<void> {
+    console.log(`[forgefx][remote] ← ${rq?.method ?? '?'} ${rq?.path ?? '?'}`); // proof + trace that a remote req arrived over the relay
     let res: ResMsg;
     if (!rq?.id || typeof rq.method !== 'string' || typeof rq.path !== 'string' || !remoteAllowed(rq.method, rq.path)) {
       res = { id: rq?.id ?? '?', status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'not allowed remotely' }), encoding: 'utf8' };

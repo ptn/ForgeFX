@@ -19,6 +19,16 @@ import { fileURLToPath } from 'node:url';
 try { process.loadEnvFile(join(dirname(fileURLToPath(import.meta.url)), '..', '.env')); }
 catch { try { process.loadEnvFile(); } catch { /* rely on the ambient environment */ } }
 
+// supabase-js builds a realtime client in createClient() that needs a global WebSocket. Electron's bundled
+// Node (20) has none (WebSocket is global only in Node 22+), so createClient throws in PACKAGED builds and
+// cloud/telemetry silently appear "disabled" — even though the env is loaded. Provide `ws` globally before
+// any client is created. ForgeFX never opens a realtime channel; this only satisfies the constructor. In
+// dev / Node 22+ a global WebSocket already exists, so this is a no-op there.
+if (typeof globalThis.WebSocket === 'undefined') {
+  try { (globalThis as { WebSocket?: unknown }).WebSocket = (await import('ws')).default; }
+  catch { /* ws unavailable — cloud will surface a clear error instead of a silent disable */ }
+}
+
 const PORT = Number(process.env.PORT ?? 5056);
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 await app.register(cors, { origin: true });

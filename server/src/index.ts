@@ -83,7 +83,14 @@ app.get<{ Params: { c: string; id: string } }>('/store/:c/:id', (req, reply) => 
   if (!d) { reply.code(404); return { error: 'not found' }; }
   return d;
 });
-app.put<{ Params: { c: string; id: string }; Body: { data: unknown } }>('/store/:c/:id', (req) => store.putDoc(req.params.c, req.params.id, req.body?.data));
+app.put<{ Params: { c: string; id: string }; Body: { data: unknown; origin?: string } }>('/store/:c/:id', (req) => {
+  const doc = store.putDoc(req.params.c, req.params.id, req.body?.data);
+  // Fan config writes out to every live UI (host SSE + remote relay) so shared layouts/quick-actions/arrange
+  // sync both directions in real time. `origin` lets the writer ignore its own echo. The library index is
+  // excluded — it's large and isn't a live-applied doc (remotes pull it once at connect).
+  if (req.params.c === 'config' && req.params.id !== 'library') device.broadcastConfig(req.params.id, req.body?.data, req.body?.origin);
+  return doc;
+});
 app.delete<{ Params: { c: string; id: string } }>('/store/:c/:id', (req) => { store.delDoc(req.params.c, req.params.id); return { ok: true }; });
 
 // ── backups + version control ──

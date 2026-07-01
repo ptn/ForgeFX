@@ -117,7 +117,11 @@ export type DeviceEvent =
   | { type: 'param'; effectId: number; paramId: number; norm: number }
   | { type: 'changed'; scope: 'grid' | 'preset' }
   /** Live audio level meters (0..1) from the home meters frame. Labels provisional pending live ID. */
-  | { type: 'meters'; input: number; outL: number; outR: number };
+  | { type: 'meters'; input: number; outL: number; outR: number }
+  /** A shared Axis config doc (layouts / swipe-quick-actions / tags / surface …) was written by one UI —
+   *  streamed to the others so layouts/quick-actions/arrange stay in sync live, both directions. `origin` is
+   *  the writer's client id so it can ignore its own echo (and not reload while it's mid-edit). */
+  | { type: 'config'; id: string; data: unknown; origin?: string };
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -196,6 +200,11 @@ class Device {
       this.#subscribers.delete(fn);
       if (this.#subscribers.size === 0) this.#stopMeters();
     };
+  }
+  /** Broadcast a shared-config change to every live UI (SSE + remote relay). Called by the store route on
+   *  a `config` collection write. Does not touch the device — pure fan-out. */
+  broadcastConfig(id: string, data: unknown, origin?: string) {
+    this.#emit({ type: 'config', id, data, origin });
   }
   #emit(e: DeviceEvent) {
     for (const fn of this.#subscribers) {

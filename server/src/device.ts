@@ -179,7 +179,11 @@ class Device {
     return DEFAULT_PROFILE;
   })();
   #detected = false;
+  #modelId = -1; // the ACTUAL attached/forced model byte. AM4 (0x15) keeps the default gen-3 #prof, so
+  //                #prof.model alone can't tell it apart — telemetry polls gate on this instead.
   get profile() { return this.#prof; }
+  /** True for an AM4 (separate codec — must NOT receive gen-3 telemetry polls like the fn 0x19 meters). */
+  #isAm4() { return this.#modelId === 0x15 || getProfileOverride() === 'am4'; }
   /** Map a manual profile-override key to a model byte. Gen-3 keys resolve via profileForKey; AM4 has no
    *  gen-3 profile (it uses the separate am4 codec) so it maps to its model byte directly. -1 = unknown. */
   #forcedModelId(key: string): number {
@@ -277,6 +281,7 @@ class Device {
   // stream note/cents over SSE. (Reverse-engineered from an FM3-Edit capture.)
   async #pollTuner() {
     if (!this.#tunerTimer) return;
+    if (this.#isAm4()) { clearTimeout(this.#tunerTimer); this.#tunerTimer = null; return; } // no gen-3 tuner on AM4
     try {
       const dev = await this.#conn();
       const req = this.#envelope(0x01, [0x19, 0x00, 0x23, 0x00, 0x02, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
@@ -308,6 +313,7 @@ class Device {
   static CPU_SLOPE = 0.5;
   #startMeters() {
     if (this.#metersTimer) return;
+    if (this.#isAm4()) return; // AM4 uses a separate codec — no gen-3 meter frames
     if (![0x10, 0x11, 0x12].includes(this.#prof.model)) return; // gen-3 only
     this.#metersTimer = setTimeout(() => this.#pollMeters(), 120);
   }
@@ -326,6 +332,7 @@ class Device {
   }
   async #pollMeters() {
     if (!this.#metersTimer) return;
+    if (this.#isAm4()) { this.#stopMeters(); return; } // detect() may have flipped us to AM4 after start
     let slow = false;
     try {
       const dev = await this.#conn();
@@ -479,7 +486,9 @@ class Device {
       const modelId = this.#forcedModelId(forced);
       const p = profileForModel(modelId);
       if (p.model === modelId) this.#prof = p; // gen-3; AM4 keeps default profile but reports 0x15 below
+      this.#modelId = modelId;
       this.#detected = true;
+      if (this.#isAm4()) { this.#stopMeters(); } // never run gen-3 telemetry against an AM4
       let port: string | null = null;
       try { await this.#conn(); port = this.#transport?.label ?? conn.id; } catch { /* dead port — report best-effort */ }
       const m = DEVICE_MODELS[modelId];
@@ -517,7 +526,9 @@ class Device {
       // (profileForModel falls back to FM3, so only switch when there's a real profile for this model)
       const p = profileForModel(modelId);
       if (p.model === modelId) this.#prof = p;
+      this.#modelId = modelId;
       this.#detected = true;
+      if (this.#isAm4()) this.#stopMeters();
       console.log(`[forgefx] active profile: ${this.#prof.key} (model 0x${this.#prof.model.toString(16)}, ${this.#prof.rows}x${this.#prof.cols}) ${p.model === modelId ? 'adopted' : 'kept default — no profile for 0x' + (modelId >= 0 ? modelId.toString(16) : '?')}`);
       return {
         connected: modelId >= 0,
@@ -1337,6 +1348,7 @@ class Device {
 
   // ── telemetry: tuner / tempo / scene ──
   async setTuner(on: boolean) {
+    if (this.#isAm4()) return { ok: false }; // no gen-3 tuner on AM4
     const dev = await this.#conn();
     if (on) {
       await dev.sendQueued(this.#envelope(0x12, [0x1e])); // open the FM3 tuner page

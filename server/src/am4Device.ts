@@ -33,9 +33,21 @@ import {
   AM4_MODIFIER_SOURCES,
   AM4_MOD_OPERATIONS,
   AM4_MOD_CHANNELS,
+  // block-param read (fn 0x1F GET_ALL_PARAMS → 0x74/0x75/0x76 triple) + per-param decode
+  buildGetAllParams,
+  isReadResponseLong,
+  parseLongReadBypassFlag,
+  READ_TYPE_LONG,
+  KNOWN_PARAMS,
+  decode as am4Decode,
+  roundDisplayValue,
+  formatUnitSuffix,
+  BLOCK_TYPE_VALUES,
+  TOTAL_LOCATIONS,
+  type Param,
   type ParamKey
-} from 'fractal-midi/am4';
-import { device, type PresetGridDTO } from './device.js';
+} from 'forgefx-midi/am4';
+import { device, type PresetGridDTO, type NamedParam, type EnumParam } from './device.js';
 
 /** Split a raw byte stream into its complete F0..F7 SysEx messages. */
 function splitSysex(bytes: number[]): number[][] {
@@ -89,6 +101,64 @@ function asciiAt(b: Uint8Array, off: number, len: number): string {
   let s = '';
   for (let i = 0; i < len; i++) { const c = b[off + i] ?? 0; if (c === 0) break; if (c >= 32 && c < 127) s += String.fromCharCode(c); }
   return s.trim();
+}
+
+// ── Block-param read (fn 0x1F GET_ALL_PARAMS → the 0x74 header / 0x75 chunk(s) / 0x76 footer triple).
+// The package's am4 shared/readOps.readAllParams collects this over a MidiConnection; we mirror its
+// framing here so the whole read stays inside ForgeFX's serialized request chain (dev.request) — the
+// helper functions below are byte-exact copies of readOps' private decode14/decode16Packed/isAm4Fn/
+// decodeChunkPayload + decodeChannelParams (reader.ts). See "package export gap" in the findings note:
+// buildGetAllParams IS exported, but the collect + chunk-decode helpers are not, so they're replicated.
+const AM4_FN_ALL_HEADER = 0x74; // targetId + itemCount
+const AM4_FN_ALL_CHUNK = 0x75;  // packed 16-bit values
+const AM4_FN_ALL_FOOTER = 0x76; // end of the broadcast triple
+/** F0 00 01 74 15 <fn> … — AM4 envelope for the given function byte. */
+const isAm4Fn = (b: number[], fn: number) =>
+  b.length >= 7 && b[0] === 0xf0 && b[1] === 0x00 && b[2] === 0x01 && b[3] === 0x74 && b[4] === 0x15 && b[5] === fn;
+const decode14 = (lo: number, hi: number) => (lo & 0x7f) | ((hi & 0x7f) << 7);
+const decode16Packed = (b0: number, b1: number, b2: number) => (b0 & 0x7f) | ((b1 & 0x7f) << 7) | ((b2 & 0x03) << 14);
+/** 0x75 chunk body → its 16-bit ushort values (bytes[6..7]=itemCount, then N×3 packed septets). */
+function decodeChunkPayload(bytes: number[]): number[] {
+  const itemCount = decode14(bytes[6]!, bytes[7]!);
+  const out: number[] = [];
+  const start = 8, end = bytes.length - 2; // exclude checksum + F7
+  for (let i = 0; i < itemCount; i++) {
+    const off = start + i * 3;
+    if (off + 2 >= end) break;
+    out.push(decode16Packed(bytes[off]!, bytes[off + 1]!, bytes[off + 2]!));
+  }
+  return out;
+}
+/** One block chunk: its announced itemCount + the flat 16-bit value sequence (channel-blocked). */
+interface Am4Chunk { itemCount: number; values: number[]; }
+/** Assemble the 0x74/0x75/0x76 triple (targetId=pidLow) from the collected reply frames. */
+function assembleAllParams(frames: number[][], pidLow: number): Am4Chunk | null {
+  let header: { itemCount: number } | undefined;
+  const values: number[] = [];
+  for (const f of frames) {
+    if (isAm4Fn(f, AM4_FN_ALL_HEADER)) {
+      if (decode14(f[6]!, f[7]!) !== pidLow || header) continue; // unrelated / duplicate
+      header = { itemCount: decode14(f[8]!, f[9]!) };
+    } else if (isAm4Fn(f, AM4_FN_ALL_CHUNK) && header) {
+      for (const v of decodeChunkPayload(f)) values.push(v);
+    }
+  }
+  return header ? { itemCount: header.itemCount, values } : null;
+}
+/** Decode one chunk 16-bit value → display value, mirroring get_param's per-param rule (reader.ts
+ *  decodeChunkValue): enum → enumValues[wire] (raw fallback); else internal = wire/65534 → am4Decode. */
+function decodeChunkValue(param: Param, wire: number): number | string {
+  if (param.unit === 'enum') return param.enumValues?.[wire] ?? wire;
+  return roundDisplayValue(param, am4Decode(param, wire / 65534));
+}
+// AM4 unit tag → the display label the gen-3 blockParams DTO uses (so Axis renders both the same way).
+// Blank = show the bare number (count/semitones/ratio are unitless integers; knob_0_10/20 are 0..N knobs).
+const AM4_UNIT_LABEL: Record<string, string> = {
+  db: 'dB', hz: 'Hz', ms: 'ms', seconds: 's', percent: '%', bipolar_percent: '%', degrees: '°', pf: 'pF'
+};
+/** A pretty param label from a KNOWN_PARAMS key's name: displayLabel if present, else name with _→space. */
+function am4ParamLabel(p: Param): string {
+  return p.displayLabel ?? p.name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 class Am4Device {
@@ -150,20 +220,128 @@ class Am4Device {
     return { model: 'am4', name: s?.name ?? '', crcValid: true, rows: 1, cols: 4, scenes: [], cells, source: 'dump' };
   }
 
-  /** Stored preset name at a location (0..103). */
-  async presetName(location: number): Promise<{ location: number; name: string }> {
+  /** Read every parameter of the block sitting at `pidLow` (its block-type value, e.g. 58=amp, 118=drive
+   *  — the `effectId` the grid/slots report) and return it in the SAME shape as the gen-3 Device.blockParams
+   *  so Axis renders the AM4's params through the existing block editor unchanged.
+   *
+   *  Read path: the fn 0x1F GET_ALL_PARAMS broadcast (0x74 header → 0x75 chunk(s) → 0x76 footer), collected
+   *  via ONE dev.request per pidLow with a match on the 0x76 footer — this mirrors the package's
+   *  am4 shared/readOps.readAllParams framing but stays inside ForgeFX's serialized request chain (so it
+   *  can't interleave with telemetry / other reads). We read the ACTIVE channel (quarter 0 = channel A,
+   *  matching gen-3's activeCh=0) out of the channel-blocked chunk. This is far cheaper than N per-param
+   *  fn 0x02 GETs (~1-2 round-trips per block vs 200+ for the amp).
+   *
+   *  Decode reuses the package's per-param pipeline verbatim: enums via `param.enumValues`, continuous via
+   *  `decode()` + `roundDisplayValue()`; ranges/units/log from the KNOWN_PARAMS entry. `named` carries the
+   *  continuous knobs, `enums` the discrete selectors — exactly as gen-3 splits them. */
+  async blockParams(pidLow: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null }> {
+    const blockName = BLOCK_NAMES_BY_VALUE[pidLow];
+    if (!blockName || blockName === 'none') {
+      this.#log(`blockParams: unknown pidLow ${pidLow}`);
+      return { block: blockName ?? `0x${pidLow.toString(16)}`, slug: blockName ?? '', page: -1, named: [], enums: [], type: null };
+    }
+    // The block's params can span more than one pidLow register (amp = 58 tone-stack + 62 cab + 206 misc),
+    // so gather every distinct pidLow this block owns and read each as its own fn 0x1F chunk.
+    const params = Object.values(KNOWN_PARAMS).filter((p) => p.block === blockName) as Param[];
+    const pidLows = [...new Set(params.map((p) => p.pidLow))].sort((a, b) => a - b);
     const dev = await device.openTransport();
+    const chunks = new Map<number, Am4Chunk>();
+    for (const pl of pidLows) {
+      const req = buildGetAllParams(pl);
+      try {
+        const frames = await dev.request(req, { timeoutMs: dev.slow ? 2000 : 800, quietMs: dev.slow ? 200 : 80, match: (fs) => fs.some((f) => isAm4Fn(f, AM4_FN_ALL_FOOTER)) });
+        const asm = assembleAllParams(frames, pl);
+        if (asm) chunks.set(pl, asm);
+      } catch {
+        /* leave this pidLow's chunk unread — its params just won't appear */
+      }
+    }
+    const named: NamedParam[] = [];
+    const enums: EnumParam[] = [];
+    let type: { value: number; name: string } | null = null;
+    for (const p of params) {
+      const chunk = chunks.get(p.pidLow);
+      if (!chunk) continue;
+      // channel-blocked chunk: idx = channel*stride + pidHigh (stride = itemCount/4) for channel-bearing
+      // blocks; else a single copy at pidHigh. We read channel A (quarter 0).
+      const idx = chunk.itemCount > 0 && chunk.itemCount % 4 === 0 ? (chunk.itemCount / 4) * 0 + p.pidHigh : p.pidHigh;
+      if (idx >= chunk.values.length) continue;
+      const wire = chunk.values[idx]!;
+      if (p.unit === 'enum') {
+        const options = Object.entries(p.enumValues ?? {}).map(([v, label]) => ({ value: Number(v), label }));
+        const value = wire;
+        // the block's own type selector is surfaced separately (like gen-3's `type`), not as a plain enum
+        if (p.name === 'type') { type = { value, name: p.enumValues?.[value] ?? '' }; continue; }
+        enums.push({ id: p.pidHigh, name: am4ParamLabel(p), value, options });
+      } else {
+        const display = decodeChunkValue(p, wire);
+        named.push({
+          id: p.pidHigh,
+          name: am4ParamLabel(p),
+          value: typeof display === 'number' ? display : Number(display) || 0,
+          norm: wire / 65534,
+          unit: AM4_UNIT_LABEL[p.unit] ?? undefined,
+          min: p.displayMin,
+          max: p.displayMax,
+          log: p.scaling === 'log10' || undefined
+        });
+      }
+    }
+    // bypass state (long-form read, action 0x0D) — best-effort, appended as a virtual enum so the UI
+    // gets the block's active/bypassed state alongside its params (gen-3 exposes bypass via the grid).
+    try {
+      const readBytes = buildReadParam({ pidLow, pidHigh: 0x0003 }, READ_TYPE_LONG);
+      const bf = await dev.request(readBytes, { timeoutMs: dev.slow ? 1500 : 600, quietMs: dev.slow ? 150 : 60, match: (fs) => fs.some((f) => isReadResponseLong(readBytes, f)) });
+      const resp = bf.find((f) => isReadResponseLong(readBytes, f));
+      if (resp) {
+        const bypassed = parseLongReadBypassFlag(resp);
+        enums.unshift({ id: 0x0003, name: 'Bypass', value: bypassed ? 1 : 0, options: [{ value: 0, label: 'Engaged' }, { value: 1, label: 'Bypassed' }] });
+      }
+    } catch {
+      /* bypass read failed — omit it, params are still valid */
+    }
+    this.#log(`blockParams ${blockName} (pidLow ${pidLow}): ${named.length} knobs, ${enums.length} enums${type ? ` type=${type.name}` : ''}`);
+    return { block: blockName, slug: blockName, page: -1, named, enums, type };
+  }
+
+  /** One READ_PRESET_NAME (action 0x0012) round-trip for a location — non-destructive (does not load the
+   *  preset). Returns the decoded name + whether the slot is empty, or null if no name frame came back. */
+  async #readPresetName(dev: Awaited<ReturnType<typeof device.openTransport>>, location: number): Promise<{ name: string; isEmpty: boolean } | null> {
     const req = buildGetPresetName(location);
-    const frames = await dev.request(req, { timeoutMs: 1000, quietMs: 80, match: (fs) => fs.length > 0 });
+    const frames = await dev.request(req, { timeoutMs: dev.slow ? 1200 : 600, quietMs: dev.slow ? 120 : 60, match: (fs) => fs.length > 0 });
     for (const f of frames) {
       try {
         const r = parseGetPresetNameResponse(f, location);
-        return { location, name: r.isEmpty ? '' : r.name };
+        return { name: r.isEmpty ? '' : r.name.trim(), isEmpty: r.isEmpty };
       } catch {
         /* not the name frame */
       }
     }
-    return { location, name: '' };
+    return null;
+  }
+
+  /** Stored preset name at a location (0..103). */
+  async presetName(location: number): Promise<{ location: number; name: string }> {
+    const dev = await device.openTransport();
+    const r = await this.#readPresetName(dev, location);
+    return { location, name: r?.name ?? '' };
+  }
+
+  /** Scan the AM4 preset library — every stored location (0..103, A01..Z04) by name, one non-destructive
+   *  READ_PRESET_NAME per slot. Serial by necessity (the AM4 correlates name responses by arrival order,
+   *  so reads can't be pipelined) → ~104 MIDI round-trips (~60-120ms each on serial, so on the order of
+   *  10s). `signal` lets a caller cancel a long scan; on abort we return what we've read so far. Locations
+   *  whose name frame didn't decode are reported with isEmpty:true and a blank name (best-effort). */
+  async scanPresets(signal?: AbortSignal): Promise<{ count: number; presets: { location: number; code: string; name: string; isEmpty: boolean }[] }> {
+    const dev = await device.openTransport();
+    const presets: { location: number; code: string; name: string; isEmpty: boolean }[] = [];
+    for (let location = 0; location < TOTAL_LOCATIONS; location++) {
+      if (signal?.aborted) break;
+      const r = await this.#readPresetName(dev, location).catch(() => null);
+      presets.push({ location, code: formatLocationCode(location), name: r?.name ?? '', isEmpty: r ? r.isEmpty : true });
+    }
+    this.#log(`scanPresets: read ${presets.length}/${TOTAL_LOCATIONS} (${presets.filter((p) => !p.isEmpty).length} named)`);
+    return { count: presets.length, presets };
   }
 
   /** Set a parameter by its display value (e.g. 'amp.gain', 7.5). */

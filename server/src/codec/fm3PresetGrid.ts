@@ -8,7 +8,7 @@
 // Pipeline: 0x78 chunks → reassemble (3 wire bytes → u16) → 16384B raw_patch →
 // CRC16/CCITT check + dynamic-Huffman body → grid @ body 0x104 (column-major, 2 words/cell).
 
-import { AXE_FX_III_BLOCKS } from 'fractal-midi/gen3/axe-fx-iii';
+import { AXE_FX_III_BLOCKS } from 'forgefx-midi/gen3/axe-fx-iii';
 
 const SYSEX_START = 0xf0;
 const SYSEX_END = 0xf7;

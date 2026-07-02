@@ -22,7 +22,7 @@ import {
   FM3_ENUM_OVERRIDES,
   FM3_ROSTERS,
   FM3_FAMILY_BY_EFFECT_ID
-} from 'fractal-midi/gen3/fm3';
+} from 'forgefx-midi/gen3/fm3';
 
 /** u16 array base, relative to a block's header. Universal across families (enum-fit confirmed). */
 const PARAM_ARRAY_BASE = 0x2e;

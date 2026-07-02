@@ -24,9 +24,9 @@ import {
   buildRenamePreset,
   ROUTING_OP_CONNECT,
   ROUTING_OP_DISCONNECT
-} from 'fractal-midi/gen3/axe-fx-iii';
-import { resolveEnumValues } from 'fractal-midi/gen3/axe-fx-iii';
-import { wireToDisplay } from 'fractal-midi/shared';
+} from 'forgefx-midi/gen3/axe-fx-iii';
+import { resolveEnumValues } from 'forgefx-midi/gen3/axe-fx-iii';
+import { wireToDisplay } from 'forgefx-midi/shared';
 import { autoDetectPath } from './transport/serial.js';
 import { listConnections, resolveConn, openConn, getConnOverride, setConnOverride, getProfileOverride, setProfileOverride } from './transport/connection.js';
 import { midiAvailable } from './transport/midi.js';

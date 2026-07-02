@@ -5,7 +5,7 @@
 // fractal-midi's parseGen3GridLayout doesn't have yet.
 //
 // Run: npm run probe:grid2e   (FM3 connected, port free — stop the bridge/ForgeFX server first)
-import { buildRequestGridLayout, parseGen3GridLayout, buildRequestPresetDump } from 'fractal-midi/gen3/axe-fx-iii';
+import { buildRequestGridLayout, parseGen3GridLayout, buildRequestPresetDump } from 'forgefx-midi/gen3/axe-fx-iii';
 import { FractalSerial } from '../transport/serial.js';
 import { decodePresetDump } from '../codec/fm3PresetGrid.js';
 

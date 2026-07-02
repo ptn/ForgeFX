@@ -11,7 +11,7 @@ import {
   parseGen3GridLayout,
   buildQueryPatchName,
   AXE_FX_III_MODEL_ID
-} from 'fractal-midi/gen3/axe-fx-iii';
+} from 'forgefx-midi/gen3/axe-fx-iii';
 import { FractalSerial } from '../transport/serial.js';
 
 const MODEL_FM3 = 0x11;

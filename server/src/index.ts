@@ -250,6 +250,15 @@ app.get('/am4/grid', async (_req, reply) => {
 app.get<{ Params: { n: string } }>('/am4/presets/:n/name', async (req, reply) => {
   try { return await am4.presetName(Number(req.params.n)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
+// AM4 block parameters, addressed by the slot's pidLow (the effectId the grid reports). Returns the
+// SAME DTO shape as the gen-3 /preset/blocks/:eid/params so Axis renders both with the same BlockEditor.
+app.get<{ Params: { pidLow: string } }>('/am4/blocks/:pidLow/params', async (req, reply) => {
+  try { return await am4.blockParams(Number(req.params.pidLow)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+// AM4 preset library: scan stored locations → {location, code, name, isEmpty} for the browser.
+app.get('/am4/presets', async (_req, reply) => {
+  try { return await am4.scanPresets(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 app.put<{ Body: { key: string; value: number } }>('/am4/param', async (req, reply) => {
   if (!req.body?.key) { reply.code(400); return { error: 'key + value required' }; }
   try { return await am4.setParam(req.body.key, req.body.value); } catch (e) { reply.code(503); return { error: (e as Error).message }; }

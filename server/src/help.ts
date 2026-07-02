@@ -16,9 +16,9 @@ import {
   FM3_HELP_OVERRIDES,
   type HelpCatalog,
   type ParamHelp,
-} from 'fractal-midi/gen3/fm3';
-import { FM9_HELP_OVERRIDES } from 'fractal-midi/gen3/fm9';
-import { AXE_FX_III_HELP_OVERRIDES } from 'fractal-midi/gen3/axe-fx-iii';
+} from 'forgefx-midi/gen3/fm3';
+import { FM9_HELP_OVERRIDES } from 'forgefx-midi/gen3/fm9';
+import { AXE_FX_III_HELP_OVERRIDES } from 'forgefx-midi/gen3/axe-fx-iii';
 import { device } from './device.js';
 import { SLUG_FAMILY } from './devices.js';
 

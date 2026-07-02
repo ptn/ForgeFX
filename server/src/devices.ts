@@ -28,19 +28,19 @@ import {
   FM3_MOD_SOURCES,
   FM3_MOD_FIELDS,
   FM3_MONITOR_PARAMS,
-} from 'fractal-midi/gen3/fm3';
+} from 'forgefx-midi/gen3/fm3';
 import {
   FM9_RANGES, FM9_PARAMS_BY_FAMILY, FM9_ENUM_OVERRIDES, FM9_FAMILY_BY_EFFECT_ID, FM9_LAYOUTS,
   FM9_MONITOR_PARAMS,
   FM9_FC_EFFECT_ID, FM9_FC_CONFIGS, FM9_FC_PARAMS_WIDTH, FM9_FC_FIELDS, FM9_FC_CATEGORIES, FM9_FC_LABEL_MODES,
   FM9_MOD_EFFECT_ID, FM9_MOD_SLOT_COUNT, FM9_MOD_FIELDS,
-} from 'fractal-midi/gen3/fm9';
+} from 'forgefx-midi/gen3/fm9';
 import {
   PARAMS_BY_FAMILY as AXE3_PARAMS, resolveEnumValues as axe3Enum, GEN3_READ_ROSTERS, AXE3_LAYOUTS,
   AXE3_MONITOR_PARAMS,
   AXE3_FC_EFFECT_ID, AXE3_FC_CONFIGS, AXE3_FC_PARAMS_WIDTH, AXE3_FC_FIELDS,
   AXE3_MOD_EFFECT_ID, AXE3_MOD_SLOT_COUNT, AXE3_MOD_FIELDS, AXE3_MOD_SOURCES_STATUS,
-} from 'fractal-midi/gen3/axe-fx-iii';
+} from 'forgefx-midi/gen3/axe-fx-iii';
 
 // Editor-authentic UI layout (pages → controls), per family, from fractal-midi (*_LAYOUTS).
 export type LayoutControl = { label: string; paramName: string; paramId: number | null; col?: number };

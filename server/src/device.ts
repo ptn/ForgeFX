@@ -20,6 +20,8 @@ import {
   buildTempoTap,
   buildSetScene,
   buildGetScene,
+  buildSetSceneName,
+  buildRenamePreset,
   ROUTING_OP_CONNECT,
   ROUTING_OP_DISCONNECT
 } from 'fractal-midi/gen3/axe-fx-iii';
@@ -1388,6 +1390,20 @@ class Device {
     // cache to bust — just notify subscribers so the UI follows.
     this.#emit({ type: 'scene', index });
     return r;
+  }
+  /** Rename a scene (0..7) in the WORKING BUFFER (fn 0x01 sub 0x2b, via fractal-midi's buildSetSceneName).
+   *  Visible immediately; NOT persisted to flash — that's a separate store op. Name is 32-char ASCII max.
+   *  #write watches briefly for a 0x64 rejection so the caller learns if the device refused it. */
+  async setSceneName(index: number, name: string) {
+    if (index < 0 || index > 7) return { ok: false };
+    const clean = (name ?? '').replace(/[^\x20-\x7e]/g, '').slice(0, 32); // printable ASCII, 32 max
+    return this.#write(buildSetSceneName(index, clean, this.#prof.model));
+  }
+  /** Rename the working-buffer PRESET (fn 0x01 sub 0x28, via fractal-midi's buildRenamePreset). Visible
+   *  immediately; persist to flash is the separate store op. Name is 32-char printable ASCII max. */
+  async setPresetName(name: string) {
+    const clean = (name ?? '').replace(/[^\x20-\x7e]/g, '').slice(0, 32);
+    return this.#write(buildRenamePreset(clean, this.#prof.model));
   }
   async placeCell(row: number, col: number, blockId: number) {
     // Guard against placing an instance the unit doesn't have (e.g. Amp 2 on an FM3, which has one

@@ -199,6 +199,10 @@ app.post<{ Body: { bpm: number } }>('/tempo', (req) => device.setTempo(req.body.
 app.post('/tempo/tap', () => device.tapTempo());
 app.get('/scene', () => device.getScene());
 app.post<{ Body: { index: number } }>('/scene', (req) => device.setScene(req.body.index));
+// Rename a scene (0-based index) in the working buffer. Visible immediately; persist is a separate store.
+app.post<{ Body: { index: number; name: string } }>('/scene/name', (req) => device.setSceneName(req.body.index, req.body.name));
+// Rename the working-buffer preset. Visible immediately; persist is a separate store.
+app.post<{ Body: { name: string } }>('/preset/name', (req) => device.setPresetName(req.body.name));
 
 // auto-detect the connected Fractal unit (FM3/FM9/Axe-Fx/…) via the fn 0x00 handshake
 app.get('/device/detect', () => device.detect());

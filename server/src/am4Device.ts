@@ -17,9 +17,39 @@ import {
   buildGetPresetName,
   parseGetPresetNameResponse,
   isCommandAck,
+  buildSaveToLocation,
+  buildRequestActiveBufferDump,
+  buildRequestStoredPresetDump,
+  parseAm4PresetDump,
+  parseAm4PresetBank,
+  am4DumpLocation,
+  decodeAm4PresetNameFromFrame,
+  parseAm4Firmware,
+  formatLocationCode,
+  AM4_PRESET_FRAME_SIZE,
+  AM4_MOD_EFFECT_ORDINAL,
+  AM4_MOD_SLOT_COUNT,
+  AM4_MOD_FIELDS,
+  AM4_MODIFIER_SOURCES,
+  AM4_MOD_OPERATIONS,
+  AM4_MOD_CHANNELS,
   type ParamKey
 } from 'fractal-midi/am4';
 import { device, type PresetGridDTO } from './device.js';
+
+/** Split a raw byte stream into its complete F0..F7 SysEx messages. */
+function splitSysex(bytes: number[]): number[][] {
+  const out: number[][] = [];
+  let i = 0;
+  while (i < bytes.length) {
+    if (bytes[i] !== 0xf0) { i++; continue; }
+    const end = bytes.indexOf(0xf7, i);
+    if (end < 0) break;
+    out.push(bytes.slice(i, end + 1));
+    i = end + 1;
+  }
+  return out;
+}
 
 export interface Am4Slot {
   slot: number; // 1..4 signal-chain position
@@ -163,6 +193,87 @@ class Am4Device {
     const dev = await device.openTransport();
     await dev.sendQueued(buildSwitchPreset(location));
     return { ok: true, location };
+  }
+
+  /** Save the active edit buffer to a stored location (0..103). Wire action 0x1B —
+   *  hardware-confirmed byte-exact against a live AM4 capture (2026-07-02). */
+  async storePreset(location: number) {
+    const dev = await device.openTransport();
+    await dev.sendQueued(buildSaveToLocation(location));
+    return { ok: true, location, code: formatLocationCode(location) };
+  }
+
+  /** Back up a preset off the device as a verbatim .syx dump (the 6-message 0x77/0x78/0x79 stream).
+   *  `location` omitted → the active edit buffer. Returns the raw bytes (byte-identical, replayable)
+   *  plus the decoded location + name. Community-beta: the dump-request path is capture-derived. */
+  async backupPreset(location?: number): Promise<{ location: number | null; code: string | null; name: string; bytes: number[] }> {
+    const dev = await device.openTransport();
+    const req = location == null ? buildRequestActiveBufferDump() : buildRequestStoredPresetDump(location);
+    const frames = await dev.request(req, { timeoutMs: 5000, quietMs: 200, match: (fs) => fs.some((f) => f[4] === 0x15 && f[5] === 0x79) });
+    const dumpMsgs = frames.filter((f) => f[4] === 0x15 && (f[5] === 0x77 || f[5] === 0x78 || f[5] === 0x79));
+    const raw = Uint8Array.from(dumpMsgs.flat());
+    const dump = parseAm4PresetDump(raw); // validates every envelope + checksum; throws on malformed
+    const loc = am4DumpLocation(dump);
+    this.#log(`backup ${loc.code ?? '(active)'} "${decodeAm4PresetNameFromFrame(dump.raw)}" ${dump.raw.length}B`);
+    return { location: loc.active ? null : (loc.index ?? null), code: loc.code ?? null, name: decodeAm4PresetNameFromFrame(dump.raw), bytes: [...dump.raw] };
+  }
+
+  /** Restore a preset .syx (single 12,352-byte dump) to the device by verbatim re-emit (goes back to
+   *  the location encoded in the dump's 0x77 header). Validates the dump before sending. */
+  async restorePreset(bytes: number[]): Promise<{ ok: boolean; location: number | null; code: string | null }> {
+    const dump = parseAm4PresetDump(Uint8Array.from(bytes)); // validate first — throws on bad envelope/checksum
+    const loc = am4DumpLocation(dump);
+    const dev = await device.openTransport();
+    for (const msg of splitSysex([...dump.raw])) await dev.sendQueued(msg);
+    this.#log(`restore -> ${loc.code ?? '(active)'} (${dump.raw.length}B, 6 msgs)`);
+    return { ok: true, location: loc.active ? null : (loc.index ?? null), code: loc.code ?? null };
+  }
+
+  /** Offline decode of an AM4 .syx (a single dump or a whole bank, e.g. the 104-preset factory file):
+   *  returns each preset's location + name. No device needed — for library import / browsing. */
+  decodeSyx(bytes: number[]): { count: number; presets: { index: number; location: number | null; code: string | null; name: string }[] } {
+    const raw = Uint8Array.from(bytes);
+    const dumps = raw.length > AM4_PRESET_FRAME_SIZE && raw.length % AM4_PRESET_FRAME_SIZE === 0
+      ? parseAm4PresetBank(raw)
+      : [parseAm4PresetDump(raw)];
+    const presets = dumps.map((d, index) => {
+      const l = am4DumpLocation(d);
+      return { index, location: l.active ? null : (l.index ?? null), code: l.code ?? null, name: decodeAm4PresetNameFromFrame(d.raw) };
+    });
+    return { count: presets.length, presets };
+  }
+
+  /** AM4 modifier address model (16 slots) — field map + enums recovered from the editor def cache,
+   *  cross-validated with the resolver table. Data-only: the wire binding (CONNECT_MODIFIER) is not
+   *  yet captured, so this exposes the model for a UI/editor, not a bind builder. */
+  modifierModel() {
+    return {
+      effectOrdinal: AM4_MOD_EFFECT_ORDINAL,
+      slotCount: AM4_MOD_SLOT_COUNT,
+      fields: AM4_MOD_FIELDS,
+      sources: AM4_MODIFIER_SOURCES,
+      operations: AM4_MOD_OPERATIONS,
+      channels: AM4_MOD_CHANNELS,
+      bindingSupported: false,
+      note: 'AM4 modifier field map + enums are data-only; the wire binding opcode (CONNECT_MODIFIER) is not yet captured.'
+    };
+  }
+
+  /** Validate an AM4 firmware .syx (fn 0x7D/0x7E/0x7F envelope) — integrity check only, NOT a flasher.
+   *  Reports message/block counts + the header/finalize tags. */
+  validateFirmware(bytes: number[]) {
+    try {
+      const fw = parseAm4Firmware(Uint8Array.from(bytes));
+      return {
+        valid: true,
+        messages: fw.messageCount,
+        blocks: fw.blockPayloads.length,
+        headerTag: [...fw.headerPayload],
+        finalizeTag: [...fw.finalizePayload]
+      };
+    } catch (e) {
+      return { valid: false, error: (e as Error).message };
+    }
   }
 }
 

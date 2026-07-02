@@ -116,8 +116,9 @@ export type DeviceEvent =
   // change → reload. Emitted by the mutating methods below; streamed via SSE + the remote relay channel.
   | { type: 'param'; effectId: number; paramId: number; norm: number }
   | { type: 'changed'; scope: 'grid' | 'preset' }
-  /** Live audio level meters (0..1) from the home meters frame. Labels provisional pending live ID. */
-  | { type: 'meters'; input: number; outL: number; outR: number }
+  /** Live output level meters in dB (−40…0, floor-clamped), from the Preset Leveling poll (fn 0x19).
+   *  Output 1 & 2, each L/R. Decoded from a 5-septet float (RMS) → 10·log10 → dB; smoothed. */
+  | { type: 'meters'; out1L: number; out1R: number; out2L: number; out2R: number }
   /** A shared Axis config doc (layouts / swipe-quick-actions / tags / surface …) was written by one UI —
    *  streamed to the others so layouts/quick-actions/arrange stay in sync live, both directions. `origin` is
    *  the writer's client id so it can ignore its own echo (and not reload while it's mid-edit). */
@@ -193,6 +194,22 @@ class Device {
   #subscribers = new Set<(e: DeviceEvent) => void>();
   #tunerTimer: ReturnType<typeof setTimeout> | null = null;
   #metersTimer: ReturnType<typeof setTimeout> | null = null;
+  // Smoothed output-meter levels in dB (−40…0). Values come from the Preset Leveling poll (fn 0x19),
+  // decoded from a 5-septet float (RMS energy). They're instantaneous (drop to −40 between transients),
+  // so we run an asymmetric envelope follower (fast attack / slow release) for a natural meter feel.
+  #mDb = [-40, -40, -40, -40]; // [out1L, out1R, out2L, out2R]
+  #meterStep = 0; // round-robin index over the 4 meters (+ a CPU read) — one small read per tick
+  static METER_FLOOR = -40; // display floor (matches FM3-Edit's Preset Leveling page)
+  static METER_CEIL = 6; // meters run above 0 dB into clip (live-verified peaks to +5.8 dB)
+  static METER_ATTACK = 0.7; // fraction of the gap closed when the level rises (snappy)
+  static METER_RELEASE = 0.35; // …when it falls (natural meter fall-off; updates are frequent now)
+  // The 4 leveling meters: (addr, sub) → index into #mDb. addr 0x2A=Output 1, 0x2B=Output 2; sub 0x10=L, 0x11=R.
+  static METER_ADDR = [
+    { addr: 0x2a, sub: 0x10 },
+    { addr: 0x2a, sub: 0x11 },
+    { addr: 0x2b, sub: 0x10 },
+    { addr: 0x2b, sub: 0x11 },
+  ];
   subscribe(fn: (e: DeviceEvent) => void): () => void {
     this.#subscribers.add(fn);
     this.#startMeters(); // a listener is present → stream CPU + audio meters (gen-3 only)
@@ -277,11 +294,14 @@ class Device {
     if (this.#tunerTimer) this.#tunerTimer = setTimeout(() => this.#pollTuner(), 55);
   }
 
-  // Live CPU + audio meters: the FM3's home "meters" frame (fn 0x01 sub 0x2e, ~590 bytes), polled like
-  // FM3-Edit does. Reverse-engineered byte map (verified against FM3-Edit's readouts across presets):
-  //   byte 37 = block DSP load → CPU% ≈ CPU_BASE + byte37 * CPU_SLOPE  (fit: 32 + b37/2, 5 points, 2 captures)
-  //   bytes 35/36/588 = audio level meters (0..127). in/out/L-R labels PROVISIONAL — verified live in Axis.
-  // gen-3 only (the AM4 has no such frame). Runs while ≥1 SSE client is subscribed.
+  // Live output meters + CPU. Reverse-engineered from FM3-Edit's Preset Leveling page (see
+  // fm3-scratchpad findings/live-capture-2026-07.md):
+  //   METERS — fn 0x01 sub 0x19, round-robin over Output 1/2 × L/R (addr 0x2A/0x2B, sub 0x10/0x11).
+  //     Reply bytes[12..16] = 5-septet-LE float32 = RMS energy → dB = 10·log10(v), floor −40. The REAL,
+  //     calibrated meters (matched the live readout to ~1 dB). 0x2E bytes 35/36 saturate → not used.
+  //   CPU — fn 0x01 sub 0x2E, byte 37 = block DSP load → CPU% ≈ CPU_BASE + byte37·CPU_SLOPE. That's a
+  //     590-byte frame, so we read it only once per round-robin cycle (meters are tiny 23-byte reads).
+  // gen-3 only (the AM4 has no such frame). Runs while ≥1 SSE client is subscribed. One small read/tick.
   static CPU_BASE = 32;
   static CPU_SLOPE = 0.5;
   #startMeters() {
@@ -293,30 +313,56 @@ class Device {
     if (this.#metersTimer) clearTimeout(this.#metersTimer);
     this.#metersTimer = null;
   }
+  /** Decode a leveling meter reply → dB (5-septet float @ off12 → RMS → 10·log10, floor-clamped). */
+  #meterDb(f: number[]): number {
+    let v = 0;
+    for (let i = 0; i < 5; i++) v |= (f[12 + i]! & 0x7f) << (7 * i);
+    const rms = new Float32Array(new Uint32Array([v >>> 0]).buffer)[0]!;
+    if (!(rms > 1e-7)) return Device.METER_FLOOR;
+    const db = 10 * Math.log10(rms);
+    return Math.max(Device.METER_FLOOR, Math.min(Device.METER_CEIL, db));
+  }
   async #pollMeters() {
     if (!this.#metersTimer) return;
     let slow = false;
     try {
       const dev = await this.#conn();
-      // Live meters are polled ~8×/s (a ~590B frame). A slow link — a generic MIDI interface into 5-pin
-      // DIN (≈31.25 kbaud, ~3 KB/s) — can't carry that without saturating and inflating every other
-      // request to seconds, so we SKIP meter polling there (a cheap 2s re-check resumes it instantly on a
-      // fast link). Fast USB-MIDI (Axe-Fx III / FM9) and USB-CDC serial are NOT slow → meters run normally.
+      // A slow link — a generic MIDI interface into 5-pin DIN (≈31.25 kbaud) — can't carry meter polling
+      // without inflating every other request to seconds, so SKIP it there (a cheap 2 s re-check resumes it
+      // instantly on a fast link). Fast USB-MIDI (Axe-Fx III / FM9) and USB-CDC serial are NOT slow.
       slow = dev.slow;
       if (!slow) {
-        const req = this.#envelope(0x01, [0x2e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        const big = (f: number[]) => f[5] === 0x01 && f[6] === 0x2e && f.length > 100; // the ~590B meters frame
-        const frames = await dev.request(req, { timeoutMs: 400, quietMs: 25, match: (fs) => fs.some(big) });
-        const f = frames.find(big);
-        if (f) {
-          if (f.length > 37) this.#emit({ type: 'cpu', percent: Math.round((Device.CPU_BASE + f[37]! * Device.CPU_SLOPE) * 10) / 10 });
-          if (f.length > 588) this.#emit({ type: 'meters', input: f[588]! / 127, outL: f[35]! / 127, outR: f[36]! / 127 });
+        // Read ALL 4 output meters back-to-back each tick (tiny 23-byte reads — this is exactly what
+        // FM3-Edit's leveling page does; NOT the many-block sweep that stutters audio) so every bar
+        // refreshes every tick, not once per round-robin → smooth, not choppy.
+        for (let i = 0; i < 4; i++) {
+          const { addr, sub } = Device.METER_ADDR[i]!;
+          const req = this.#envelope(0x01, [0x19, 0x00, addr, 0x00, sub, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+          const hit = (f: number[]) => f[5] === 0x01 && f[6] === 0x19 && f[8] === addr && f[10] === sub && f.length === 23;
+          const frames = await dev.request(req, { timeoutMs: 200, quietMs: 12, match: (fs) => fs.some(hit) });
+          const f = frames.find(hit);
+          if (f) {
+            const raw = this.#meterDb(f);
+            const prev = this.#mDb[i]!;
+            const a = raw > prev ? Device.METER_ATTACK : Device.METER_RELEASE;
+            this.#mDb[i] = prev + a * (raw - prev);
+          }
+        }
+        this.#emit({ type: 'meters', out1L: this.#mDb[0]!, out1R: this.#mDb[1]!, out2L: this.#mDb[2]!, out2R: this.#mDb[3]! });
+        // CPU is a heavy 590-byte read → poll it only occasionally (every ~8th tick), off the meter path.
+        if (this.#meterStep++ % 8 === 0) {
+          const req = this.#envelope(0x01, [0x2e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+          const big = (f: number[]) => f[5] === 0x01 && f[6] === 0x2e && f.length >= 590;
+          const frames = await dev.request(req, { timeoutMs: 400, quietMs: 25, match: (fs) => fs.some(big) });
+          const f = frames.find(big);
+          if (f) this.#emit({ type: 'cpu', percent: Math.round((Device.CPU_BASE + f[37]! * Device.CPU_SLOPE) * 10) / 10 });
         }
       }
     } catch {
       /* transient — keep polling */
     }
-    if (this.#metersTimer) this.#metersTimer = setTimeout(() => this.#pollMeters(), slow ? 2000 : 120);
+    // short gap after the 4 reads → ~8–10 full meter refreshes/sec
+    if (this.#metersTimer) this.#metersTimer = setTimeout(() => this.#pollMeters(), slow ? 2000 : 60);
   }
 
   /** Fire-and-forget write, serialized on the request chain (so it never injects mid-read). */
@@ -939,7 +985,8 @@ class Device {
     const dev = await this.#conn();
     const model = this.#prof.fcModel;
     if (!model) throw new Error('device has no decoded Foot Controller model');
-    const config = layout * model.configsPerLayout + view * model.switches + sw;
+    if (!model.liveState) throw new Error('live FC switch read is not supported for this device model (FM3 only); the address model is available via GET /fc/model');
+    const config = layout * model.configsPerLayout! + view * model.switches! + sw;
     const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
     const buildSelRead = (sel: number): number[] => {
       const f = [0xf0, 0x00, 0x01, 0x74, this.#prof.model, 0x01, 0x01, 0x00, ...enc14(sel), 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -1000,8 +1047,9 @@ class Device {
     const dev = await this.#conn();
     const model = this.#prof.fcModel;
     if (!model) throw new Error('device has no decoded Foot Controller model');
+    if (!model.liveState) throw new Error('live FC state read is not supported for this device model (FM3 only); the address model is available via GET /fc/model');
     const eid = model.effectId;
-    const config = layout * model.configsPerLayout + view * model.switches + sw;
+    const config = layout * model.configsPerLayout! + view * model.switches! + sw;
     const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
     const build = (pid: number): number[] => {
       const f = [0xf0, 0x00, 0x01, 0x74, this.#prof.model, 0x01, 0x1b, 0x00, ...enc14(eid), ...enc14(pid), 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -1022,12 +1070,13 @@ class Device {
       }
     };
     const pidOf = (field: string, idx = 0): number => {
-      const fd = model.fields[field as keyof typeof model.fields];
+      const fd = model.fields[field];
+      if (!fd || fd.base == null || fd.stride == null) throw new Error(`FC field '${field}' has no base/stride on this device`);
       return fd.base + config * fd.stride + idx;
     };
     const readLabel = async (field: string): Promise<string> => {
       let s = '';
-      for (let i = 0; i < model.labelLen; i++) {
+      for (let i = 0; i < (model.labelLen ?? 0); i++) {
         const c = await read(pidOf(field, i));
         if (c && c > 0) s += String.fromCharCode(c); // 0 = NUL pad
       }
@@ -1144,6 +1193,52 @@ class Device {
     return out;
   }
 
+  /** Live audio meters per placed monitored block. Reads each block's primary monitor level via the
+   *  block-level GET (fn 0x01 sub 0x01 00 by effectId); the level is a normalized 0..1 float at
+   *  response offset 12-16 (LSB-first 5×7bit → uint32 → float32-LE — confirmed from the FM3 capture
+   *  2026-07-02; note the standard gen-3 float decoder does NOT apply to this field). Mapped to dB
+   *  via the profile's monitor table. Gen-3 only; [] if the device has no monitor table. */
+  async liveMonitors(onlyEid?: number): Promise<{ effectId: number; family: string; paramName: string; role: string; norm: number; db: number | null; minDb?: number; maxDb?: number }[]> {
+    const mon = this.#prof.monitorParams;
+    if (!mon || ![0x10, 0x11, 0x12].includes(this.#prof.model)) return [];
+    // family → its primary monitor def (first table entry for that family)
+    const primaryByFamily = new Map<string, { paramName: string; family: string; role: string; minDb?: number; maxDb?: number }>();
+    for (const [paramName, def] of Object.entries(mon)) if (!primaryByFamily.has(def.family)) primaryByFamily.set(def.family, { paramName, ...def });
+    const decodeNorm = (f: number[], o: number): number => {
+      let v = 0;
+      for (let i = 0; i < 5; i++) v |= (f[o + i]! & 0x7f) << (7 * i);
+      const val = new Float32Array(new Uint32Array([v >>> 0]).buffer)[0]!;
+      return Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0;
+    };
+    const g = await this.grid();
+    const dev = await this.#conn();
+    const model = this.#prof.model;
+    const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
+    const out: { effectId: number; family: string; paramName: string; role: string; norm: number; db: number | null; minDb?: number; maxDb?: number }[] = [];
+    for (const c of g.cells) {
+      if (c.isShunt) continue;
+      if (onlyEid != null && c.effectId !== onlyEid) continue; // gentle single-block poll
+      const slug = slugForEffectId(c.effectId);
+      const family = slug ? SLUG_FAMILY[slug] : undefined;
+      const pm = family ? primaryByFamily.get(family) : undefined;
+      if (!pm) continue;
+      const req = [0xf0, 0x00, 0x01, 0x74, model, 0x01, 0x01, 0x00, ...enc14(c.effectId), 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      let cs = 0; for (const b of req) cs ^= b; req.push(cs & 0x7f, 0xf7);
+      const match = (r: number[]) => r[5] === 0x01 && r[6] === 0x01 && r[7] === 0x00 && (r[8]! | (r[9]! << 7)) === c.effectId && r.length >= 18;
+      try {
+        const frames = await dev.request(req, { timeoutMs: 800, quietMs: 40, match: (fs) => fs.some(match) });
+        const r = frames.find(match);
+        if (!r) continue;
+        const norm = decodeNorm(r, 12);
+        const db = pm.minDb != null && pm.maxDb != null ? pm.minDb + norm * (pm.maxDb - pm.minDb) : null;
+        out.push({ effectId: c.effectId, family: pm.family, paramName: pm.paramName, role: pm.role, norm, db, minDb: pm.minDb, maxDb: pm.maxDb });
+      } catch {
+        /* skip this block */
+      }
+    }
+    return out;
+  }
+
   /** Build dropdown options for an enum param. Labels come from fractal-midi's enum overlay
    * (matched by device param name) where known; otherwise the bare ordinal. */
   #enumOptions(family: string, paramId: number, name: string, min: number, max: number): { value: number; label: string }[] {
@@ -1228,6 +1323,9 @@ class Device {
     const mm = this.#prof.modModel;
     if (!mm) return { ok: false, error: 'device has no modifier model' };
     const f = mm.fields;
+    if (!f.targetEffectId || !f.targetParam || !f.source) {
+      return { ok: false, error: 'modifier model is missing the target-binding fields (source/targetEffectId/targetParam)' };
+    }
     const slotEid = mm.effectId + (Math.max(1, Math.floor(slot)) - 1);
     await this.#write(buildSetParameter(slotEid, f.targetEffectId.pid, targetEffectId, this.#prof.model));
     await this.#write(buildSetParameter(slotEid, f.targetParam.pid, targetParam, this.#prof.model));

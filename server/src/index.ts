@@ -211,6 +211,15 @@ app.get('/cab/irs', () => device.profile.cabIrs());
 // reads/writes via the normal raw-read + setParam path.
 app.get('/fc/model', () => device.profile.fcModel ?? null);
 app.get('/mod/model', () => device.profile.modModel ?? null);
+// Per-block monitor (meter) param table: paramName → {family, pid, role, min/maxDb}. Read-only pids
+// that ride the normal per-block read; Axis renders a meter per placed block from these. {} if none.
+app.get('/preset/monitors', () => device.profile.monitorParams ?? {});
+// Live per-block audio meters: reads each placed monitored block's level (normalized 0..1) + dB.
+app.get('/preset/monitors/live', async (req, reply) => {
+  const q = (req.query as { eid?: string }).eid;
+  const eid = q != null && q !== '' ? Number(q) : undefined;
+  try { return await device.liveMonitors(Number.isFinite(eid as number) ? eid : undefined); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 // FC current switch state via the sub-0x01 structured config-selector read (the read FM3-Edit uses on
 // FC-page entry). Returns the decoded current state (category/function/display/color + labels) for one
 // (layout,view,switch), read via the sub-0x1b value channel that tracks param edits (Device.fcReadState).
@@ -249,6 +258,32 @@ app.post<{ Body: { index: number } }>('/am4/scene', async (req, reply) => {
 });
 app.post<{ Body: { location: number } }>('/am4/preset', async (req, reply) => {
   try { return await am4.switchPreset(req.body.location); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+// Save the active edit buffer to a stored location (0..103). Wire action 0x1B, hardware-confirmed.
+app.post<{ Body: { location: number } }>('/am4/preset/store', async (req, reply) => {
+  if (req.body?.location == null) { reply.code(400); return { error: 'location (0..103) required' }; }
+  try { return await am4.storePreset(req.body.location); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+// Back up a preset off the device as a verbatim .syx dump (location omitted → active buffer).
+app.post<{ Body: { location?: number } }>('/am4/preset/backup', async (req, reply) => {
+  try { return await am4.backupPreset(req.body?.location); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
+// Restore a preset .syx (byte array of one 12,352-byte dump) — verbatim re-emit to its stored location.
+app.post<{ Body: { bytes: number[] } }>('/am4/preset/restore', async (req, reply) => {
+  if (!Array.isArray(req.body?.bytes) || !req.body.bytes.length) { reply.code(400); return { error: 'bytes[] of one AM4 preset dump required' }; }
+  try { return await am4.restorePreset(req.body.bytes); } catch (e) { reply.code(400); return { error: (e as Error).message }; }
+});
+// Offline decode of an AM4 .syx (single dump or full bank) → each preset's location + name (library import).
+app.post<{ Body: { bytes: number[] } }>('/am4/preset/decode', async (req, reply) => {
+  if (!Array.isArray(req.body?.bytes) || !req.body.bytes.length) { reply.code(400); return { error: 'bytes[] of an AM4 .syx (dump or bank) required' }; }
+  try { return am4.decodeSyx(req.body.bytes); } catch (e) { reply.code(400); return { error: (e as Error).message }; }
+});
+// AM4 modifier address model (16 slots) — field map + source/operation/channel enums (data-only).
+app.get('/am4/mod/model', () => am4.modifierModel());
+// Validate an AM4 firmware .syx (fn 0x7D/0x7E/0x7F envelope) — integrity check only, NOT a flasher.
+app.post<{ Body: { bytes: number[] } }>('/am4/firmware/validate', (req, reply) => {
+  if (!Array.isArray(req.body?.bytes) || !req.body.bytes.length) { reply.code(400); return { error: 'bytes[] of an AM4 firmware .syx required' }; }
+  return am4.validateFirmware(req.body.bytes);
 });
 // bind a modifier slot to a target parameter (writes targetEffectId + targetParam + source on the slot eid)
 app.post<{ Body: { slot: number; targetEffectId: number; targetParam: number; source: number } }>('/mod/bind', async (req, reply) => {

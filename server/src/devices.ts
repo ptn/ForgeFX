@@ -27,9 +27,20 @@ import {
   FM3_MOD_SLOT_COUNT,
   FM3_MOD_SOURCES,
   FM3_MOD_FIELDS,
+  FM3_MONITOR_PARAMS,
 } from 'fractal-midi/gen3/fm3';
-import { FM9_RANGES, FM9_PARAMS_BY_FAMILY, FM9_ENUM_OVERRIDES, FM9_FAMILY_BY_EFFECT_ID, FM9_LAYOUTS } from 'fractal-midi/gen3/fm9';
-import { PARAMS_BY_FAMILY as AXE3_PARAMS, resolveEnumValues as axe3Enum, GEN3_READ_ROSTERS, AXE3_LAYOUTS } from 'fractal-midi/gen3/axe-fx-iii';
+import {
+  FM9_RANGES, FM9_PARAMS_BY_FAMILY, FM9_ENUM_OVERRIDES, FM9_FAMILY_BY_EFFECT_ID, FM9_LAYOUTS,
+  FM9_MONITOR_PARAMS,
+  FM9_FC_EFFECT_ID, FM9_FC_CONFIGS, FM9_FC_PARAMS_WIDTH, FM9_FC_FIELDS, FM9_FC_CATEGORIES, FM9_FC_LABEL_MODES,
+  FM9_MOD_EFFECT_ID, FM9_MOD_SLOT_COUNT, FM9_MOD_FIELDS,
+} from 'fractal-midi/gen3/fm9';
+import {
+  PARAMS_BY_FAMILY as AXE3_PARAMS, resolveEnumValues as axe3Enum, GEN3_READ_ROSTERS, AXE3_LAYOUTS,
+  AXE3_MONITOR_PARAMS,
+  AXE3_FC_EFFECT_ID, AXE3_FC_CONFIGS, AXE3_FC_PARAMS_WIDTH, AXE3_FC_FIELDS,
+  AXE3_MOD_EFFECT_ID, AXE3_MOD_SLOT_COUNT, AXE3_MOD_FIELDS, AXE3_MOD_SOURCES_STATUS,
+} from 'fractal-midi/gen3/axe-fx-iii';
 
 // Editor-authentic UI layout (pages → controls), per family, from fractal-midi (*_LAYOUTS).
 export type LayoutControl = { label: string; paramName: string; paramId: number | null; col?: number };
@@ -43,42 +54,58 @@ const layoutOf = (layouts: LayoutMap) => (family: string): DeviceLayout | undefi
 
 // FC + Modifier address models (FM3-decoded; other devices not decoded yet). Lets the client compute
 // (eid,pid) for any footswitch field / modifier field without hard-coding paramIds.
+// One FC param-base field: gen-3 FC params are addressed as `base + config*stride (+ index)`.
+// FM3 fields carry base/width/stride; FM9 the same; the III's carry base/width (stride = width).
+export type FcFieldDef = { base?: number; width?: number; stride?: number; pid?: number; paramName?: string };
 export type FcModel = {
   effectId: number;
-  switches: number;
-  views: number;
-  layouts: number;
-  configsPerLayout: number;
-  labelLen: number;
   paramsWidth: number;
-  fields: typeof FM3_FC_FIELDS;
-  categories: Readonly<Record<number, string>>;
-  colors: Readonly<Record<number, { name: string; hex: string }>>;
-  labelModes: Readonly<Record<number, string>>;
-  functions: typeof FM3_FC_FUNCTIONS;
-  channels: readonly string[];
+  /** Total addressable FC configs (FM3: layouts×configsPerLayout; FM9/III: 108). */
+  configs: number;
+  fields: Readonly<Record<string, FcFieldDef>>;
+  categories?: Readonly<Record<number, string>>;
+  labelModes?: Readonly<Record<number, string>>;
+  /** True when the device supports the live per-switch state read (`fcReadState`). FM3 only —
+   *  FM9/III expose the address model here but their (layout,view,switch) decomposition and
+   *  label/LED-colour bases are not statically recovered, so live reads stay gated. */
+  liveState: boolean;
+  // ── FM3-only live-read geometry + display metadata (present when liveState) ──
+  switches?: number;
+  views?: number;
+  layouts?: number;
+  configsPerLayout?: number;
+  labelLen?: number;
+  colors?: Readonly<Record<number, { name: string; hex: string }>>;
+  functions?: typeof FM3_FC_FUNCTIONS;
+  channels?: readonly string[];
 };
 export type ModSource = { name: string; ordinal: number };
 export type ModModel = {
   /** effectId of modifier slot 1; slot N (1-based) = effectId + (N-1). */
   effectId: number;
   slotCount: number;
-  fields: typeof FM3_MOD_FIELDS;
-  /** Known modulation sources (name → MOD_CTRLID ordinal). Partial — extended as more are confirmed. */
+  /** field → { pid }. Binding uses source(0)/targetEffectId(8)/targetParam(9). */
+  fields: Readonly<Record<string, { pid: number }>>;
+  /** Known modulation sources (name → MOD_CTRLID ordinal). Empty when the device's source
+   *  enum is runtime-built and not yet captured (FM9/III) — binding still works. */
   sources: readonly ModSource[];
+  /** Note on why `sources` may be empty (device-specific, capture-pending). */
+  sourcesNote?: string;
 };
 const FM3_FC_MODEL: FcModel = {
   effectId: FM3_FC_EFFECT_ID,
+  paramsWidth: FM3_FC_PARAMS_WIDTH,
+  configs: FM3_FC_LAYOUT_COUNT * FM3_FC_CONFIGS_PER_LAYOUT,
+  fields: FM3_FC_FIELDS,
+  categories: FM3_FC_CATEGORIES,
+  labelModes: FM3_FC_LABEL_MODES,
+  liveState: true,
   switches: FM3_FC_SWITCHES,
   views: FM3_FC_VIEWS,
   layouts: FM3_FC_LAYOUT_COUNT,
   configsPerLayout: FM3_FC_CONFIGS_PER_LAYOUT,
   labelLen: FM3_FC_LABEL_LEN,
-  paramsWidth: FM3_FC_PARAMS_WIDTH,
-  fields: FM3_FC_FIELDS,
-  categories: FM3_FC_CATEGORIES,
   colors: FM3_FC_COLORS,
-  labelModes: FM3_FC_LABEL_MODES,
   functions: FM3_FC_FUNCTIONS,
   channels: FM3_FC_CHANNELS,
 };
@@ -87,6 +114,51 @@ const FM3_MOD_MODEL: ModModel = {
   slotCount: FM3_MOD_SLOT_COUNT,
   fields: FM3_MOD_FIELDS,
   sources: FM3_MOD_SOURCES.map((s) => ({ name: s.name, ordinal: s.ordinal }))
+};
+
+// FM9 + Axe-Fx III FC address models (binary-confirmed bases; live per-switch read NOT supported —
+// their config decomposition + label/colour bases are capture-only). Exposed via /fc/model so Axis
+// can compute + read/write FC params through the generic (eid 199, pid) path.
+const FM9_FC_MODEL: FcModel = {
+  effectId: FM9_FC_EFFECT_ID,
+  paramsWidth: FM9_FC_PARAMS_WIDTH,
+  configs: FM9_FC_CONFIGS,
+  fields: FM9_FC_FIELDS,
+  categories: FM9_FC_CATEGORIES,
+  labelModes: FM9_FC_LABEL_MODES,
+  liveState: false,
+};
+const AXE3_FC_MODEL: FcModel = {
+  effectId: AXE3_FC_EFFECT_ID,
+  paramsWidth: AXE3_FC_PARAMS_WIDTH,
+  configs: AXE3_FC_CONFIGS,
+  fields: AXE3_FC_FIELDS,
+  liveState: false,
+};
+// FM9 + III modifier models: field map is binary-confirmed (source 0 / targetEffectId 8 /
+// targetParam 9) so /mod/bind works; the source enum is runtime-built and not yet captured.
+const FM9_MOD_MODEL: ModModel = {
+  effectId: FM9_MOD_EFFECT_ID,
+  slotCount: FM9_MOD_SLOT_COUNT,
+  fields: FM9_MOD_FIELDS,
+  sources: [],
+  sourcesNote: 'FM9 modulation-source enum is runtime-built (device-specific) and not yet captured; do not reuse FM3 ordinals.'
+};
+const AXE3_MOD_MODEL: ModModel = {
+  effectId: AXE3_MOD_EFFECT_ID,
+  slotCount: AXE3_MOD_SLOT_COUNT,
+  fields: AXE3_MOD_FIELDS,
+  sources: [],
+  sourcesNote: `Axe-Fx III modulation-source enum: ${AXE3_MOD_SOURCES_STATUS} — capture-pending; do not reuse FM3 ordinals.`
+};
+
+// Per-block monitor (meter) parameter tables — read-only pids + dB ranges, by parameterName.
+// Surfaced via /preset/monitors so Axis can render meters from the standard per-block reads.
+export type MonitorParams = Readonly<Record<string, { family: string; pid: number; role: string; minDb?: number; maxDb?: number; widgetConfirmed: boolean }>>;
+const MONITOR_PARAMS_BY_MODEL: Record<number, MonitorParams> = {
+  0x10: AXE3_MONITOR_PARAMS,
+  0x11: FM3_MONITOR_PARAMS,
+  0x12: FM9_MONITOR_PARAMS,
 };
 
 // The model-roster entry shape ForgeFX surfaces to the UI (value + name + lineage). FM3's
@@ -134,10 +206,12 @@ export interface DeviceProfile {
   familyForEffectId(eid: number): string | undefined;
   /** Editor-authentic UI layout (pages → controls) for a family, or undefined. */
   layoutFor(family: string): DeviceLayout | undefined;
-  /** Foot Controller address model (FM3-decoded; undefined where not decoded). */
+  /** Foot Controller address model. FM3 supports live state read; FM9/III expose the address model only. */
   fcModel?: FcModel;
-  /** Modifier address model (FM3-decoded; undefined where not decoded). */
+  /** Modifier address model. Field map (bind) confirmed on FM3/FM9/III; source enum FM3-only for now. */
   modModel?: ModModel;
+  /** Per-block monitor (meter) param table (paramName → {pid, role, dB range}); undefined if none. */
+  monitorParams?: MonitorParams;
 }
 
 // FM9 enum data ships as FM9_ENUM_OVERRIDES, keyed by the param's NAME → { ordinal: label }.
@@ -225,7 +299,10 @@ export const PROFILES: Record<number, DeviceProfile> = {
     enumLabelsFor: axe3EnumLabels,
     cabIrs: () => ({}), // III IR names are read live from the unit, not bundled
     familyForEffectId: eidFamily(), // III ships no effectId table → shared gen-3 virtual eids only
-    layoutFor: layoutOf(AXE3_LAYOUTS as unknown as LayoutMap)
+    layoutFor: layoutOf(AXE3_LAYOUTS as unknown as LayoutMap),
+    fcModel: AXE3_FC_MODEL,
+    modModel: AXE3_MOD_MODEL,
+    monitorParams: AXE3_MONITOR_PARAMS
   },
   0x11: {
     model: 0x11, key: 'fm3', name: 'FM3', rows: 4, cols: 12,
@@ -240,7 +317,8 @@ export const PROFILES: Record<number, DeviceProfile> = {
     familyForEffectId: eidFamily(FM3_FAMILY_BY_EFFECT_ID as Record<number, string>),
     layoutFor: layoutOf(FM3_LAYOUTS as unknown as LayoutMap),
     fcModel: FM3_FC_MODEL,
-    modModel: FM3_MOD_MODEL
+    modModel: FM3_MOD_MODEL,
+    monitorParams: FM3_MONITOR_PARAMS
   },
   0x12: {
     model: 0x12, key: 'fm9', name: 'FM9', rows: 6, cols: 14,
@@ -252,7 +330,10 @@ export const PROFILES: Record<number, DeviceProfile> = {
     enumLabelsFor: fm9EnumLabels,
     cabIrs: () => ({}), // FM9 IR names not yet bundled
     familyForEffectId: eidFamily(FM9_FAMILY_BY_EFFECT_ID as Record<number, string>),
-    layoutFor: layoutOf(FM9_LAYOUTS as unknown as LayoutMap)
+    layoutFor: layoutOf(FM9_LAYOUTS as unknown as LayoutMap),
+    fcModel: FM9_FC_MODEL,
+    modModel: FM9_MOD_MODEL,
+    monitorParams: FM9_MONITOR_PARAMS
   }
 };
 

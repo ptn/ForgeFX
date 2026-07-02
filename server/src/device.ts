@@ -25,6 +25,18 @@ import {
   ROUTING_OP_CONNECT,
   ROUTING_OP_DISCONNECT
 } from 'forgefx-midi/gen3/axe-fx-iii';
+// Per-device capability declarations (the package's single source of truth: scenes, channels, slot
+// model, save, …). Surfaced via /device so Axis drives its UI from what each model actually supports,
+// instead of hardcoded per-model assumptions.
+import { FM3_DESCRIPTOR, FM9_DESCRIPTOR, AXEFX3_DESCRIPTOR, VP4_DESCRIPTOR } from 'forgefx-midi/devices/gen3';
+import { AM4_DESCRIPTOR } from 'forgefx-midi/devices/am4';
+const DESCRIPTOR_BY_MODEL: Record<number, { capabilities: Record<string, unknown> }> = {
+  0x10: AXEFX3_DESCRIPTOR as never,
+  0x11: FM3_DESCRIPTOR as never,
+  0x12: FM9_DESCRIPTOR as never,
+  0x14: VP4_DESCRIPTOR as never,
+  0x15: AM4_DESCRIPTOR as never
+};
 import { resolveEnumValues } from 'forgefx-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'forgefx-midi/shared';
 import { autoDetectPath } from './transport/serial.js';
@@ -464,7 +476,17 @@ class Device {
     // detected model id/byte so consumers (e.g. the library) can tell an AM4 (0x15) apart.
     const mid = this.#modelId >= 0 ? this.#modelId : this.#prof.model;
     const m = DEVICE_MODELS[mid];
-    return { model: m?.name ?? this.#prof.name, modelByte: `0x${mid.toString(16)}`, modelId: mid, firmware: null as null | { version: string; build: string }, port: this.port };
+    const c = DESCRIPTOR_BY_MODEL[mid]?.capabilities as Record<string, unknown> | undefined;
+    // curated subset (drop the RegExp preset_location_format — not JSON-clean, not needed by the UI)
+    const capabilities = c
+      ? {
+          slotModel: c.slot_model, slotCount: c.slot_count, grid: c.grid,
+          hasScenes: !!c.has_scenes, sceneCount: c.scene_count ?? 0,
+          hasChannels: !!c.has_channels, channelNames: c.channel_names ?? [], channelBlocks: c.channel_blocks ?? [],
+          supportsSave: !!c.supports_save
+        }
+      : null;
+    return { model: m?.name ?? this.#prof.name, modelByte: `0x${mid.toString(16)}`, modelId: mid, capabilities, firmware: null as null | { version: string; build: string }, port: this.port };
   }
 
   /** Ensure the active profile matches the attached unit — runs detect once, lazily, so direct API

@@ -8,6 +8,8 @@ import {
   BLOCK_SLOT_PID_LOW,
   BLOCK_NAMES_BY_VALUE,
   buildSetParam,
+  buildSetParamNorm,
+  buildSetFloatParam,
   buildSetBlockBypass,
   buildSwitchScene,
   buildSwitchPreset,
@@ -301,13 +303,20 @@ class Am4Device {
     // active-channel dict for channel-bearing blocks — getPreset nests exactly one channel per slot).
     const slot = snap?.slots.find((s) => s.block_type === blockName);
     const decoded = this.#slotParamValues(slot);
+    // The reader's decoded keys should match KNOWN_PARAMS names verbatim, but casing/space/underscore
+    // drift between the catalog and the descriptor reader would silently drop every param (display
+    // undefined → skipped), leaving a block like `amp` with 154 recovered knobs rendering empty. Index
+    // the decoded dict by a normalized key so a cosmetic mismatch still resolves to the right value.
+    const norm = (s: string) => s.toLowerCase().replace(/[\s_]+/g, '');
+    const decByNorm = new Map(Object.entries(decoded).map(([k, v]) => [norm(k), v]));
+    const lookup = (name: string) => (name in decoded ? decoded[name] : decByNorm.get(norm(name)));
 
     const params = Object.values(KNOWN_PARAMS).filter((p) => p.block === blockName) as Param[];
     const named: NamedParam[] = [];
     const enums: EnumParam[] = [];
     let type: { value: number; name: string } | null = null;
     for (const p of params) {
-      const display = decoded[p.name];
+      const display = lookup(p.name);
       if (display === undefined) continue; // param not in the dump (channel-gated / not placed)
       if (p.unit === 'enum') {
         const options = Object.entries(p.enumValues ?? {}).map(([v, label]) => ({ value: Number(v), label }));
@@ -422,6 +431,27 @@ class Am4Device {
     const dev = await device.openTransport();
     const frame = buildSetParam(key as ParamKey, displayValue);
     const res = await dev.request(frame, { timeoutMs: 600, quietMs: 60, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
+    return { ok: res.some((f) => isCommandAck(frame, f)) };
+  }
+
+  /** Write a continuous param by wire ADDRESS (the block editor's effectId=pidLow + paramId=pidHigh),
+   *  normalized 0..1 (action SET_NORM — hardware-verified). Invalidates the preset cache so the next read
+   *  reflects the change. */
+  async setParamNorm(pidLow: number, pidHigh: number, norm: number) {
+    const dev = await device.openTransport();
+    const n = Math.max(0, Math.min(1, norm));
+    const frame = buildSetParamNorm({ pidLow, pidHigh }, n);
+    const res = await dev.request(frame, { timeoutMs: 600, quietMs: 50, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
+    this.#presetCache = null;
+    return { ok: res.some((f) => isCommandAck(frame, f)) };
+  }
+
+  /** Write a discrete/enum param by wire ADDRESS to a raw internal value (the enum ordinal). */
+  async setParamValue(pidLow: number, pidHigh: number, value: number) {
+    const dev = await device.openTransport();
+    const frame = buildSetFloatParam({ pidLow, pidHigh }, value);
+    const res = await dev.request(frame, { timeoutMs: 600, quietMs: 50, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
+    this.#presetCache = null;
     return { ok: res.some((f) => isCommandAck(frame, f)) };
   }
 

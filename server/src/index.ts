@@ -255,6 +255,16 @@ app.get<{ Params: { n: string } }>('/am4/presets/:n/name', async (req, reply) =>
 app.get<{ Params: { pidLow: string } }>('/am4/blocks/:pidLow/params', async (req, reply) => {
   try { return await am4.blockParams(Number(req.params.pidLow)); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
 });
+// Write one AM4 param by wire address (pidLow=block, pidHigh=param): {norm} for a continuous knob
+// (0..1, SET_NORM), or {value} for a discrete/enum ordinal.
+app.put<{ Params: { pidLow: string; pidHigh: string }; Body: { norm?: number; value?: number } }>('/am4/blocks/:pidLow/params/:pidHigh', async (req, reply) => {
+  const pl = Number(req.params.pidLow), ph = Number(req.params.pidHigh);
+  try {
+    if (req.body?.norm != null) return await am4.setParamNorm(pl, ph, req.body.norm);
+    if (req.body?.value != null) return await am4.setParamValue(pl, ph, req.body.value);
+    reply.code(400); return { error: 'norm or value required' };
+  } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+});
 // AM4 preset library: scan stored locations → {location, code, name, isEmpty} for the browser.
 app.get('/am4/presets', async (_req, reply) => {
   try { return await am4.scanPresets(); } catch (e) { reply.code(503); return { error: (e as Error).message }; }

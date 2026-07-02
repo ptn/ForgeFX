@@ -332,7 +332,14 @@ class Device {
   }
   async #pollMeters() {
     if (!this.#metersTimer) return;
-    if (this.#isAm4()) { this.#stopMeters(); return; } // detect() may have flipped us to AM4 after start
+    // Wait until the attached model is identified before poking it — the SSE subscription can start the
+    // meter poll before detect() runs, and we must not fire FM3 (0x11) frames at an as-yet-unknown device
+    // (e.g. an auto-detected AM4). Once detect() sets #modelId we either proceed (gen-3) or stop (AM4).
+    if (this.#modelId === -1) {
+      this.#metersTimer = setTimeout(() => this.#pollMeters(), 300);
+      return;
+    }
+    if (this.#isAm4()) { this.#stopMeters(); return; } // detect() flipped us to AM4 after start
     let slow = false;
     try {
       const dev = await this.#conn();

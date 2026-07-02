@@ -459,7 +459,12 @@ class Device {
     return { ok: true, chosen: await resolveConn(), profileOverride: getProfileOverride() };
   }
   async deviceInfo() {
-    return { model: this.#prof.name, modelByte: `0x${this.#prof.model.toString(16)}`, firmware: null as null | { version: string; build: string }, port: this.port };
+    await this.#ready(); // ensure detection ran so #modelId reflects the ACTUAL attached unit
+    // AM4 keeps the gen-3 fm3 #prof (0x11) internally, so #prof.model can't identify it — report the
+    // detected model id/byte so consumers (e.g. the library) can tell an AM4 (0x15) apart.
+    const mid = this.#modelId >= 0 ? this.#modelId : this.#prof.model;
+    const m = DEVICE_MODELS[mid];
+    return { model: m?.name ?? this.#prof.name, modelByte: `0x${mid.toString(16)}`, modelId: mid, firmware: null as null | { version: string; build: string }, port: this.port };
   }
 
   /** Ensure the active profile matches the attached unit — runs detect once, lazily, so direct API

@@ -6,7 +6,7 @@
 import { gzipSync } from 'node:zlib';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
-import type { DeviceEvent } from './device.js';
+import type { DeviceEvent } from './drivers/types.js';
 
 type Session = { client: SupabaseClient; userId: string };
 type Subscribe = (fn: (e: DeviceEvent) => void) => () => void;
@@ -20,8 +20,9 @@ const GZIP_MIN = 2048;
 
 /** What may be driven remotely. Reads are broadly allowed (except cloud account); writes are limited to
  *  live performance edits (params, bypass, channel, type, scene, tempo, tuner, grid moves/cables). NEVER
- *  remotely reachable: preset store-to-slot, backups, restore, raw SysEx, cloud account, port selection,
- *  store writes/deletes, telemetry uploads, remote-enable itself. */
+ *  remotely reachable: preset store-to-slot (/preset/store), backups/restore (incl. the Phase-6
+ *  /preset/backup + /preset/restore dump movers), /firmware/validate (flash-adjacent byte mover), raw
+ *  SysEx, cloud account, port selection, store writes/deletes, telemetry uploads, remote-enable itself. */
 export function remoteAllowed(method: string, path: string): boolean {
   const p = (path.split('?')[0] || '').replace(/\/+$/, '') || '/';
   if (method === 'GET') return !p.startsWith('/cloud') && !p.startsWith('/remote') && p !== '/debug/raw';
@@ -30,6 +31,7 @@ export function remoteAllowed(method: string, path: string): boolean {
       /^\/preset\/blocks\/\d+\/params(\/\d+)?$/.test(p) ||
       /^\/preset\/grid\/cell$/.test(p) ||
       /^\/am4\/param$/.test(p) ||
+      /^\/device\/param$/.test(p) || // unified twin of /am4/param (live device/global param edit)
       /^\/store\/config\/[^/]+$/.test(p) // shared UI config (layouts/swipe/surface/tags…) — lets remote edits sync back to the host. Config only, never presets/backups.
     );
   if (method === 'POST')

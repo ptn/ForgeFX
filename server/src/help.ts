@@ -19,7 +19,7 @@ import {
 } from 'forgefx-midi/gen3/fm3';
 import { FM9_HELP_OVERRIDES } from 'forgefx-midi/gen3/fm9';
 import { AXE_FX_III_HELP_OVERRIDES } from 'forgefx-midi/gen3/axe-fx-iii';
-import { device } from './device.js';
+import { registry } from './drivers/registry.js';
 import { SLUG_FAMILY } from './devices.js';
 
 // Per-device resolved catalogs (shared text + device-flagged deltas), built
@@ -31,7 +31,7 @@ const RESOLVED: Record<string, HelpCatalog> = {
 };
 
 function catalogForActiveDevice(): HelpCatalog {
-  return RESOLVED[device.profile.key] ?? GEN3_HELP;
+  return RESOLVED[registry.profile.key] ?? GEN3_HELP;
 }
 
 /** A block's family symbol from a slug (e.g. 'reverb' → 'REVERB'), else null. */
@@ -62,7 +62,7 @@ interface BlockHelpDTO {
  */
 function buildBlockHelp(slug: string, family: string): BlockHelpDTO | null {
   const catalog = catalogForActiveDevice();
-  const defs = device.profile.params[family] ?? [];
+  const defs = registry.profile.params[family] ?? [];
   const entry = blockHelpFor(catalog, family, defs.map((d) => d.name));
   if (!entry) return null;
   const params: Record<number, ParamHelp> = {};
@@ -73,7 +73,7 @@ function buildBlockHelp(slug: string, family: string): BlockHelpDTO | null {
   return {
     family,
     slug,
-    device: device.profile.key,
+    device: registry.profile.key,
     summary: entry.block.summary,
     detail: entry.block.detail,
     params,
@@ -108,6 +108,6 @@ export function registerHelpRoutes(app: FastifyInstance): void {
       const dto = buildBlockHelp(slug, family);
       if (dto) out[slug] = dto;
     }
-    return { device: device.profile.key, blocks: out };
+    return { device: registry.profile.key, blocks: out };
   });
 }

@@ -1,0 +1,28 @@
+{
+  "status": 200,
+  "body": {
+    "model": "FM3",
+    "modelByte": "0x11",
+    "modelId": 17,
+    "capabilities": {
+      "slotModel": "grid",
+      "grid": {
+        "rows": 4,
+        "cols": 12
+      },
+      "hasScenes": true,
+      "sceneCount": 8,
+      "hasChannels": true,
+      "channelNames": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "channelBlocks": [],
+      "supportsSave": false
+    },
+    "firmware": null,
+    "port": "/dev/ttyACM0"
+  }
+}

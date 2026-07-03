@@ -13,6 +13,7 @@
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx test/run-all.ts",
     "probe:grid": "tsx src/probes/grid-read.ts",
     "probe:grid2e": "tsx src/probes/grid-2e.ts"
   },
@@ -21,7 +22,7 @@
     "@julusian/midi": "^3.6.1",
     "@supabase/supabase-js": "^2.110.0",
     "fastify": "^5.1.0",
-    "forgefx-midi": "file:../vendor/forgefx-midi-0.1.0.tgz",
+    "forgefx-midi": "file:../../forgefx-midi",
     "serialport": "^12.0.0",
     "ws": "^8.21.0"
   },

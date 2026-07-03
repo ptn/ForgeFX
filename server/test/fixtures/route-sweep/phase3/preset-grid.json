@@ -1,0 +1,153 @@
+{
+  "status": 200,
+  "body": {
+    "model": "fm3",
+    "name": "yeet",
+    "crcValid": true,
+    "rows": 4,
+    "cols": 12,
+    "scenes": [
+      "Brilliant",
+      "Cranked Brilliant",
+      "HOT",
+      "Old Top Boost",
+      "Delay Pre",
+      "SDD Pre",
+      "Dry Brilliant",
+      "Dry Cranked"
+    ],
+    "cells": [
+      {
+        "row": 1,
+        "col": 0,
+        "effectId": 37,
+        "name": "Input 1",
+        "isShunt": false,
+        "routeFlag": 0,
+        "fromRows": []
+      },
+      {
+        "row": 1,
+        "col": 1,
+        "effectId": 46,
+        "name": "Comp 1",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      },
+      {
+        "row": 1,
+        "col": 2,
+        "effectId": 94,
+        "name": "Wah 1",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      },
+      {
+        "row": 1,
+        "col": 3,
+        "effectId": 90,
+        "name": "Phaser 1",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      },
+      {
+        "row": 1,
+        "col": 4,
+        "effectId": 70,
+        "name": "Delay 1",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      },
+      {
+        "row": 1,
+        "col": 5,
+        "effectId": 118,
+        "name": "Drive 1",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      },
+      {
+        "row": 1,
+        "col": 6,
+        "effectId": 58,
+        "name": "Amp 1",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      },
+      {
+        "row": 1,
+        "col": 7,
+        "effectId": 62,
+        "name": "Cab 1",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      },
+      {
+        "row": 1,
+        "col": 8,
+        "effectId": 78,
+        "name": "Chorus 1",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      },
+      {
+        "row": 1,
+        "col": 9,
+        "effectId": 71,
+        "name": "Delay 2",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      },
+      {
+        "row": 1,
+        "col": 10,
+        "effectId": 66,
+        "name": "Reverb 1",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      },
+      {
+        "row": 1,
+        "col": 11,
+        "effectId": 42,
+        "name": "Output 1",
+        "isShunt": false,
+        "routeFlag": 2,
+        "fromRows": [
+          1
+        ]
+      }
+    ],
+    "source": "dump"
+  }
+}

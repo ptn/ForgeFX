@@ -1,0 +1,86 @@
+{
+  "status": 200,
+  "body": {
+    "model": "FM3",
+    "modelByte": "0x11",
+    "modelId": 17,
+    "apiVersion": 2,
+    "capabilities": {
+      "slotModel": "grid",
+      "grid": {
+        "rows": 4,
+        "cols": 12
+      },
+      "hasScenes": true,
+      "sceneCount": 8,
+      "hasChannels": true,
+      "channelNames": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "channelBlocks": [],
+      "presets": {
+        "count": 512,
+        "addressing": "numeric",
+        "canRename": true,
+        "canScanNames": false,
+        "canDeepScan": true,
+        "liveQuery": true
+      },
+      "gridRouting": true,
+      "gridCursorSelect": true,
+      "shuntBase": 1024,
+      "paramsWithoutPack": true,
+      "tempo": true,
+      "tuner": true,
+      "meters": {
+        "blockMeters": true,
+        "liveMonitors": true,
+        "outputLevels": true,
+        "cpu": true
+      },
+      "sceneNamesWritable": true,
+      "fc": {
+        "model": true,
+        "liveState": true
+      },
+      "modifiers": {
+        "model": true,
+        "bind": true
+      },
+      "cabIrs": true,
+      "firmwareValidate": false,
+      "backupDump": false,
+      "restoreDump": false,
+      "versionStore": true,
+      "deviceParams": false,
+      "virtualEffects": [
+        {
+          "eid": 1,
+          "slug": "global",
+          "name": "Setup"
+        },
+        {
+          "eid": 2,
+          "slug": "controllers",
+          "name": "Controllers"
+        },
+        {
+          "eid": 3,
+          "slug": "modifier",
+          "name": "Modifier"
+        },
+        {
+          "eid": 199,
+          "slug": "fc",
+          "name": "Footswitches"
+        }
+      ],
+      "supportsSave": false
+    },
+    "firmware": null,
+    "port": "/dev/ttyACM0"
+  }
+}

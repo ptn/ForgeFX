@@ -1,0 +1,259 @@
+{
+  "status": 200,
+  "body": {
+    "chosen": {
+      "transport": "serial",
+      "id": "/dev/ttyACM0"
+    },
+    "override": null,
+    "profileOverride": null,
+    "profile": {
+      "key": "fm3",
+      "name": "FM3",
+      "model": "0x11"
+    },
+    "ports": [
+      {
+        "transport": "serial",
+        "id": "/dev/ttyACM0",
+        "label": "/dev/ttyACM0 · FM3",
+        "fractal": true,
+        "model": "FM3"
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS1",
+        "label": "/dev/ttyS1",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS10",
+        "label": "/dev/ttyS10",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS11",
+        "label": "/dev/ttyS11",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS12",
+        "label": "/dev/ttyS12",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS13",
+        "label": "/dev/ttyS13",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS14",
+        "label": "/dev/ttyS14",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS15",
+        "label": "/dev/ttyS15",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS16",
+        "label": "/dev/ttyS16",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS17",
+        "label": "/dev/ttyS17",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS18",
+        "label": "/dev/ttyS18",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS19",
+        "label": "/dev/ttyS19",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS2",
+        "label": "/dev/ttyS2",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS20",
+        "label": "/dev/ttyS20",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS21",
+        "label": "/dev/ttyS21",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS22",
+        "label": "/dev/ttyS22",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS23",
+        "label": "/dev/ttyS23",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS24",
+        "label": "/dev/ttyS24",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS25",
+        "label": "/dev/ttyS25",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS26",
+        "label": "/dev/ttyS26",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS27",
+        "label": "/dev/ttyS27",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS28",
+        "label": "/dev/ttyS28",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS29",
+        "label": "/dev/ttyS29",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS3",
+        "label": "/dev/ttyS3",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS30",
+        "label": "/dev/ttyS30",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS31",
+        "label": "/dev/ttyS31",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS4",
+        "label": "/dev/ttyS4",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS5",
+        "label": "/dev/ttyS5",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS6",
+        "label": "/dev/ttyS6",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS7",
+        "label": "/dev/ttyS7",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS8",
+        "label": "/dev/ttyS8",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS9",
+        "label": "/dev/ttyS9",
+        "fractal": false
+      },
+      {
+        "transport": "serial",
+        "id": "/dev/ttyS0",
+        "label": "/dev/ttyS0",
+        "fractal": false
+      },
+      {
+        "transport": "midi",
+        "id": "Midi Through:Midi Through Port-0 14:0",
+        "label": "Midi Through:Midi Through Port-0 14:0",
+        "fractal": false,
+        "dir": "input"
+      },
+      {
+        "transport": "midi",
+        "id": "Launchkey MK4 49:Launchkey MK4 49 MIDI In 32:0",
+        "label": "Launchkey MK4 49:Launchkey MK4 49 MIDI In 32:0",
+        "fractal": false,
+        "dir": "input"
+      },
+      {
+        "transport": "midi",
+        "id": "Launchkey MK4 49:Launchkey MK4 49 DAW In 32:1",
+        "label": "Launchkey MK4 49:Launchkey MK4 49 DAW In 32:1",
+        "fractal": false,
+        "dir": "input"
+      },
+      {
+        "transport": "midi",
+        "id": "Midi Through:Midi Through Port-0 14:0",
+        "label": "Midi Through:Midi Through Port-0 14:0",
+        "fractal": false,
+        "dir": "output"
+      },
+      {
+        "transport": "midi",
+        "id": "Launchkey MK4 49:Launchkey MK4 49 MIDI In 32:0",
+        "label": "Launchkey MK4 49:Launchkey MK4 49 MIDI In 32:0",
+        "fractal": false,
+        "dir": "output"
+      },
+      {
+        "transport": "midi",
+        "id": "Launchkey MK4 49:Launchkey MK4 49 DAW In 32:1",
+        "label": "Launchkey MK4 49:Launchkey MK4 49 DAW In 32:1",
+        "fractal": false,
+        "dir": "output"
+      }
+    ]
+  }
+}

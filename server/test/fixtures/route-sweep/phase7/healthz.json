@@ -1,0 +1,10 @@
+{
+  "status": 200,
+  "body": {
+    "ok": true,
+    "api": {
+      "version": 2
+    },
+    "device": "FM3"
+  }
+}

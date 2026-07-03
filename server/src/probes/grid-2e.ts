@@ -6,11 +6,40 @@
 //
 // Run: npm run probe:grid2e   (FM3 connected, port free — stop the bridge/ForgeFX server first)
 import { buildRequestGridLayout, parseGen3GridLayout, buildRequestPresetDump } from 'forgefx-midi/gen3/axe-fx-iii';
+import { parsePresetDump, decodeRawPatch, decodeGen3Body } from 'forgefx-midi/devices/gen3';
 import { FractalSerial } from '../transport/serial.js';
-import { decodePresetDump } from '../codec/fm3PresetGrid.js';
 
 const MODEL_FM3 = 0x11;
 const hex = (b: readonly number[]) => b.map((x) => x.toString(16).padStart(2, '0')).join(' ');
+
+/** Ground-truth dump decode via the forgefx-midi devices/gen3 pipeline (parity-proven against the
+ *  retired server reference decoder over 429 real FM3 dumps — the Phase-2 diff-decoders harness). */
+function decodeDumpFrames(frames: readonly (readonly number[])[]) {
+  const keep: number[] = [];
+  for (const f of frames) {
+    if (f.length < 8 || f[0] !== 0xf0 || f[1] !== 0x00 || f[2] !== 0x01 || f[3] !== 0x74) continue;
+    if (f[5] === 0x77 || f[5] === 0x78 || f[5] === 0x79) keep.push(...f);
+  }
+  const parsed = parsePresetDump(Uint8Array.from(keep), 0, MODEL_FM3);
+  const raw = decodeRawPatch(parsed.chunkPayloads);
+  const body = decodeGen3Body(raw.body, MODEL_FM3);
+  let name = '';
+  for (let i = 0x08; i < 0x28; i++) {
+    const b = raw.rawPatch[i] ?? 0;
+    if (b === 0) break;
+    name += String.fromCharCode(b);
+  }
+  return {
+    name: name.trim(),
+    crcValid: raw.crcValid,
+    rows: 4,
+    cols: 12,
+    grid: (body.grid ?? []).map((c) => ({
+      effectId: c.effect_id, row: c.row, col: c.col, name: c.name,
+      isShunt: c.is_shunt ?? false, fromRows: c.from_rows ?? []
+    }))
+  };
+}
 
 async function main() {
   const dev = new FractalSerial();
@@ -23,7 +52,7 @@ async function main() {
     quietMs: 180,
     match: (fs) => fs.some((f) => f[5] === 0x79)
   });
-  const d = decodePresetDump(dumpFrames, MODEL_FM3);
+  const d = decodeDumpFrames(dumpFrames);
   console.log(`\n=== GROUND TRUTH grid: "${d.name}" (${d.rows}x${d.cols}, crc=${d.crcValid}) ===`);
   for (const c of [...d.grid].sort((a, b) => a.col - b.col || a.row - b.row)) {
     console.log(`  c${c.col} r${c.row}: eid=${c.effectId} ${c.name}${c.isShunt ? ' [shunt]' : ''} fromRows=[${c.fromRows.join(',')}]`);

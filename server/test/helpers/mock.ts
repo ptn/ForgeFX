@@ -1,0 +1,56 @@
+// Mocked transport layer for the driver/registry unit tests — NO hardware involved.
+// MockTransport implements the full Transport interface from src/transport/types.ts and records
+// every outgoing frame; `reply` scripts what request() answers (default: silence, i.e. []).
+import type { Transport, RequestOpts, ConnKind } from '../../src/transport/types.js';
+
+export class MockTransport implements Transport {
+  readonly label: string;
+  readonly kind: ConnKind;
+  readonly slow = false;
+  isOpen = false;
+  /** Every outgoing frame, in order, across send/sendQueued/sendPaced/request. */
+  readonly sent: number[][] = [];
+  /** Scripted replies: request(bytes) → response frames. Default: no reply (device silent). */
+  reply: (bytes: readonly number[]) => number[][] = () => [];
+
+  constructor(kind: ConnKind = 'serial', label = 'mock') {
+    this.kind = kind;
+    this.label = label;
+  }
+
+  async open(): Promise<void> { this.isOpen = true; }
+  async close(): Promise<void> { this.isOpen = false; }
+  send(bytes: readonly number[]): void { this.sent.push([...bytes]); }
+  async sendQueued(bytes: readonly number[], _settleMs?: number): Promise<void> { this.sent.push([...bytes]); }
+  async sendPaced(bytes: readonly number[], _chunk?: number, _delayMs?: number): Promise<void> { this.sent.push([...bytes]); }
+  async request(bytes: readonly number[], _opts?: RequestOpts): Promise<number[][]> {
+    this.sent.push([...bytes]);
+    return this.reply(bytes);
+  }
+  onFrame(_handler: (frame: number[]) => void): () => void { return () => {}; }
+}
+
+/** A plausible fn 0x00 handshake reply frame from a device with the given model byte. */
+export function handshakeReply(modelId: number): number[] {
+  const body = [0xf0, 0x00, 0x01, 0x74, modelId & 0x7f, 0x00];
+  let cs = 0;
+  for (const b of body) cs ^= b;
+  return [...body, cs & 0x7f, 0xf7];
+}
+
+/** True when `bytes` is the fn 0x00 identify broadcast (model 0x7F). */
+export function isIdentifyBroadcast(bytes: readonly number[]): boolean {
+  return bytes[0] === 0xf0 && bytes[4] === 0x7f && bytes[5] === 0x00;
+}
+
+export function assert(cond: unknown, msg: string): asserts cond {
+  if (!cond) throw new Error(msg);
+}
+
+export function assertEqual(actual: unknown, expected: unknown, msg: string): void {
+  if (actual !== expected) throw new Error(`${msg}: expected ${String(expected)}, got ${String(actual)}`);
+}
+
+export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+export const hex = (f: readonly number[]) => f.map((b) => b.toString(16).padStart(2, '0')).join(' ');

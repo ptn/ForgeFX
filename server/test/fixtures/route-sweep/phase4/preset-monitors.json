@@ -1,0 +1,119 @@
+{
+  "status": 200,
+  "body": {
+    "INPUT_GAINMONITOR": {
+      "family": "INPUT",
+      "pid": 8,
+      "role": "level",
+      "minDb": -60,
+      "maxDb": 0,
+      "widgetConfirmed": true
+    },
+    "OUTPUT_VUL": {
+      "family": "OUTPUT",
+      "pid": 16,
+      "role": "vu",
+      "minDb": -40,
+      "maxDb": 6,
+      "widgetConfirmed": true
+    },
+    "OUTPUT_VUR": {
+      "family": "OUTPUT",
+      "pid": 17,
+      "role": "vu",
+      "minDb": -40,
+      "maxDb": 6,
+      "widgetConfirmed": true
+    },
+    "COMP_GAINMONITOR": {
+      "family": "COMP",
+      "pid": 25,
+      "role": "gainReduction",
+      "minDb": -40,
+      "maxDb": 0,
+      "widgetConfirmed": true
+    },
+    "MULTICOMP_GAINMON1": {
+      "family": "MULTICOMP",
+      "pid": 28,
+      "role": "gainReduction",
+      "widgetConfirmed": false
+    },
+    "MULTICOMP_GAINMON2": {
+      "family": "MULTICOMP",
+      "pid": 29,
+      "role": "gainReduction",
+      "widgetConfirmed": false
+    },
+    "MULTICOMP_GAINMON3": {
+      "family": "MULTICOMP",
+      "pid": 30,
+      "role": "gainReduction",
+      "widgetConfirmed": false
+    },
+    "GATE_GAINMONITOR": {
+      "family": "GATE",
+      "pid": 13,
+      "role": "gainReduction",
+      "minDb": -60,
+      "maxDb": 0,
+      "widgetConfirmed": true
+    },
+    "FILTER_DETMON": {
+      "family": "FILTER",
+      "pid": 33,
+      "role": "detector",
+      "minDb": -40,
+      "maxDb": 0,
+      "widgetConfirmed": true
+    },
+    "DISTORT_GAINMON": {
+      "family": "DISTORT",
+      "pid": 121,
+      "role": "level",
+      "widgetConfirmed": true
+    },
+    "DISTORT_VCCMON": {
+      "family": "DISTORT",
+      "pid": 120,
+      "role": "supply",
+      "widgetConfirmed": true
+    },
+    "DISTORT_VPLATEMON": {
+      "family": "DISTORT",
+      "pid": 132,
+      "role": "headroom",
+      "minDb": -20,
+      "maxDb": 0,
+      "widgetConfirmed": true
+    },
+    "CABINET_GAINMONITOR": {
+      "family": "CABINET",
+      "pid": 60,
+      "role": "level",
+      "minDb": -40,
+      "maxDb": 20,
+      "widgetConfirmed": true
+    },
+    "CABINET_VUMETER": {
+      "family": "CABINET",
+      "pid": 61,
+      "role": "vu",
+      "minDb": -40,
+      "maxDb": 20,
+      "widgetConfirmed": true
+    },
+    "CONTROLLERS_ENV_GAINMONITOR": {
+      "family": "CONTROLLERS",
+      "pid": 109,
+      "role": "detector",
+      "widgetConfirmed": true
+    },
+    "VOLUME_METER": {
+      "family": "VOLUME",
+      "pid": 14,
+      "role": "level",
+      "widgetConfirmed": true
+    }
+  }
+}

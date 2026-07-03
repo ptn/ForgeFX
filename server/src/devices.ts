@@ -33,6 +33,7 @@ import {
   FM9_RANGES, FM9_PARAMS_BY_FAMILY, FM9_ENUM_OVERRIDES, FM9_FAMILY_BY_EFFECT_ID, FM9_LAYOUTS,
   FM9_MONITOR_PARAMS,
   FM9_FC_EFFECT_ID, FM9_FC_CONFIGS, FM9_FC_PARAMS_WIDTH, FM9_FC_FIELDS, FM9_FC_CATEGORIES, FM9_FC_LABEL_MODES,
+  FM9_FC_LAYOUTS, FM9_FC_CONFIGS_PER_LAYOUT, FM9_FC_SWITCH_SLOTS_PER_LAYOUT,
   FM9_MOD_EFFECT_ID, FM9_MOD_SLOT_COUNT, FM9_MOD_FIELDS,
 } from 'forgefx-midi/gen3/fm9';
 import {
@@ -127,6 +128,11 @@ const FM9_FC_MODEL: FcModel = {
   categories: FM9_FC_CATEGORIES,
   labelModes: FM9_FC_LABEL_MODES,
   liveState: false,
+  // Device-true geometry (binary-mined): 9 layouts (index 8 = Master) x 12 switch slots; config =
+  // layout * configsPerLayout + switchSlot. NO `views` — that paging is an FM3-only UI concept.
+  layouts: FM9_FC_LAYOUTS,
+  configsPerLayout: FM9_FC_CONFIGS_PER_LAYOUT,
+  switches: FM9_FC_SWITCH_SLOTS_PER_LAYOUT,
 };
 const AXE3_FC_MODEL: FcModel = {
   effectId: AXE3_FC_EFFECT_ID,

@@ -1,0 +1,216 @@
+// Shared driver contract + the DTO shapes every route serves. The DTOs moved verbatim from the
+// pre-driver Device/Am4Device modules — their JSON shapes are the HTTP contract Axis consumes and
+// must not drift. `DeviceDriver` is the per-device surface the routes call; methods a device lacks
+// are optional and mirrored by `DriverCapabilities` so routes can answer 501 instead of guessing.
+import type { DecodedBlock } from 'forgefx-midi/devices/gen3';
+import type { TypeModel, DeviceLayout } from '../devices.js';
+import type { Transport } from '../transport/types.js';
+
+/** Library-friendly decoded preset: name, scenes, and the unique effect blocks it contains. */
+export type PresetSummary = {
+  number: number;
+  name: string;
+  model: string;
+  crcValid: boolean;
+  /** Content fingerprint (stored CRC16) — changes when the preset changes; used to detect stale cache. */
+  crc: number;
+  scenes: string[];
+  blocks: { effectId: number; slug: string | null; name: string; instance: number | null }[];
+  /** Distinct model names in use per block family (amp/drive/cab/reverb/…) — for "presets using model X".
+   *  Keyed by family slug; only families with a decoded model are present. FM3 only. */
+  models: Record<string, string[]>;
+  /** Amp model names in use (distinct across the amp's 4 channels) — for "presets using amp X". FM3 only.
+   *  Back-compat alias of `models.amp` (the library still binds to this). */
+  amps: string[];
+  /** Full per-block decoded params (every family, every param) — for deep search ("amp gain > 7").
+   *  Populated for offline file decode + the on-demand /params endpoint; omitted from the bulk device
+   *  scan to keep summaries light (use `models` for type search there, fetch /params for deep queries). */
+  params?: DecodedBlock[];
+};
+
+export interface GridCellDTO {
+  row: number; col: number; effectId: number; name: string; isShunt: boolean; routeFlag: number; fromRows: number[];
+  /** ADDITIVE (Phase 6): catalog slug where derivable. AM4 cells carry it (its block dictionary is
+   *  already slug-shaped) so Axis can key params/help without a pack lookup; gen-3 cells omit it
+   *  (their sweep contract is byte-identical). */
+  slug?: string;
+}
+export interface PresetGridDTO { model: string; name: string; crcValid: boolean; rows: number; cols: number; scenes: string[]; cells: GridCellDTO[]; source: 'dump'; }
+export interface PresetBlockDTO { slug: string; name: string; effectId: number; row: number; col: number; fromRows: number[]; bypassed: boolean | null; channel: string | null; }
+export interface NamedParam { id: number; name: string; value: number; norm: number; unit?: string; min?: number; max?: number; log?: boolean; }
+export interface EnumParam { id: number; name: string; value: number; options: { value: number; label: string }[]; }
+export interface MeterVal { norm: number; value: number; unit?: string; min?: number; max?: number; log?: boolean; }
+/** One side (tap/hold) of an FC switch as read by the sub-0x01 structured read. `present` = the
+ *  device returned a record whose config/side echo matched the request; `raw` = the 78-byte response
+ *  body (the per-switch record is at raw[16..]; field offsets within it are not yet decoded — see
+ *  the gen-3 driver's fcReadSwitch). */
+export interface FcSideState { selector: number; present: boolean; empty: boolean; raw: number[]; }
+export interface FcSwitchState {
+  effectId: number;
+  layout: number; view: number; switch: number; config: number;
+  tap: FcSideState; hold: FcSideState;
+}
+/** Decoded current switch state read back from the unit (via the sub-0x1b value channel). Field values
+ *  are raw ordinals (category/function/display/color) keyed by FC field name; labels are decoded text.
+ *  `null` = the field could not be read. This is the read that actually tracks param edits. */
+export interface FcReadState {
+  effectId: number;
+  layout: number; view: number; switch: number; config: number;
+  fields: Record<string, number | null>;
+  tapLabel: string; holdLabel: string;
+}
+
+// Live pushes streamed to Axis over SSE.
+export type DeviceEvent =
+  | { type: 'tuner'; freq: number; note?: string; cents?: number; octave?: number }
+  | { type: 'tempo'; bpm: number }
+  | { type: 'scene'; index: number }
+  | { type: 'cpu'; percent: number }
+  // Live cross-UI sync (Axis Cloud Remote + multi-window): a mutation happened, so other UIs update.
+  // `param` carries the new normalized value (cheap knob update); `changed` = structural (grid/preset)
+  // change → reload. Emitted by the mutating driver methods; streamed via SSE + the remote relay channel.
+  | { type: 'param'; effectId: number; paramId: number; norm: number }
+  | { type: 'changed'; scope: 'grid' | 'preset' }
+  /** Live output level meters in dB (−40…0, floor-clamped), from the Preset Leveling poll (fn 0x19).
+   *  Output 1 & 2, each L/R. Decoded from a 5-septet float (RMS) → 10·log10 → dB; smoothed. */
+  | { type: 'meters'; out1L: number; out1R: number; out2L: number; out2R: number }
+  /** A shared Axis config doc (layouts / swipe-quick-actions / tags / surface …) was written by one UI —
+   *  streamed to the others so layouts/quick-actions/arrange stay in sync live, both directions. `origin` is
+   *  the writer's client id so it can ignore its own echo (and not reload while it's mid-edit). */
+  | { type: 'config'; id: string; data: unknown; origin?: string };
+
+// ── AM4 (moved verbatim from am4Device.ts) ──
+export interface Am4Slot {
+  slot: number; // 1..4 signal-chain position
+  blockType: string; // canonical block name, 'none' if empty
+  pidLow: number; // the block's pidLow (its type value)
+}
+
+/** What a device driver can actually do — the single truth the routes gate on (a missing optional
+ *  DeviceDriver method always corresponds to a false/absent capability here). No cross-device
+ *  `if (isAm4)`-style checks anywhere else. */
+export interface DriverCapabilities {
+  /** Routing model: gen-3 grid vs the AM4's flat linear chain. */
+  slotModel: 'grid' | 'linear';
+  /** Grid dimensions (slotModel 'grid' only). */
+  grid?: { rows: number; cols: number };
+  /** Linear-chain slot count (slotModel 'linear' only). */
+  slotCount?: number;
+  /** Grid editing (place/clear blocks, cables, cursor select). */
+  gridEdit: boolean;
+  /** Number of scenes. */
+  scenes: number;
+  /** Per-block channels (A–D). */
+  channels: boolean;
+  /** Gen-3 preset dump read (summaries, params, grid-from-dump, backups). */
+  presetDump: boolean;
+  /** Full per-block param decode from the preset body (FM3 only today). */
+  blockParamDecode: boolean;
+  /** Gen-3 live telemetry polls the supervisor may run against this device. */
+  telemetry: { tuner: boolean; outputMeters: boolean; cpu: boolean };
+  /** Foot Controller address model available. */
+  fcModel: boolean;
+  /** Live FC per-switch state read (FM3 only today). */
+  fcLiveRead: boolean;
+  /** Modifier binding (targetEffectId/targetParam/source writes). */
+  modBind: boolean;
+  /** Bundled cab IR names per bank. */
+  cabIrs: boolean;
+  /** Store-to-slot save supported. */
+  supportsSave: boolean;
+}
+
+/** What the registry hands each driver: the ONE shared transport (a single exclusive MIDI/serial
+ *  connection — drivers must never open their own) and the SSE event bus emit. */
+export interface DriverCtx {
+  transport(): Promise<Transport>;
+  emit(e: DeviceEvent): void;
+}
+
+/**
+ * Per-device driver surface. Method signatures are IDENTICAL to the pre-driver Device methods so the
+ * route handlers keep working unchanged. Optional methods are capability-gated: a driver that lacks
+ * one (e.g. the AM4 has no grid edit / gen-3 telemetry / FC) simply doesn't implement it, and the
+ * route answers `501 {error:'unsupported', capability}`.
+ */
+export interface DeviceDriver {
+  /** SysEx model byte of the device this driver drives (0x10/0x11/0x12/0x15). */
+  readonly modelId: number;
+  /** Profile key: 'axe3' | 'fm3' | 'fm9' | 'am4'. */
+  readonly key: string;
+  /** Display name (e.g. 'FM3'). */
+  readonly name: string;
+  readonly capabilities: DriverCapabilities;
+
+  /** Routing grid (the AM4 serves its 4 slots as a 1×4 grid DTO). */
+  grid(): Promise<PresetGridDTO>;
+
+  // ── preset reads ──
+  presetRef?(): Promise<{ number: number; name: string }>;
+  presetSummary?(presetNumber: number, withParams?: boolean): Promise<PresetSummary>;
+  presetParams?(presetNumber: number): Promise<DecodedBlock[]>;
+  /** Raw .syx bytes (the backup blob) + decoded summary for one slot — the backups service's source. */
+  dumpRaw?(n: number): Promise<{ bytes: Uint8Array; summary: PresetSummary }>;
+  decodePresetBytes?(bytes: Uint8Array): PresetSummary;
+  presetBodyHex?(): Promise<{ len: number; hex: string }>;
+  placedBlocks?(): Promise<PresetBlockDTO[]>;
+
+  // ── catalog ──
+  blocksCatalog?(): { slug: string; family: string; instance: number; name: string; page: number; paramCount: number; typeCount: number }[];
+  blockTypes?(slug: string): TypeModel[];
+
+  // ── live block params ──
+  blockParams?(eid: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null; layout?: DeviceLayout }>;
+  readParams?(eid: number, pids: number[]): Promise<Record<number, number>>;
+  readRange?(eid: number, pids: number[]): Promise<Record<number, number>>;
+  rawBlock?(eid: number): Promise<{ eid: number; values: Record<number, number> }>;
+  cabState?(eid: number): Promise<unknown>;
+  meters?(wants?: Record<string, number[]>): Promise<
+    { effectId: number; slug: string; defaultId: number; defaultName: string; typeName: string; vals: Record<number, MeterVal> }[]
+  >;
+  liveMonitors?(onlyEid?: number): Promise<{ effectId: number; family: string; paramName: string; role: string; norm: number; db: number | null; minDb?: number; maxDb?: number }[]>;
+
+  // ── FC / modifier ──
+  fcReadSwitch?(layout: number, view: number, sw: number): Promise<FcSwitchState>;
+  fcReadState?(layout: number, view: number, sw: number): Promise<FcReadState>;
+  bindModifier?(slot: number, targetEffectId: number, targetParam: number, source: number): Promise<{ ok: boolean; error?: string; slotEid?: number; slot?: number; targetEffectId?: number; targetParam?: number; source?: number }>;
+
+  // ── writes ──
+  setParam?(eid: number, paramId: number, value: number, continuous: boolean): Promise<{ ok: boolean }>;
+  setType?(eid: number, value: number): Promise<{ ok: boolean }>;
+  setBypass?(eid: number, bypassed: boolean): Promise<{ ok: boolean }>;
+  setChannel?(eid: number, channel: string): Promise<{ ok: boolean }>;
+  placeCell?(row: number, col: number, blockId: number): Promise<{ ok: boolean }>;
+  selectCell?(row: number, col: number): Promise<{ ok: boolean }>;
+  cable?(srcRow: number, srcCol: number, destRow: number, connect: boolean): Promise<{ ok: boolean }>;
+  /** Switch the active preset. `code` is ADDITIVE (AM4 bank-letter location code, e.g. "C02"). */
+  selectPreset?(n: number): Promise<{ ok: boolean; code?: string }>;
+  /** Store the edit buffer to slot n. `location`/`code` are ADDITIVE (AM4). */
+  store?(n: number): Promise<{ ok: boolean; location?: number; code?: string }>;
+  loadPresetBytes?(syx: Uint8Array): Promise<{ ok: boolean }>;
+  setSceneName?(index: number, name: string): Promise<{ ok: boolean }>;
+  setPresetName?(name: string): Promise<{ ok: boolean }>;
+
+  // ── tempo / scene ──
+  getTempo?(): Promise<{ bpm: number }>;
+  setTempo?(bpm: number): Promise<{ ok: boolean }>;
+  tapTempo?(): Promise<{ ok: boolean }>;
+  getScene?(): Promise<{ index: number }>;
+  setScene?(index: number): Promise<{ ok: boolean }>;
+
+  // ── Phase 6 unified surface (capability-gated; today AM4-only unless noted) ──
+  /** Stored preset name lookup (GET /presets/:n). Devices without it get the {number, name:''} stub. */
+  storedPresetName?(n: number): Promise<{ number: number; name: string; code?: string }>;
+  /** Scan every stored location by name (GET /preset/locations) — capability presets.canScanNames. */
+  scanPresets?(): Promise<{ count: number; presets: { location: number; code: string; name: string; isEmpty: boolean }[] }>;
+  /** Verbatim .syx dump of one preset (POST /preset/backup) — capability backupDump. */
+  backupPreset?(location?: number): Promise<{ location: number | null; code: string | null; name: string; bytes: number[] }>;
+  /** Verbatim re-emit of a preset dump (POST /preset/restore) — capability restoreDump. */
+  restorePreset?(bytes: number[]): Promise<{ ok: boolean; location: number | null; code: string | null }>;
+  /** Offline firmware .syx integrity check (POST /firmware/validate) — capability firmwareValidate. */
+  validateFirmware?(bytes: number[]): { valid: boolean; messages?: number; blocks?: number; headerTag?: number[]; finalizeTag?: number[]; error?: string };
+  /** Device/global param write by catalog key (PUT /device/param) — capability deviceParams. */
+  setParamByKey?(key: string, value: number): Promise<{ ok: boolean }>;
+  /** Modifier address model (GET /mod/model). Superset DTO: always carries `bindingSupported`. */
+  modifierModel?(): Record<string, unknown> | null;
+}

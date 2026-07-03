@@ -1,8 +1,8 @@
-// AM4 device path (model 0x15) — a parallel module to the gen-3 Device. The AM4 is a flat 4-slot,
+// AM4 device driver (model 0x15) — a parallel driver to the gen-3 one. The AM4 is a flat 4-slot,
 // linear-routing unit (no grid), addressed by (pidLow=block, pidHigh=param) — totally different from
 // the gen-3 grid codec — so it gets its own logic + DTOs. It REUSES the single open connection that
-// the gen-3 Device owns (device.openTransport()), since only one device is ever connected at a time.
-// Codec is fractal-midi/am4 (hardware-verified upstream); this layer just drives it over the transport.
+// the registry owns (ctx.transport()), since only one device is ever connected at a time.
+// Codec is forgefx-midi/am4 (hardware-verified upstream); this layer just drives it over the transport.
 import {
   buildReadParam,
   BLOCK_SLOT_PID_LOW,
@@ -35,7 +35,6 @@ import {
   // param catalog — the reader returns DECODED display values keyed by param name; we join it
   // against KNOWN_PARAMS here to recover the unit / range / enum-option / norm metadata the DTO carries.
   KNOWN_PARAMS,
-  BLOCK_TYPE_VALUES,
   TOTAL_LOCATIONS,
   type Param,
   type ParamKey
@@ -45,8 +44,8 @@ import {
 import { AM4_DESCRIPTOR } from 'forgefx-midi/devices/am4';
 import type { MidiConnection } from 'forgefx-midi/core/midi';
 import type { DispatchCtx, PresetSnapshot } from 'forgefx-midi/core';
-import { device, type PresetGridDTO, type NamedParam, type EnumParam } from './device.js';
-import type { Transport } from './transport/types.js';
+import type { Transport } from '../transport/types.js';
+import type { DeviceDriver, DriverCapabilities, DriverCtx, PresetGridDTO, PresetBlockDTO, NamedParam, EnumParam, Am4Slot } from './types.js';
 
 /** Split a raw byte stream into its complete F0..F7 SysEx messages. */
 function splitSysex(bytes: number[]): number[][] {
@@ -60,12 +59,6 @@ function splitSysex(bytes: number[]): number[][] {
     i = end + 1;
   }
   return out;
-}
-
-export interface Am4Slot {
-  slot: number; // 1..4 signal-chain position
-  blockType: string; // canonical block name, 'none' if empty
-  pidLow: number; // the block's pidLow (its type value)
 }
 
 // ── AM4 preset-structure read (fn 0x01, readType 0x1F) — wire-decoded in fractal-midi's am4 SYSEX-MAP.
@@ -106,8 +99,8 @@ function asciiAt(b: Uint8Array, off: number, len: number): string {
 // The VERIFIED descriptor reader (getPreset / scanLocations) talks to a `MidiConnection`: it registers
 // a `receiveSysExMatching` waiter, then `send`s the request, on the RAW transport (NOT the serialized
 // dev.request chain). Two reader calls racing on the shared transport would interleave their waiters +
-// sends, so Am4Device serializes every reader call behind #withReader (a per-instance promise-chain
-// mutex). close() is a no-op — the gen-3 Device owns openTransport()'s lifecycle; we never tear it down.
+// sends, so Am4Driver serializes every reader call behind #withReader (a per-instance promise-chain
+// mutex). close() is a no-op — the registry owns the transport's lifecycle; we never tear it down.
 class Am4Conn implements MidiConnection {
   hasInput = true;
   lastSendError: Error | undefined = undefined;
@@ -151,7 +144,7 @@ class Am4Conn implements MidiConnection {
     });
   }
 
-  close(): void { /* no-op: the gen-3 Device owns the transport lifecycle */ }
+  close(): void { /* no-op: the registry owns the transport lifecycle */ }
 }
 
 // AM4 unit tag → the display label the gen-3 blockParams DTO uses (so Axis renders both the same way).
@@ -164,7 +157,32 @@ function am4ParamLabel(p: Param): string {
   return p.displayLabel ?? p.name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-class Am4Device {
+class Am4Driver implements DeviceDriver {
+  readonly modelId = 0x15;
+  readonly key = 'am4';
+  readonly name = 'AM4';
+  readonly capabilities: DriverCapabilities = {
+    slotModel: 'linear',
+    slotCount: 4,
+    gridEdit: false,
+    scenes: 4,
+    channels: false,
+    presetDump: false, // AM4 backups run their own verbatim dump path (/am4/preset/backup), not the gen-3 one
+    blockParamDecode: false,
+    telemetry: { tuner: false, outputMeters: false, cpu: false }, // no gen-3 telemetry frames on AM4
+    fcModel: false,
+    fcLiveRead: false,
+    modBind: false, // modifier model is data-only (see modifierModel); the wire binding is not captured
+    cabIrs: false,
+    supportsSave: true
+  };
+
+  #ctx: DriverCtx;
+  constructor(ctx: DriverCtx) { this.#ctx = ctx; }
+
+  /** The ONE shared transport (single exclusive MIDI/serial connection, owned by the registry). */
+  #openTransport(): Promise<Transport> { return this.#ctx.transport(); }
+
   #log(s: string) {
     console.log(`[forgefx][am4] ${s}`);
   }
@@ -180,7 +198,7 @@ class Am4Device {
   // interleave on the shared port. Each #withReader appends to this chain and awaits its predecessor.
   #readerLock: Promise<unknown> = Promise.resolve();
   // Brief TTL cache of the last full getPreset dump: a grid render + several blockParams reads on one
-  // page load then reuse ONE ~500 ms atomic read (mirrors Device's #gridCache pattern).
+  // page load then reuse ONE ~500 ms atomic read (mirrors the gen-3 driver's #gridCache pattern).
   #presetCache: { snap: PresetSnapshot; at: number } | null = null;
   static #PRESET_TTL_MS = 500;
 
@@ -195,7 +213,7 @@ class Am4Device {
 
   /** Build the reader's DispatchCtx. The reader ONLY touches ctx.conn; the descriptor field is required
    *  by the type but unused on the read path, so we hand it the descriptor itself. */
-  #ctx(): DispatchCtx {
+  #dispatchCtx(): DispatchCtx {
     return { conn: new Am4Conn(this.#lastTransport!), descriptor: AM4_DESCRIPTOR };
   }
   #lastTransport: Transport | null = null;
@@ -204,14 +222,14 @@ class Am4Device {
    *  grid + block-param page load reuses a single ~500 ms read. Serialized behind #withReader. */
   async readPreset(): Promise<PresetSnapshot | null> {
     const now = Date.now();
-    if (this.#presetCache && now - this.#presetCache.at < Am4Device.#PRESET_TTL_MS) return this.#presetCache.snap;
+    if (this.#presetCache && now - this.#presetCache.at < Am4Driver.#PRESET_TTL_MS) return this.#presetCache.snap;
     return this.#withReader(async () => {
       // Re-check the cache inside the lock — a call we queued behind may have just filled it.
       const t = Date.now();
-      if (this.#presetCache && t - this.#presetCache.at < Am4Device.#PRESET_TTL_MS) return this.#presetCache.snap;
-      this.#lastTransport = await device.openTransport();
+      if (this.#presetCache && t - this.#presetCache.at < Am4Driver.#PRESET_TTL_MS) return this.#presetCache.snap;
+      this.#lastTransport = await this.#openTransport();
       try {
-        const snap = await this.#reader.getPreset!(this.#ctx(), {});
+        const snap = await this.#reader.getPreset!(this.#dispatchCtx(), {});
         this.#presetCache = { snap, at: Date.now() };
         this.#log(`readPreset: ${snap.slots.length} placed block(s), scene ${snap.active_scene ?? '?'} (${snap._meta.read_duration_ms ?? '?'}ms)`);
         return snap;
@@ -224,7 +242,7 @@ class Am4Device {
 
   /** One atomic fn-0x1F read of the preset structure → the 4 slots' block types + preset name + scene. */
   async #readStructure(): Promise<{ slots: Am4Slot[]; name: string; scene: number } | null> {
-    const dev = await device.openTransport();
+    const dev = await this.#openTransport();
     const read = buildReadParam({ pidLow: BLOCK_SLOT_PID_LOW, pidHigh: 0x0000 }, ATOMIC_READ_TYPE);
     try {
       const frames = await dev.request(read, { timeoutMs: 1500, quietMs: 80, match: (fs) => fs.some(isStructResponse) });
@@ -269,13 +287,32 @@ class Am4Device {
       name: sl.blockType === 'none' ? '' : sl.blockType,
       isShunt: sl.blockType === 'none',
       routeFlag: 0,
-      fromRows: i > 0 ? [0] : [] // linear: each slot feeds from the previous
+      fromRows: i > 0 ? [0] : [], // linear: each slot feeds from the previous
+      // ADDITIVE (Phase 6): the AM4 block dictionary is already slug-shaped ('amp', 'drive', …) —
+      // surface it so Axis can key params/help/icons without its `!c.pack` gates. Omitted for
+      // empty/unknown cells (nothing derivable there).
+      ...(sl.pidLow && BLOCK_NAMES_BY_VALUE[sl.pidLow] ? { slug: BLOCK_NAMES_BY_VALUE[sl.pidLow] } : {})
     }));
     return { model: 'am4', name: s?.name ?? '', crcValid: true, rows: 1, cols: 4, scenes: [], cells, source: 'dump' };
   }
 
+  /** Placed blocks in the unified PresetBlockDTO shape (GET /preset/blocks): the 4-slot chain as
+   *  row 1 / col 1..4, fromRows [] (linear — the grid DTO carries the chain), channel null (no
+   *  channels on AM4). Bypass state rides the TTL-cached atomic reader dump (the same read
+   *  blockParams uses); null when that read is unavailable. */
+  async placedBlocks(): Promise<PresetBlockDTO[]> {
+    const s = await this.#readStructure();
+    const slots = (s?.slots ?? this.#emptySlots()).filter((sl) => sl.pidLow !== 0 && sl.blockType !== 'none');
+    const snap = slots.length ? await this.readPreset() : null;
+    return slots.map((sl) => {
+      const slug = BLOCK_NAMES_BY_VALUE[sl.pidLow] ?? sl.blockType;
+      const byp = snap?.slots.find((x) => x.block_type === slug)?.bypassed;
+      return { slug, name: sl.blockType, effectId: sl.pidLow, row: 1, col: sl.slot, fromRows: [], bypassed: byp ?? null, channel: null };
+    });
+  }
+
   /** Read every parameter of the block sitting at `pidLow` (its block-type value, e.g. 58=amp, 118=drive
-   *  — the `effectId` the grid/slots report) and return it in the SAME shape as the gen-3 Device.blockParams
+   *  — the `effectId` the grid/slots report) and return it in the SAME shape as the gen-3 blockParams
    *  so Axis renders the AM4's params through the existing block editor unchanged.
    *
    *  Read path: the VERIFIED descriptor reader's getPreset() atomic dump (see readPreset), cached for the
@@ -380,7 +417,7 @@ class Am4Device {
 
   /** One READ_PRESET_NAME (action 0x0012) round-trip for a location — non-destructive (does not load the
    *  preset). Returns the decoded name + whether the slot is empty, or null if no name frame came back. */
-  async #readPresetName(dev: Awaited<ReturnType<typeof device.openTransport>>, location: number): Promise<{ name: string; isEmpty: boolean } | null> {
+  async #readPresetName(dev: Transport, location: number): Promise<{ name: string; isEmpty: boolean } | null> {
     const req = buildGetPresetName(location);
     const frames = await dev.request(req, { timeoutMs: dev.slow ? 1200 : 600, quietMs: dev.slow ? 120 : 60, match: (fs) => fs.length > 0 });
     for (const f of frames) {
@@ -396,7 +433,7 @@ class Am4Device {
 
   /** Stored preset name at a location (0..103). */
   async presetName(location: number): Promise<{ location: number; name: string }> {
-    const dev = await device.openTransport();
+    const dev = await this.#openTransport();
     const r = await this.#readPresetName(dev, location);
     return { location, name: r?.name ?? '' };
   }
@@ -414,8 +451,8 @@ class Am4Device {
       return { count: presets.length, presets };
     }
     const result = await this.#withReader(async () => {
-      this.#lastTransport = await device.openTransport();
-      return this.#reader.scanLocations!(this.#ctx(), 0, TOTAL_LOCATIONS - 1);
+      this.#lastTransport = await this.#openTransport();
+      return this.#reader.scanLocations!(this.#dispatchCtx(), 0, TOTAL_LOCATIONS - 1);
     }).catch(() => ({ scanned: [] as { location: string; name: string; is_empty: boolean }[] }));
     // scanned[] is in location order from 0; index === location. Fill any tail the reader didn't reach.
     for (let location = 0; location < TOTAL_LOCATIONS; location++) {
@@ -426,9 +463,10 @@ class Am4Device {
     return { count: presets.length, presets };
   }
 
-  /** Set a parameter by its display value (e.g. 'amp.gain', 7.5). */
-  async setParam(key: string, displayValue: number) {
-    const dev = await device.openTransport();
+  /** Set a parameter by its display value (e.g. 'amp.gain', 7.5). (Named apart from the generic
+   *  driver setParam(eid,pid,…) — the AM4 addresses by catalog key here, not by wire address.) */
+  async setParamByKey(key: string, displayValue: number) {
+    const dev = await this.#openTransport();
     const frame = buildSetParam(key as ParamKey, displayValue);
     const res = await dev.request(frame, { timeoutMs: 600, quietMs: 60, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
     return { ok: res.some((f) => isCommandAck(frame, f)) };
@@ -438,7 +476,7 @@ class Am4Device {
    *  normalized 0..1 (action SET_NORM — hardware-verified). Invalidates the preset cache so the next read
    *  reflects the change. */
   async setParamNorm(pidLow: number, pidHigh: number, norm: number) {
-    const dev = await device.openTransport();
+    const dev = await this.#openTransport();
     const n = Math.max(0, Math.min(1, norm));
     const frame = buildSetParamNorm({ pidLow, pidHigh }, n);
     const res = await dev.request(frame, { timeoutMs: 600, quietMs: 50, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
@@ -448,38 +486,74 @@ class Am4Device {
 
   /** Write a discrete/enum param by wire ADDRESS to a raw internal value (the enum ordinal). */
   async setParamValue(pidLow: number, pidHigh: number, value: number) {
-    const dev = await device.openTransport();
+    const dev = await this.#openTransport();
     const frame = buildSetFloatParam({ pidLow, pidHigh }, value);
     const res = await dev.request(frame, { timeoutMs: 600, quietMs: 50, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
     this.#presetCache = null;
     return { ok: res.some((f) => isCommandAck(frame, f)) };
   }
 
+  /** Generic driver write (unified PUT /preset/blocks/:addr/params/:paramId): addr = pidLow,
+   *  paramId = pidHigh. continuous:true → SET_NORM with `value` as the 0..1 norm; continuous:false →
+   *  discrete/enum ordinal write. Thin dispatch over the hardware-verified wire methods. */
+  async setParam(pidLow: number, pidHigh: number, value: number, continuous: boolean) {
+    return continuous ? this.setParamNorm(pidLow, pidHigh, value) : this.setParamValue(pidLow, pidHigh, value);
+  }
+
   /** Toggle/set a block's bypass by its pidLow. */
   async setBypass(blockPidLow: number, bypassed: boolean) {
-    const dev = await device.openTransport();
+    const dev = await this.#openTransport();
     await dev.sendQueued(buildSetBlockBypass(blockPidLow, bypassed));
     return { ok: true };
   }
 
   /** Switch the active scene (0..3). */
   async switchScene(index: number) {
-    const dev = await device.openTransport();
+    const dev = await this.#openTransport();
     await dev.sendQueued(buildSwitchScene(index));
     return { ok: true, scene: index };
   }
 
+  /** Current scene index (0-based), read from the atomic fn-0x1F preset structure. */
+  async getScene(): Promise<{ index: number }> {
+    const s = await this.#readStructure();
+    return { index: s?.scene ?? 0 };
+  }
+
+  /** Generic driver scene switch (unified POST /scene). */
+  async setScene(index: number) {
+    return this.switchScene(index);
+  }
+
   /** Switch the active preset by location index (0..103, A01..Z04). */
   async switchPreset(location: number) {
-    const dev = await device.openTransport();
+    const dev = await this.#openTransport();
     await dev.sendQueued(buildSwitchPreset(location));
     return { ok: true, location };
+  }
+
+  /** Generic driver preset select (unified POST /preset/select) — adds the bank-letter `code`. */
+  async selectPreset(n: number): Promise<{ ok: boolean; code: string }> {
+    const r = await this.switchPreset(n);
+    return { ok: r.ok, code: formatLocationCode(n) };
+  }
+
+  /** Generic driver store-to-slot (unified POST /preset/store) → {ok, location, code}. */
+  async store(n: number) {
+    return this.storePreset(n);
+  }
+
+  /** Generic stored-name lookup (unified GET /presets/:n) — the AM4 answers with the real stored
+   *  name plus the bank-letter `code` (additive; gen-3 keeps its {number, name:''} stub). */
+  async storedPresetName(n: number): Promise<{ number: number; name: string; code: string }> {
+    const r = await this.presetName(n);
+    return { number: n, name: r.name, code: formatLocationCode(n) };
   }
 
   /** Save the active edit buffer to a stored location (0..103). Wire action 0x1B —
    *  hardware-confirmed byte-exact against a live AM4 capture (2026-07-02). */
   async storePreset(location: number) {
-    const dev = await device.openTransport();
+    const dev = await this.#openTransport();
     await dev.sendQueued(buildSaveToLocation(location));
     return { ok: true, location, code: formatLocationCode(location) };
   }
@@ -488,7 +562,7 @@ class Am4Device {
    *  `location` omitted → the active edit buffer. Returns the raw bytes (byte-identical, replayable)
    *  plus the decoded location + name. Community-beta: the dump-request path is capture-derived. */
   async backupPreset(location?: number): Promise<{ location: number | null; code: string | null; name: string; bytes: number[] }> {
-    const dev = await device.openTransport();
+    const dev = await this.#openTransport();
     const req = location == null ? buildRequestActiveBufferDump() : buildRequestStoredPresetDump(location);
     const frames = await dev.request(req, { timeoutMs: 5000, quietMs: 200, match: (fs) => fs.some((f) => f[4] === 0x15 && f[5] === 0x79) });
     const dumpMsgs = frames.filter((f) => f[4] === 0x15 && (f[5] === 0x77 || f[5] === 0x78 || f[5] === 0x79));
@@ -504,7 +578,7 @@ class Am4Device {
   async restorePreset(bytes: number[]): Promise<{ ok: boolean; location: number | null; code: string | null }> {
     const dump = parseAm4PresetDump(Uint8Array.from(bytes)); // validate first — throws on bad envelope/checksum
     const loc = am4DumpLocation(dump);
-    const dev = await device.openTransport();
+    const dev = await this.#openTransport();
     for (const msg of splitSysex([...dump.raw])) await dev.sendQueued(msg);
     this.#log(`restore -> ${loc.code ?? '(active)'} (${dump.raw.length}B, 6 msgs)`);
     return { ok: true, location: loc.active ? null : (loc.index ?? null), code: loc.code ?? null };
@@ -558,4 +632,8 @@ class Am4Device {
   }
 }
 
-export const am4 = new Am4Device();
+/** Create the AM4 driver over the shared transport. */
+export function createAm4Driver(ctx: DriverCtx): Am4Driver {
+  return new Am4Driver(ctx);
+}
+export type { Am4Driver };

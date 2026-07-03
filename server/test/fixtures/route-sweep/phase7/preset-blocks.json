@@ -1,0 +1,147 @@
+{
+  "status": 200,
+  "body": [
+    {
+      "slug": "input",
+      "name": "Input 1",
+      "effectId": 37,
+      "row": 1,
+      "col": 0,
+      "fromRows": [],
+      "bypassed": false,
+      "channel": "A"
+    },
+    {
+      "slug": "comp",
+      "name": "Comp 1",
+      "effectId": 46,
+      "row": 1,
+      "col": 1,
+      "fromRows": [
+        1
+      ],
+      "bypassed": true,
+      "channel": "A"
+    },
+    {
+      "slug": "wah",
+      "name": "Wah 1",
+      "effectId": 94,
+      "row": 1,
+      "col": 2,
+      "fromRows": [
+        1
+      ],
+      "bypassed": true,
+      "channel": "A"
+    },
+    {
+      "slug": "phaser",
+      "name": "Phaser 1",
+      "effectId": 90,
+      "row": 1,
+      "col": 3,
+      "fromRows": [
+        1
+      ],
+      "bypassed": true,
+      "channel": "A"
+    },
+    {
+      "slug": "delay",
+      "name": "Delay 1",
+      "effectId": 70,
+      "row": 1,
+      "col": 4,
+      "fromRows": [
+        1
+      ],
+      "bypassed": true,
+      "channel": "A"
+    },
+    {
+      "slug": "drive",
+      "name": "Drive 1",
+      "effectId": 118,
+      "row": 1,
+      "col": 5,
+      "fromRows": [
+        1
+      ],
+      "bypassed": true,
+      "channel": "A"
+    },
+    {
+      "slug": "amp",
+      "name": "Amp 1",
+      "effectId": 58,
+      "row": 1,
+      "col": 6,
+      "fromRows": [
+        1
+      ],
+      "bypassed": false,
+      "channel": "A"
+    },
+    {
+      "slug": "cab",
+      "name": "Cab 1",
+      "effectId": 62,
+      "row": 1,
+      "col": 7,
+      "fromRows": [
+        1
+      ],
+      "bypassed": false,
+      "channel": "A"
+    },
+    {
+      "slug": "chorus",
+      "name": "Chorus 1",
+      "effectId": 78,
+      "row": 1,
+      "col": 8,
+      "fromRows": [
+        1
+      ],
+      "bypassed": true,
+      "channel": "A"
+    },
+    {
+      "slug": "delay",
+      "name": "Delay 2",
+      "effectId": 71,
+      "row": 1,
+      "col": 9,
+      "fromRows": [
+        1
+      ],
+      "bypassed": true,
+      "channel": "A"
+    },
+    {
+      "slug": "reverb",
+      "name": "Reverb 1",
+      "effectId": 66,
+      "row": 1,
+      "col": 10,
+      "fromRows": [
+        1
+      ],
+      "bypassed": false,
+      "channel": "A"
+    },
+    {
+      "slug": "output",
+      "name": "Output 1",
+      "effectId": 42,
+      "row": 1,
+      "col": 11,
+      "fromRows": [
+        1
+      ],
+      "bypassed": false,
+      "channel": "A"
+    }
+  ]
+}

@@ -1,0 +1,3958 @@
+{
+  "status": 200,
+  "body": {
+    "block": "Amp",
+    "slug": "amp",
+    "page": 58,
+    "named": [
+      {
+        "id": 1,
+        "name": "Amp1 Level",
+        "value": -6,
+        "norm": 0.7399975585192419,
+        "unit": "dB",
+        "min": -80,
+        "max": 20
+      },
+      {
+        "id": 2,
+        "name": "Balance",
+        "value": 0,
+        "norm": 0.5,
+        "unit": "%",
+        "min": -100,
+        "max": 100
+      },
+      {
+        "id": 7,
+        "name": "Gain 1",
+        "value": 3.7,
+        "norm": 0.37000640888698993,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 8,
+        "name": "Bass 1",
+        "value": 7,
+        "norm": 0.7000030518509476,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 9,
+        "name": "Mid 1",
+        "value": 5,
+        "norm": 0.5,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 10,
+        "name": "Treble 1",
+        "value": 6,
+        "norm": 0.5999938962981048,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 11,
+        "name": "Master Volume",
+        "value": 10,
+        "norm": 1,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 12,
+        "name": "Low Cut Frequency",
+        "value": 10,
+        "norm": 0,
+        "min": 10,
+        "max": 1000,
+        "log": true
+      },
+      {
+        "id": 13,
+        "name": "High Cut Frequency",
+        "value": 18299.955,
+        "norm": 0.8301950132755517,
+        "min": 400,
+        "max": 40000,
+        "log": true
+      },
+      {
+        "id": 14,
+        "name": "Tonestack Freq",
+        "value": 700.001,
+        "norm": 0.5440687276833399,
+        "min": 200,
+        "max": 2000,
+        "log": true
+      },
+      {
+        "id": 18,
+        "name": "XFormer Low Freq",
+        "value": 18.9,
+        "norm": 0.28875087740714744,
+        "min": 5,
+        "max": 500,
+        "log": true
+      },
+      {
+        "id": 19,
+        "name": "XFormer Hi Freq",
+        "value": 18999.707,
+        "norm": 0.6766869106112857,
+        "min": 4000,
+        "max": 40000,
+        "log": true
+      },
+      {
+        "id": 22,
+        "name": "Depth 1",
+        "value": 0,
+        "norm": 0,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 25,
+        "name": "Supply Sag",
+        "value": 2.6,
+        "norm": 0.2600024414807581,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 26,
+        "name": "Presence 1",
+        "value": 5,
+        "norm": 0.5,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 27,
+        "name": "Negative Feedback",
+        "value": 0,
+        "norm": 0,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 28,
+        "name": "Presence Frequency",
+        "value": 1,
+        "norm": 0.5,
+        "unit": "Hz",
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 29,
+        "name": "Low Freq",
+        "value": 69.8,
+        "norm": 0.24179815057832577,
+        "min": 40,
+        "max": 400,
+        "log": true
+      },
+      {
+        "id": 30,
+        "name": "LF Reso",
+        "value": 5.958,
+        "norm": 0.5958281197546312,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 31,
+        "name": "Depth Frequency",
+        "value": 249.997,
+        "norm": 0.6989654225287637,
+        "unit": "Hz",
+        "min": 50,
+        "max": 500,
+        "log": true
+      },
+      {
+        "id": 33,
+        "name": "Master Vol Cap",
+        "value": 1,
+        "norm": 0,
+        "min": 1,
+        "max": 1000,
+        "log": true
+      },
+      {
+        "id": 35,
+        "name": "Harmonics",
+        "value": 0.45,
+        "norm": 0.4499954222235786,
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": 37,
+        "name": "B+ Time Constant",
+        "value": 9.4,
+        "norm": 0.48655659657582323,
+        "min": 1,
+        "max": 100,
+        "log": true
+      },
+      {
+        "id": 38,
+        "name": "Grid Bias",
+        "value": 100,
+        "norm": 1,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 43,
+        "name": "LF Q",
+        "value": 1.4,
+        "norm": 0.5730613116855373,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 44,
+        "name": "Preamp Bias",
+        "value": -0.112,
+        "norm": 0.44399853511154513,
+        "min": -1,
+        "max": 1
+      },
+      {
+        "id": 45,
+        "name": "High Freq",
+        "value": 1200.014,
+        "norm": 0.4771263771477401,
+        "min": 400,
+        "max": 4000,
+        "log": true
+      },
+      {
+        "id": 46,
+        "name": "HF Reso",
+        "value": 8.75,
+        "norm": 0.8749961851863155,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 48,
+        "name": "XFormer Drive",
+        "value": 0.9,
+        "norm": 0.6514175847651601,
+        "min": 0.01,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 49,
+        "name": "Input Trim",
+        "value": 1,
+        "norm": 0.5,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 50,
+        "name": "Tube Hardness",
+        "value": 2.2,
+        "norm": 0.21999267555772575,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 52,
+        "name": "Speaker Drive",
+        "value": 1,
+        "norm": 0.0999938962981048,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 53,
+        "name": "XFormer Matching",
+        "value": 1,
+        "norm": 0.5,
+        "min": 0.5,
+        "max": 2,
+        "log": true
+      },
+      {
+        "id": 54,
+        "name": "Screen Frequency",
+        "value": 9,
+        "norm": 0.4771263771477401,
+        "min": 1,
+        "max": 100,
+        "log": true
+      },
+      {
+        "id": 55,
+        "name": "Screen Q",
+        "value": 1,
+        "norm": 0.5,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 57,
+        "name": "Bass 2",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 58,
+        "name": "Mid 2",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 59,
+        "name": "Treble 2",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 60,
+        "name": "Presence 2",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 61,
+        "name": "1600",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 62,
+        "name": "2K",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 63,
+        "name": "4K",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 64,
+        "name": "8K",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 65,
+        "name": "Bias Excursion",
+        "value": 100,
+        "norm": 0.5,
+        "min": 0,
+        "max": 200
+      },
+      {
+        "id": 66,
+        "name": "Excursion Time",
+        "value": 10.16,
+        "norm": 0.804483169042024,
+        "min": 0.25,
+        "max": 25,
+        "log": true
+      },
+      {
+        "id": 67,
+        "name": "Recovery Time",
+        "value": 28.699,
+        "norm": 0.8794518875698111,
+        "min": 0.5,
+        "max": 50,
+        "log": true
+      },
+      {
+        "id": 68,
+        "name": "Triode 2 Plate Freq",
+        "value": 40000,
+        "norm": 1,
+        "min": 400,
+        "max": 40000,
+        "log": true
+      },
+      {
+        "id": 69,
+        "name": "Triode 1 Plate Freq",
+        "value": 40000,
+        "norm": 1,
+        "min": 400,
+        "max": 40000,
+        "log": true
+      },
+      {
+        "id": 72,
+        "name": "Out Comp Clarity",
+        "value": 2,
+        "norm": 0.6505172887356182,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 73,
+        "name": "Q",
+        "value": 0.707,
+        "norm": 0.4247108371227149,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 74,
+        "name": "Frequency 1",
+        "value": 1000,
+        "norm": 0.5,
+        "min": 100,
+        "max": 10000,
+        "log": true
+      },
+      {
+        "id": 75,
+        "name": "Gain 2",
+        "value": 0,
+        "norm": 0.5,
+        "min": -20,
+        "max": 20
+      },
+      {
+        "id": 76,
+        "name": "Overdrive",
+        "value": 5,
+        "norm": 0.5,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 77,
+        "name": "Out Compression",
+        "value": 0,
+        "norm": 0,
+        "unit": "%",
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 78,
+        "name": "Out Comp Threshold",
+        "value": -40,
+        "norm": 0.33333841975157935,
+        "unit": "dB",
+        "min": -60,
+        "max": 0
+      },
+      {
+        "id": 79,
+        "name": "Master Vol Trim",
+        "value": 1,
+        "norm": 0.5,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 82,
+        "name": "Compression",
+        "value": 76.165,
+        "norm": 0.7616504409924619,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 83,
+        "name": "Grid Clipping",
+        "value": 66.7,
+        "norm": 0.6669972838526567,
+        "unit": "%",
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 85,
+        "name": "High Cut 1",
+        "value": 20000,
+        "norm": 1,
+        "unit": "Hz",
+        "min": 200,
+        "max": 20000,
+        "log": true
+      },
+      {
+        "id": 86,
+        "name": "Dynamic Presence",
+        "value": 0,
+        "norm": 0.5,
+        "min": -10,
+        "max": 10
+      },
+      {
+        "id": 87,
+        "name": "Dynamic Depth",
+        "value": 0,
+        "norm": 0,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 89,
+        "name": "AC Line Frequency",
+        "value": 60,
+        "norm": 0.42857142857142855,
+        "min": 30,
+        "max": 100
+      },
+      {
+        "id": 90,
+        "name": "Hardness 1",
+        "value": 10,
+        "norm": 0.5,
+        "min": 2.5,
+        "max": 40,
+        "log": true
+      },
+      {
+        "id": 91,
+        "name": "Frequency 2",
+        "value": 5,
+        "norm": 0.6989654225287637,
+        "unit": "dB",
+        "min": 0.2,
+        "max": 20,
+        "log": true
+      },
+      {
+        "id": 92,
+        "name": "Depth 2",
+        "value": 0,
+        "norm": 0,
+        "unit": "%",
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 95,
+        "name": "Cathode Resistance",
+        "value": 49.4,
+        "norm": 0.49400311288796656,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 96,
+        "name": "Cathode Time Const",
+        "value": 11,
+        "norm": 0.5206915494247261,
+        "min": 1,
+        "max": 100,
+        "log": true
+      },
+      {
+        "id": 97,
+        "name": "DYNIMP",
+        "value": 1.818,
+        "norm": 0.18181402020325327,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 99,
+        "name": "High Treble",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 100,
+        "name": "Mismatch",
+        "value": 0,
+        "norm": 0.5,
+        "min": -1,
+        "max": 1
+      },
+      {
+        "id": 101,
+        "name": "Input Dynamics",
+        "value": 0,
+        "norm": 0.5,
+        "min": -10,
+        "max": 10
+      },
+      {
+        "id": 102,
+        "name": "HF Slope",
+        "value": 3,
+        "norm": 0.4771263771477401,
+        "min": 1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 103,
+        "name": "Variac",
+        "value": 100,
+        "norm": 0.5,
+        "unit": "%",
+        "min": 50,
+        "max": 150
+      },
+      {
+        "id": 105,
+        "name": "GRIDHARDNESS",
+        "value": 98,
+        "norm": 0.977782525101474,
+        "unit": "%",
+        "min": 10,
+        "max": 100
+      },
+      {
+        "id": 107,
+        "name": "Saturation Drive",
+        "value": 4,
+        "norm": 0.33333841975157935,
+        "min": 1,
+        "max": 10
+      },
+      {
+        "id": 108,
+        "name": "Preamp Bias Excursion",
+        "value": 100,
+        "norm": 0.5,
+        "min": 0,
+        "max": 200
+      },
+      {
+        "id": 109,
+        "name": "TRIODE2EXTIME",
+        "value": 0.22,
+        "norm": 0.1141392254402295,
+        "unit": "ms",
+        "min": 0.1,
+        "max": 100,
+        "log": true
+      },
+      {
+        "id": 110,
+        "name": "TRIODE2RECTIME",
+        "value": 0.25,
+        "norm": 0.032303842280343026,
+        "unit": "ms",
+        "min": 0.2,
+        "max": 200,
+        "log": true
+      },
+      {
+        "id": 114,
+        "name": "TRIODE1RATIO",
+        "value": 0,
+        "norm": 0.5,
+        "unit": "%",
+        "min": -200,
+        "max": 200
+      },
+      {
+        "id": 115,
+        "name": "Hardness 2",
+        "value": 8.2,
+        "norm": 0.8200018311105686,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 116,
+        "name": "PI Bias Excursion",
+        "value": 100,
+        "norm": 0.5,
+        "min": 0,
+        "max": 200
+      },
+      {
+        "id": 117,
+        "name": "Speaker Compress.",
+        "value": 1,
+        "norm": 0.0999938962981048,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 118,
+        "name": "Speaker Time Const",
+        "value": 2000.021,
+        "norm": 0.6505172887356182,
+        "min": 100,
+        "max": 10000,
+        "log": true
+      },
+      {
+        "id": 119,
+        "name": "RESOLUTION",
+        "value": 0,
+        "norm": 0,
+        "unit": "dB",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": 120,
+        "name": "B+",
+        "value": 0,
+        "norm": 0,
+        "unit": "dB",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": 121,
+        "name": "Gain 3",
+        "value": 0,
+        "norm": 0,
+        "unit": "dB",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": 122,
+        "name": "Gain 4",
+        "value": 0,
+        "norm": 0,
+        "unit": "dB",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": 123,
+        "name": "Gain 5",
+        "value": 0,
+        "norm": 0,
+        "unit": "dB",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": 124,
+        "name": "Boost Level",
+        "value": 12,
+        "norm": 0.5,
+        "min": 0,
+        "max": 24
+      },
+      {
+        "id": 127,
+        "name": "Speaker Compliance",
+        "value": 50,
+        "norm": 0.5,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 129,
+        "name": "Speaker Impedance",
+        "value": 1,
+        "norm": 0.5,
+        "min": 0.5,
+        "max": 2,
+        "log": true
+      },
+      {
+        "id": 131,
+        "name": "Cab Resonance",
+        "value": 100,
+        "norm": 0.5,
+        "min": 0,
+        "max": 200
+      },
+      {
+        "id": 132,
+        "name": "HEADROOM",
+        "value": 0,
+        "norm": 0,
+        "unit": "dB",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": 133,
+        "name": "Preamp Presence",
+        "value": 5,
+        "norm": 0.5,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 134,
+        "name": "Master Bias Excursion",
+        "value": 100,
+        "norm": 1,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 135,
+        "name": "High Cut 2",
+        "value": 3,
+        "norm": 0.2999969481490524,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 139,
+        "name": "Speaker Thump",
+        "value": 1.25,
+        "norm": 0.1250038148136845,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "id": 141,
+        "name": "Global MV",
+        "value": 10,
+        "norm": 1,
+        "min": 0,
+        "max": 10
+      }
+    ],
+    "enums": [
+      {
+        "id": 3,
+        "name": "Bypass Mode",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "THRU"
+          },
+          {
+            "value": 1,
+            "label": "MUTE"
+          }
+        ]
+      },
+      {
+        "id": 20,
+        "name": "Tonestack Location",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "PRE"
+          },
+          {
+            "value": 1,
+            "label": "POST"
+          },
+          {
+            "value": 2,
+            "label": "MID"
+          },
+          {
+            "value": 3,
+            "label": "END"
+          },
+          {
+            "value": 4,
+            "label": "PRE-MID"
+          }
+        ]
+      },
+      {
+        "id": 21,
+        "name": "Input Select",
+        "value": 2,
+        "options": [
+          {
+            "value": 0,
+            "label": "LEFT"
+          },
+          {
+            "value": 1,
+            "label": "RIGHT"
+          },
+          {
+            "value": 2,
+            "label": "SUM L+R"
+          }
+        ]
+      },
+      {
+        "id": 24,
+        "name": "CLIPTYPE2",
+        "value": 10,
+        "options": [
+          {
+            "value": 0,
+            "label": "SOFT"
+          },
+          {
+            "value": 1,
+            "label": "HARD"
+          },
+          {
+            "value": 2,
+            "label": "SQUARE"
+          },
+          {
+            "value": 3,
+            "label": "CUBIC"
+          },
+          {
+            "value": 4,
+            "label": "ABS"
+          },
+          {
+            "value": 5,
+            "label": "TUBE"
+          },
+          {
+            "value": 6,
+            "label": "QUARTIC"
+          },
+          {
+            "value": 7,
+            "label": "PUSH-PULL"
+          },
+          {
+            "value": 8,
+            "label": "3/2 HARD"
+          },
+          {
+            "value": 9,
+            "label": "3/2 SOFT"
+          },
+          {
+            "value": 10,
+            "label": "TRIODE"
+          },
+          {
+            "value": 11,
+            "label": "TRIODE+SAT"
+          },
+          {
+            "value": 12,
+            "label": "TRIODE+SAT1"
+          }
+        ]
+      },
+      {
+        "id": 32,
+        "name": "DRIVETYPE",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "NORMAL"
+          },
+          {
+            "value": 1,
+            "label": "DUAL"
+          },
+          {
+            "value": 2,
+            "label": "JUMPED HIWATT"
+          },
+          {
+            "value": 3,
+            "label": "JUMPED BASSMAN"
+          },
+          {
+            "value": 4,
+            "label": "JUMPED TWEED"
+          },
+          {
+            "value": 5,
+            "label": "TWEED"
+          },
+          {
+            "value": 6,
+            "label": "GANGED"
+          },
+          {
+            "value": 7,
+            "label": "JUMPED PLEXI"
+          }
+        ]
+      },
+      {
+        "id": 36,
+        "name": "Tonestack Type",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "ACTIVE"
+          },
+          {
+            "value": 1,
+            "label": "DEFAULT"
+          },
+          {
+            "value": 2,
+            "label": "BROWNFACE"
+          },
+          {
+            "value": 3,
+            "label": "BLACKFACE"
+          },
+          {
+            "value": 4,
+            "label": "BASSGUY"
+          },
+          {
+            "value": 5,
+            "label": "TOP BOOST"
+          },
+          {
+            "value": 6,
+            "label": "PLEXI"
+          },
+          {
+            "value": 7,
+            "label": "BOUTIQUE"
+          },
+          {
+            "value": 8,
+            "label": "HI POWER"
+          },
+          {
+            "value": 9,
+            "label": "USA NORMAL"
+          },
+          {
+            "value": 10,
+            "label": "USA FAT"
+          },
+          {
+            "value": 11,
+            "label": "RECTO1 ORG"
+          },
+          {
+            "value": 12,
+            "label": "RECTO1 RED"
+          },
+          {
+            "value": 13,
+            "label": "SKYLINE"
+          },
+          {
+            "value": 14,
+            "label": "GERMAN"
+          },
+          {
+            "value": 15,
+            "label": "JR BLUES"
+          },
+          {
+            "value": 16,
+            "label": "WRECKER 1"
+          },
+          {
+            "value": 17,
+            "label": "NEUTRAL"
+          },
+          {
+            "value": 18,
+            "label": "CA3+SE"
+          },
+          {
+            "value": 19,
+            "label": "FREYER D60"
+          },
+          {
+            "value": 20,
+            "label": "MR Z 38 SR"
+          },
+          {
+            "value": 21,
+            "label": "EURO UBER"
+          },
+          {
+            "value": 22,
+            "label": "PVH 6160"
+          },
+          {
+            "value": 23,
+            "label": "SOLO 100"
+          },
+          {
+            "value": 24,
+            "label": "CORNCOB"
+          },
+          {
+            "value": 25,
+            "label": "XTC"
+          },
+          {
+            "value": 26,
+            "label": "CAROLANN"
+          },
+          {
+            "value": 27,
+            "label": "CITRUS"
+          },
+          {
+            "value": 28,
+            "label": "BRIT JM45"
+          },
+          {
+            "value": 29,
+            "label": "USA RHY"
+          },
+          {
+            "value": 30,
+            "label": "RECTO2 ORG"
+          },
+          {
+            "value": 31,
+            "label": "RECTO2 RED VNTG"
+          },
+          {
+            "value": 32,
+            "label": "SHIVER CLN"
+          },
+          {
+            "value": 33,
+            "label": "CAMERON"
+          },
+          {
+            "value": 34,
+            "label": "BRIT JVM 0D1"
+          },
+          {
+            "value": 35,
+            "label": "BRIT JVM 0D2"
+          },
+          {
+            "value": 36,
+            "label": "5153 GREEN"
+          },
+          {
+            "value": 37,
+            "label": "5153 BLUE"
+          },
+          {
+            "value": 38,
+            "label": "5153 RED"
+          },
+          {
+            "value": 39,
+            "label": "BRIT SUPER"
+          },
+          {
+            "value": 40,
+            "label": "DIV13 CJ"
+          },
+          {
+            "value": 41,
+            "label": "BADGER 18"
+          },
+          {
+            "value": 42,
+            "label": "ATOMICA"
+          },
+          {
+            "value": 43,
+            "label": "SPAWN ROD"
+          },
+          {
+            "value": 44,
+            "label": "BADGER 30"
+          },
+          {
+            "value": 45,
+            "label": "BRIT SILVER"
+          },
+          {
+            "value": 46,
+            "label": "SUPER VERB"
+          },
+          {
+            "value": 47,
+            "label": "HOT KITTY"
+          },
+          {
+            "value": 48,
+            "label": "VIBRATO-KING"
+          },
+          {
+            "value": 49,
+            "label": "GIBTONE SCOUT"
+          },
+          {
+            "value": 50,
+            "label": "CA3+SE CLEAN"
+          },
+          {
+            "value": 51,
+            "label": "BF FIXED MID"
+          },
+          {
+            "value": 52,
+            "label": "GERMAN V4"
+          },
+          {
+            "value": 53,
+            "label": "VIBRATO-LUX"
+          },
+          {
+            "value": 54,
+            "label": "DIRTY SHIRLEY"
+          },
+          {
+            "value": 55,
+            "label": "PLEXI 100W"
+          },
+          {
+            "value": 56,
+            "label": "RUBY ROCKET BRT"
+          },
+          {
+            "value": 57,
+            "label": "CONCOURSE"
+          },
+          {
+            "value": 58,
+            "label": "TRIPTIK LD"
+          },
+          {
+            "value": 59,
+            "label": "TRIPTIK CLN"
+          },
+          {
+            "value": 60,
+            "label": "JAZZ 120"
+          },
+          {
+            "value": 61,
+            "label": "BOGFISH"
+          },
+          {
+            "value": 62,
+            "label": "WRECKER 2"
+          },
+          {
+            "value": 63,
+            "label": "SKYLINE DEEP"
+          },
+          {
+            "value": 64,
+            "label": "USA SUB BLUES"
+          },
+          {
+            "value": 65,
+            "label": "WRECKER LVRPOOL"
+          },
+          {
+            "value": 66,
+            "label": "CITRUS A30 CLN"
+          },
+          {
+            "value": 67,
+            "label": "CITRUS A30 DRT"
+          },
+          {
+            "value": 68,
+            "label": "CAR ROAMER"
+          },
+          {
+            "value": 69,
+            "label": "USA BASS"
+          },
+          {
+            "value": 70,
+            "label": "CITRUS BASS"
+          },
+          {
+            "value": 71,
+            "label": "STUDIO"
+          },
+          {
+            "value": 72,
+            "label": "BRIT 800"
+          },
+          {
+            "value": 73,
+            "label": "RECTO1 ORG MDRN"
+          },
+          {
+            "value": 74,
+            "label": "ANGLE SEVERE 1"
+          },
+          {
+            "value": 75,
+            "label": "ANGLE SEVERE 2"
+          },
+          {
+            "value": 76,
+            "label": "USA PRE LD1 RED"
+          },
+          {
+            "value": 77,
+            "label": "RECTO ORG BRT"
+          },
+          {
+            "value": 78,
+            "label": "RECTO RED BRT"
+          },
+          {
+            "value": 79,
+            "label": "VIBROVERB AA"
+          },
+          {
+            "value": 80,
+            "label": "PVH 6160+ LEAD"
+          },
+          {
+            "value": 81,
+            "label": "RUMBLE HRM"
+          },
+          {
+            "value": 82,
+            "label": "MR Z HWY 66"
+          },
+          {
+            "value": 83,
+            "label": "SUPER 6G4"
+          },
+          {
+            "value": 84,
+            "label": "65 BASSMAN BASS"
+          },
+          {
+            "value": 85,
+            "label": "FRIEDMAN"
+          },
+          {
+            "value": 86,
+            "label": "BAND-COMMANDER"
+          },
+          {
+            "value": 87,
+            "label": "USA PRE CLEAN"
+          },
+          {
+            "value": 88,
+            "label": "TUCANA CLEAN"
+          },
+          {
+            "value": 89,
+            "label": "FRIEDMAN SM BOX"
+          },
+          {
+            "value": 90,
+            "label": "TX STAR"
+          },
+          {
+            "value": 91,
+            "label": "USA IIC+"
+          },
+          {
+            "value": 92,
+            "label": "THORDENDAL"
+          },
+          {
+            "value": 93,
+            "label": "SOLO 99"
+          },
+          {
+            "value": 94,
+            "label": "BLUDOJAI"
+          },
+          {
+            "value": 95,
+            "label": "HERBIE"
+          },
+          {
+            "value": 96,
+            "label": "PVH 6160+ CRUNCH"
+          },
+          {
+            "value": 97,
+            "label": "SOLO 88 CLEAN"
+          },
+          {
+            "value": 98,
+            "label": "JS410"
+          },
+          {
+            "value": 99,
+            "label": "JS410 MIDSHIFT"
+          },
+          {
+            "value": 100,
+            "label": "RUBY ROCKET"
+          },
+          {
+            "value": 101,
+            "label": "USA IIC++"
+          },
+          {
+            "value": 102,
+            "label": "LEGATO 100"
+          },
+          {
+            "value": 103,
+            "label": "HOOK EDGE"
+          },
+          {
+            "value": 104,
+            "label": "HOOK NO EDGE"
+          },
+          {
+            "value": 105,
+            "label": "HOOK CLEAN 1"
+          },
+          {
+            "value": 106,
+            "label": "HOOK CLEAN 2"
+          },
+          {
+            "value": 107,
+            "label": "SOLO 88"
+          },
+          {
+            "value": 108,
+            "label": "SPAWN NITROUS"
+          },
+          {
+            "value": 109,
+            "label": "SV BASS"
+          },
+          {
+            "value": 110,
+            "label": "RECTO2 RED MDRN"
+          },
+          {
+            "value": 111,
+            "label": "JP IIC+ YEL/RED"
+          },
+          {
+            "value": 112,
+            "label": "JP IIC+ GREEN"
+          },
+          {
+            "value": 113,
+            "label": "MR Z GHIA"
+          },
+          {
+            "value": 114,
+            "label": "MATCHBOX D-30 EF86"
+          },
+          {
+            "value": 115,
+            "label": "TRES CORONA"
+          },
+          {
+            "value": 116,
+            "label": "PVH 6160+ CLEAN"
+          },
+          {
+            "value": 117,
+            "label": "ARCHEAN"
+          },
+          {
+            "value": 118,
+            "label": "ARCHEAN BRIGHT"
+          },
+          {
+            "value": 119,
+            "label": "ARCHEAN CLEAN"
+          },
+          {
+            "value": 120,
+            "label": "BUDDAH DUOMASTER"
+          },
+          {
+            "value": 121,
+            "label": "NULL"
+          },
+          {
+            "value": 122,
+            "label": "JMPRE-1 CLN"
+          },
+          {
+            "value": 123,
+            "label": "JMPRE-1 CLN BASS"
+          },
+          {
+            "value": 124,
+            "label": "JMPRE-1 OD1"
+          },
+          {
+            "value": 125,
+            "label": "BRIT STUDIO 20"
+          },
+          {
+            "value": 126,
+            "label": "BRIT AFS100"
+          },
+          {
+            "value": 127,
+            "label": "MATCHBOX D-30"
+          }
+        ]
+      },
+      {
+        "id": 39,
+        "name": "FBTYPE",
+        "value": 11,
+        "options": [
+          {
+            "value": 0,
+            "label": "BASSGUY"
+          },
+          {
+            "value": 1,
+            "label": "PLEXI"
+          },
+          {
+            "value": 2,
+            "label": "BRIT 800"
+          },
+          {
+            "value": 3,
+            "label": "BRIT 1987x"
+          },
+          {
+            "value": 4,
+            "label": "SOLO 100"
+          },
+          {
+            "value": 5,
+            "label": "RUMBLE"
+          },
+          {
+            "value": 6,
+            "label": "XTC"
+          },
+          {
+            "value": 7,
+            "label": "JR BLUES"
+          },
+          {
+            "value": 8,
+            "label": "RECTO ORG"
+          },
+          {
+            "value": 9,
+            "label": "FRYETTE"
+          },
+          {
+            "value": 10,
+            "label": "6160"
+          },
+          {
+            "value": 11,
+            "label": "IDEAL"
+          },
+          {
+            "value": 12,
+            "label": "AC-30"
+          },
+          {
+            "value": 13,
+            "label": "SHIVER OLD"
+          },
+          {
+            "value": 14,
+            "label": "CAMERON"
+          },
+          {
+            "value": 15,
+            "label": "BRIT JVM"
+          },
+          {
+            "value": 16,
+            "label": "TRIPTIK"
+          },
+          {
+            "value": 17,
+            "label": "CALI"
+          },
+          {
+            "value": 18,
+            "label": "GERMAN V4"
+          },
+          {
+            "value": 19,
+            "label": "TRIP-TIK"
+          },
+          {
+            "value": 20,
+            "label": "WRECKER"
+          },
+          {
+            "value": 21,
+            "label": "RECTO RED"
+          },
+          {
+            "value": 22,
+            "label": "DEUTSCH WILDE"
+          },
+          {
+            "value": 23,
+            "label": "FRIEDMAN"
+          },
+          {
+            "value": 24,
+            "label": "TUCANA"
+          },
+          {
+            "value": 25,
+            "label": "5153 100W"
+          },
+          {
+            "value": 26,
+            "label": "TERRIER"
+          },
+          {
+            "value": 27,
+            "label": "MARK IIC"
+          },
+          {
+            "value": 28,
+            "label": "MARK IV RHY"
+          },
+          {
+            "value": 29,
+            "label": "MATCHBOX"
+          },
+          {
+            "value": 30,
+            "label": "SUPER 6G4"
+          },
+          {
+            "value": 31,
+            "label": "CONCERT 6G12"
+          },
+          {
+            "value": 32,
+            "label": "NULL"
+          },
+          {
+            "value": 33,
+            "label": "PLEXI 50W"
+          },
+          {
+            "value": 34,
+            "label": "SHIVER NEW"
+          },
+          {
+            "value": 35,
+            "label": "UBER"
+          },
+          {
+            "value": 36,
+            "label": "DIZZY"
+          },
+          {
+            "value": 37,
+            "label": "ATOMICA"
+          },
+          {
+            "value": 38,
+            "label": "FASTROD"
+          },
+          {
+            "value": 39,
+            "label": "TX STAR"
+          },
+          {
+            "value": 40,
+            "label": "CORNFORD"
+          },
+          {
+            "value": 41,
+            "label": "CAPT HOOK"
+          },
+          {
+            "value": 42,
+            "label": "AFS100"
+          },
+          {
+            "value": 43,
+            "label": "SPAWN NITROUS"
+          },
+          {
+            "value": 44,
+            "label": "USA JP IIC+"
+          },
+          {
+            "value": 45,
+            "label": "SUPREMO TREM"
+          },
+          {
+            "value": 46,
+            "label": "BRIT JM45"
+          },
+          {
+            "value": 47,
+            "label": "MATCHBOX D-30"
+          },
+          {
+            "value": 48,
+            "label": "ARCHEAN"
+          },
+          {
+            "value": 49,
+            "label": "DELUXE VERB"
+          },
+          {
+            "value": 50,
+            "label": "DOUBLE VERB"
+          },
+          {
+            "value": 51,
+            "label": "VIBRATO LUX"
+          },
+          {
+            "value": 52,
+            "label": "TREMOLO LUX"
+          },
+          {
+            "value": 53,
+            "label": "FAS CLASSIC"
+          },
+          {
+            "value": 54,
+            "label": "KOMET"
+          },
+          {
+            "value": 55,
+            "label": "HIPOWER"
+          },
+          {
+            "value": 56,
+            "label": "USA SUB BLUES"
+          },
+          {
+            "value": 57,
+            "label": "FAS BROOTALZ"
+          },
+          {
+            "value": 58,
+            "label": "ENERGYBALL"
+          },
+          {
+            "value": 59,
+            "label": "CITRUS RV50"
+          },
+          {
+            "value": 60,
+            "label": "BASSGUY RI"
+          },
+          {
+            "value": 61,
+            "label": "REVV GENERATOR"
+          },
+          {
+            "value": 62,
+            "label": "5153 50W"
+          },
+          {
+            "value": 63,
+            "label": "5153 STEALTH"
+          },
+          {
+            "value": 64,
+            "label": "JS410"
+          },
+          {
+            "value": 65,
+            "label": "MARK V"
+          },
+          {
+            "value": 66,
+            "label": "BRIT SILVER"
+          },
+          {
+            "value": 67,
+            "label": "PLEXI 2204"
+          },
+          {
+            "value": 68,
+            "label": "BRIT 6100"
+          }
+        ]
+      },
+      {
+        "id": 41,
+        "name": "Bright",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 42,
+        "name": "Boost",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 47,
+        "name": "Cut",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 51,
+        "name": "Master Vol Location",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "PRE-PI"
+          },
+          {
+            "value": 1,
+            "label": "POST-PI"
+          },
+          {
+            "value": 2,
+            "label": "PRE-TRIODE"
+          }
+        ]
+      },
+      {
+        "id": 56,
+        "name": "Saturation Switch",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          },
+          {
+            "value": 2,
+            "label": "ON (IDEAL)"
+          }
+        ]
+      },
+      {
+        "id": 70,
+        "name": "Power Tube Type",
+        "value": 3,
+        "options": [
+          {
+            "value": 0,
+            "label": "5881"
+          },
+          {
+            "value": 1,
+            "label": "6L6GB"
+          },
+          {
+            "value": 2,
+            "label": "EL34 MULL"
+          },
+          {
+            "value": 3,
+            "label": "EL84/6BQ5"
+          },
+          {
+            "value": 4,
+            "label": "6L6GC GE"
+          },
+          {
+            "value": 5,
+            "label": "6V6GT GE"
+          },
+          {
+            "value": 6,
+            "label": "KT66 GEN"
+          },
+          {
+            "value": 7,
+            "label": "KT88 GEN"
+          },
+          {
+            "value": 8,
+            "label": "6550 SVET"
+          },
+          {
+            "value": 9,
+            "label": "6973"
+          },
+          {
+            "value": 10,
+            "label": "6AQ5"
+          },
+          {
+            "value": 11,
+            "label": "300B"
+          },
+          {
+            "value": 12,
+            "label": "KT77 JJ"
+          },
+          {
+            "value": 13,
+            "label": "6CA7 JJ"
+          },
+          {
+            "value": 14,
+            "label": "6L6GC JJ"
+          },
+          {
+            "value": 15,
+            "label": "EL34 JJ"
+          },
+          {
+            "value": 16,
+            "label": "EL84 JJ"
+          },
+          {
+            "value": 17,
+            "label": "KT66 JJ"
+          },
+          {
+            "value": 18,
+            "label": "KT88 JJ"
+          },
+          {
+            "value": 19,
+            "label": "6CA7 AMP"
+          },
+          {
+            "value": 20,
+            "label": "EL34 SVET"
+          },
+          {
+            "value": 21,
+            "label": "6L6GC SVET"
+          },
+          {
+            "value": 22,
+            "label": "6V6GT TUNG"
+          },
+          {
+            "value": 23,
+            "label": "EL84 MULL"
+          },
+          {
+            "value": 24,
+            "label": "6550 TUNG"
+          }
+        ]
+      },
+      {
+        "id": 71,
+        "name": "Preamp Tube Type",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "12AX7A SYL"
+          },
+          {
+            "value": 1,
+            "label": "ECC83"
+          },
+          {
+            "value": 2,
+            "label": "7025"
+          },
+          {
+            "value": 3,
+            "label": "12AX7A JJ"
+          },
+          {
+            "value": 4,
+            "label": "ECC803S"
+          },
+          {
+            "value": 5,
+            "label": "EF86"
+          },
+          {
+            "value": 6,
+            "label": "12AX7A RCA"
+          },
+          {
+            "value": 7,
+            "label": "12AX7A"
+          },
+          {
+            "value": 8,
+            "label": "12AX7B"
+          }
+        ]
+      },
+      {
+        "id": 80,
+        "name": "Fat",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 88,
+        "name": "Power Type",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "AC"
+          },
+          {
+            "value": 1,
+            "label": "DC"
+          }
+        ]
+      },
+      {
+        "id": 93,
+        "name": "Ratio",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "FIXED"
+          },
+          {
+            "value": 1,
+            "label": "SHARED CATHODE"
+          },
+          {
+            "value": 2,
+            "label": "SPLIT CATHODE"
+          }
+        ]
+      },
+      {
+        "id": 94,
+        "name": "Type 1",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "8 BAND VAR Q"
+          },
+          {
+            "value": 1,
+            "label": "7 BAND VAR Q"
+          },
+          {
+            "value": 2,
+            "label": "5 BAND (MARK)"
+          },
+          {
+            "value": 3,
+            "label": "8 BAND CONST Q"
+          },
+          {
+            "value": 4,
+            "label": "7 BAND CONST Q"
+          },
+          {
+            "value": 5,
+            "label": "5 BAND CONST Q"
+          },
+          {
+            "value": 6,
+            "label": "5 BAND PASSIVE"
+          },
+          {
+            "value": 7,
+            "label": "4 BAND PASSIVE"
+          },
+          {
+            "value": 8,
+            "label": "3 BAND PASSIVE"
+          },
+          {
+            "value": 9,
+            "label": "3 BAND CONSOLE"
+          },
+          {
+            "value": 10,
+            "label": "JMPRE-1"
+          }
+        ]
+      },
+      {
+        "id": 98,
+        "name": "Preamp Sag",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 104,
+        "name": "Type 2",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "LOWSHELF"
+          },
+          {
+            "value": 1,
+            "label": "PEAKING"
+          },
+          {
+            "value": 2,
+            "label": "HIGHSHELF"
+          },
+          {
+            "value": 3,
+            "label": "TILT EQ"
+          }
+        ]
+      },
+      {
+        "id": 106,
+        "name": "Pres. Shift",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 111,
+        "name": "Out Comp Type",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OUTPUT"
+          },
+          {
+            "value": 1,
+            "label": "FEEDBACK"
+          },
+          {
+            "value": 2,
+            "label": "GAIN ENHANCER"
+          }
+        ]
+      },
+      {
+        "id": 112,
+        "name": "Location",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OUTPUT"
+          },
+          {
+            "value": 1,
+            "label": "PRE P.A."
+          },
+          {
+            "value": 2,
+            "label": "INPUT"
+          }
+        ]
+      },
+      {
+        "id": 113,
+        "name": "Type 3",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "AUTHENTIC"
+          },
+          {
+            "value": 1,
+            "label": "IDEAL"
+          }
+        ]
+      },
+      {
+        "id": 125,
+        "name": "Boost Type",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "NEUTRAL"
+          },
+          {
+            "value": 1,
+            "label": "T808"
+          },
+          {
+            "value": 2,
+            "label": "T808 MOD"
+          },
+          {
+            "value": 3,
+            "label": "SUPER OD"
+          },
+          {
+            "value": 4,
+            "label": "FULL OD"
+          },
+          {
+            "value": 5,
+            "label": "AC BOOST"
+          },
+          {
+            "value": 6,
+            "label": "SHIMMER"
+          },
+          {
+            "value": 7,
+            "label": "FAS BOOST"
+          },
+          {
+            "value": 8,
+            "label": "GRINDER"
+          },
+          {
+            "value": 9,
+            "label": "TREBLE BOOST"
+          },
+          {
+            "value": 10,
+            "label": "MID BOOST"
+          },
+          {
+            "value": 11,
+            "label": "CC BOOST"
+          },
+          {
+            "value": 12,
+            "label": "SHRED BOOST"
+          },
+          {
+            "value": 13,
+            "label": "RCB BOOST"
+          },
+          {
+            "value": 14,
+            "label": "JP IIC+ SHRED"
+          }
+        ]
+      },
+      {
+        "id": 126,
+        "name": "Output Mode",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "FRFR"
+          },
+          {
+            "value": 1,
+            "label": "SS PWR AMP + CAB"
+          }
+        ]
+      },
+      {
+        "id": 128,
+        "name": "Off / On",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 130,
+        "name": "Speaker Imp. Curve",
+        "value": 79,
+        "options": [
+          {
+            "value": 0,
+            "label": "Resistive Load"
+          },
+          {
+            "value": 1,
+            "label": "1x8 5F1 Tweed"
+          },
+          {
+            "value": 2,
+            "label": "1x10 Princetone NR"
+          },
+          {
+            "value": 3,
+            "label": "1x10 BF Princetone"
+          },
+          {
+            "value": 4,
+            "label": "1x10 SF Princetone"
+          },
+          {
+            "value": 5,
+            "label": "1x12 Tweed Emmi"
+          },
+          {
+            "value": 6,
+            "label": "1x12 Vibrato Lux"
+          },
+          {
+            "value": 7,
+            "label": "1x12 Deluxe Verb"
+          },
+          {
+            "value": 8,
+            "label": "1x12 Deluxe Verb RI"
+          },
+          {
+            "value": 9,
+            "label": "1x12 JR Blues"
+          },
+          {
+            "value": 10,
+            "label": "1x12 Brit G12H55"
+          },
+          {
+            "value": 11,
+            "label": "1x12 Brit G12H75"
+          },
+          {
+            "value": 12,
+            "label": "1x12 Div13 CJ11"
+          },
+          {
+            "value": 13,
+            "label": "1x12 Brit G12T"
+          },
+          {
+            "value": 14,
+            "label": "1x12 V30"
+          },
+          {
+            "value": 15,
+            "label": "1x12 AC-20 DLX"
+          },
+          {
+            "value": 16,
+            "label": "1x12 Car Ambler"
+          },
+          {
+            "value": 17,
+            "label": "1x12 AST BV25"
+          },
+          {
+            "value": 18,
+            "label": "1x15 Vibrato Verb"
+          },
+          {
+            "value": 19,
+            "label": "1x15 Portabass"
+          },
+          {
+            "value": 20,
+            "label": "2x10 Super"
+          },
+          {
+            "value": 21,
+            "label": "2x10 Vibrato Lux"
+          },
+          {
+            "value": 22,
+            "label": "2x12 Bassguy"
+          },
+          {
+            "value": 23,
+            "label": "2x12 Double Verb"
+          },
+          {
+            "value": 24,
+            "label": "2x12 Double Verb SF"
+          },
+          {
+            "value": 25,
+            "label": "1x12 Class-A 15W"
+          },
+          {
+            "value": 26,
+            "label": "2x12 Class-A 30W"
+          },
+          {
+            "value": 27,
+            "label": "2x12 TX Star"
+          },
+          {
+            "value": 28,
+            "label": "2x12 Match Chief"
+          },
+          {
+            "value": 29,
+            "label": "1x12 Hot Kitty"
+          },
+          {
+            "value": 30,
+            "label": "2x12 Jazz 120"
+          },
+          {
+            "value": 31,
+            "label": "4x10 Bassguy"
+          },
+          {
+            "value": 32,
+            "label": "4x10 Brit JM45"
+          },
+          {
+            "value": 33,
+            "label": "4x10 Super Verb"
+          },
+          {
+            "value": 34,
+            "label": "4x10 SV Bass"
+          },
+          {
+            "value": 35,
+            "label": "4x12 Brit TV"
+          },
+          {
+            "value": 36,
+            "label": "4x12 Brit Greenback"
+          },
+          {
+            "value": 37,
+            "label": "4x12 Basketweave"
+          },
+          {
+            "value": 38,
+            "label": "4x12 Brit 800"
+          },
+          {
+            "value": 39,
+            "label": "4x12 Brit AX"
+          },
+          {
+            "value": 40,
+            "label": "4x12 Hipower"
+          },
+          {
+            "value": 41,
+            "label": "4x12 USA MC90"
+          },
+          {
+            "value": 42,
+            "label": "4x12 Recto Large"
+          },
+          {
+            "value": 43,
+            "label": "4x12 Recto Small"
+          },
+          {
+            "value": 44,
+            "label": "4x12 Recto Slant"
+          },
+          {
+            "value": 45,
+            "label": "4x12 Recto Straight"
+          },
+          {
+            "value": 46,
+            "label": "4x12 5153"
+          },
+          {
+            "value": 47,
+            "label": "4x12 Citrus"
+          },
+          {
+            "value": 48,
+            "label": "4x12 Rumble"
+          },
+          {
+            "value": 49,
+            "label": "2x12 Lead 80"
+          },
+          {
+            "value": 50,
+            "label": "4x12 Solo 100"
+          },
+          {
+            "value": 51,
+            "label": "Load Box LB-2 UK"
+          },
+          {
+            "value": 52,
+            "label": "Load Box LB-2 US"
+          },
+          {
+            "value": 53,
+            "label": "4x12 Friedman"
+          },
+          {
+            "value": 54,
+            "label": "2x12 Bassbuster"
+          },
+          {
+            "value": 55,
+            "label": "1x12 Tweed Alnico Blue"
+          },
+          {
+            "value": 56,
+            "label": "4x12 PVH 6160"
+          },
+          {
+            "value": 57,
+            "label": "4x12 Euro"
+          },
+          {
+            "value": 58,
+            "label": "2x12 Recto"
+          },
+          {
+            "value": 59,
+            "label": "2x12 Godzilla"
+          },
+          {
+            "value": 60,
+            "label": "1x12 Tweed C12Q"
+          },
+          {
+            "value": 61,
+            "label": "1x12 Dirty Shirley EV12L"
+          },
+          {
+            "value": 62,
+            "label": "1x12 USA Ext EV12L"
+          },
+          {
+            "value": 63,
+            "label": "2x12 Band Commander SRO"
+          },
+          {
+            "value": 64,
+            "label": "2x12 Guy Tron Alnico Blue"
+          },
+          {
+            "value": 65,
+            "label": "1x12 G12T-75"
+          },
+          {
+            "value": 66,
+            "label": "2x12 Class-A Greenback"
+          },
+          {
+            "value": 67,
+            "label": "2x12 Two Stone 1265"
+          },
+          {
+            "value": 68,
+            "label": "4x12 Lerxst Omega"
+          },
+          {
+            "value": 69,
+            "label": "1x12 Deluxe Oxford"
+          },
+          {
+            "value": 70,
+            "label": "4x12 Hipower Pete T"
+          },
+          {
+            "value": 71,
+            "label": "4x12 USA Semi-Open"
+          },
+          {
+            "value": 72,
+            "label": "2x12 Dizzy RV"
+          },
+          {
+            "value": 73,
+            "label": "4x12 Hipower Lindsey B"
+          },
+          {
+            "value": 74,
+            "label": "4x12 London Town Tall"
+          },
+          {
+            "value": 75,
+            "label": "Oxbow Loadbox"
+          },
+          {
+            "value": 76,
+            "label": "Double Notes Loadbox"
+          },
+          {
+            "value": 77,
+            "label": "1x10 Metro Blues"
+          },
+          {
+            "value": 78,
+            "label": "4x10 Bassguy RI"
+          },
+          {
+            "value": 79,
+            "label": "2x12 Class-A 30W Silver"
+          },
+          {
+            "value": 80,
+            "label": "2x10 Heart Key"
+          },
+          {
+            "value": 81,
+            "label": "4x12 1960BV"
+          },
+          {
+            "value": 82,
+            "label": "1x12 Deluxe Tweed"
+          },
+          {
+            "value": 83,
+            "label": "1x15 Heart Key"
+          },
+          {
+            "value": 84,
+            "label": "2x12 USA C90 Open Back"
+          },
+          {
+            "value": 85,
+            "label": "1x12 Friedman"
+          },
+          {
+            "value": 86,
+            "label": "2x12 5153 Stealth"
+          },
+          {
+            "value": 87,
+            "label": "4x12 5153 Stealth"
+          },
+          {
+            "value": 88,
+            "label": "1x12 Scholz"
+          },
+          {
+            "value": 89,
+            "label": "1x8 Princetone"
+          },
+          {
+            "value": 90,
+            "label": "1x12 Black Magick"
+          },
+          {
+            "value": 91,
+            "label": "8x10 SV Bass"
+          },
+          {
+            "value": 92,
+            "label": "Suhr Reactive Load"
+          }
+        ]
+      },
+      {
+        "id": 136,
+        "name": "Power Amp Modeling",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 137,
+        "name": "Scene Ignore",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 138,
+        "name": "Speaker Breakup",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "SOFT"
+          },
+          {
+            "value": 1,
+            "label": "MEDIUM"
+          },
+          {
+            "value": 2,
+            "label": "HARD"
+          }
+        ]
+      },
+      {
+        "id": 140,
+        "name": "Plate Suppr. Diodes",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 142,
+        "name": "Auto Dyna-Cab Imp.",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 143,
+        "name": "NFB Compensation",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      }
+    ],
+    "type": {
+      "value": 326,
+      "name": "Class-A 30W Brilliant"
+    },
+    "layout": {
+      "editorName": "Amp",
+      "pages": [
+        {
+          "name": "Authentic",
+          "controls": [
+            {
+              "label": "Gain",
+              "paramName": "DISTORT_DRIVE",
+              "paramId": 7,
+              "col": 0
+            },
+            {
+              "label": "Bass",
+              "paramName": "DISTORT_BASS",
+              "paramId": 8,
+              "col": 2
+            },
+            {
+              "label": "Mid",
+              "paramName": "DISTORT_MID",
+              "paramId": 9,
+              "col": 3
+            },
+            {
+              "label": "Treble",
+              "paramName": "DISTORT_TREBLE",
+              "paramId": 10,
+              "col": 4
+            },
+            {
+              "label": "Presence",
+              "paramName": "DISTORT_PRESENCE",
+              "paramId": 26,
+              "col": 5
+            },
+            {
+              "label": "Depth",
+              "paramName": "DISTORT_DEPTH",
+              "paramId": 22,
+              "col": 6
+            },
+            {
+              "label": "Master Volume",
+              "paramName": "DISTORT_MASTER",
+              "paramId": 11,
+              "col": 8
+            },
+            {
+              "label": "HEADROOM",
+              "paramName": "DISTORT_VPLATEMON",
+              "paramId": 132
+            },
+            {
+              "label": "Bright",
+              "paramName": "DISTORT_BRIGHT",
+              "paramId": 41,
+              "col": 4
+            },
+            {
+              "label": "Input Trim",
+              "paramName": "DISTORT_TRIM",
+              "paramId": 49,
+              "col": 0
+            },
+            {
+              "label": "Level",
+              "paramName": "DISTORT_LEVEL",
+              "paramId": 1
+            },
+            {
+              "label": "Balance",
+              "paramName": "DISTORT_PAN",
+              "paramId": 2
+            },
+            {
+              "label": "Input Select",
+              "paramName": "DISTORT_INPUTSELECT",
+              "paramId": 21
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DISTORT_BYPASSMODE",
+              "paramId": 3
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DISTORT_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DISTORT_SCENEIGNORE",
+              "paramId": 137
+            },
+            {
+              "label": "Overdrive",
+              "paramName": "DISTORT_DRIVE2",
+              "paramId": 76,
+              "col": 1
+            },
+            {
+              "label": "Negative Feedback",
+              "paramName": "DISTORT_BETA",
+              "paramId": 27,
+              "col": 5
+            },
+            {
+              "label": "Global MV",
+              "paramName": "DISTORT_GLOBALMASTER",
+              "paramId": 141,
+              "col": 8
+            },
+            {
+              "label": "High Cut",
+              "paramName": "DISTORT_PAHICUT",
+              "paramId": 135,
+              "col": 5
+            },
+            {
+              "label": "Treble",
+              "paramName": "DISTORT_PREPRESENCE",
+              "paramId": 133,
+              "col": 4
+            },
+            {
+              "label": "Treble Shift",
+              "paramName": "DISTORT_FAT",
+              "paramId": 80,
+              "col": 3
+            },
+            {
+              "label": "Bass",
+              "paramName": "DISTORT_EQ1",
+              "paramId": 57,
+              "col": 2
+            },
+            {
+              "label": "Mid",
+              "paramName": "DISTORT_EQ2",
+              "paramId": 58,
+              "col": 3
+            },
+            {
+              "label": "Treble",
+              "paramName": "DISTORT_EQ3",
+              "paramId": 59,
+              "col": 4
+            },
+            {
+              "label": "Presence",
+              "paramName": "DISTORT_EQ4",
+              "paramId": 60,
+              "col": 5
+            },
+            {
+              "label": "Pres. Shift",
+              "paramName": "DISTORT_PRESSHIFT",
+              "paramId": 106,
+              "col": 5
+            }
+          ]
+        },
+        {
+          "name": "Ideal",
+          "controls": [
+            {
+              "label": "Gain",
+              "paramName": "DISTORT_DRIVE",
+              "paramId": 7,
+              "col": 0
+            },
+            {
+              "label": "Bass",
+              "paramName": "DISTORT_BASS",
+              "paramId": 8,
+              "col": 2
+            },
+            {
+              "label": "Mid",
+              "paramName": "DISTORT_MID",
+              "paramId": 9,
+              "col": 3
+            },
+            {
+              "label": "Treble",
+              "paramName": "DISTORT_TREBLE",
+              "paramId": 10,
+              "col": 4
+            },
+            {
+              "label": "High Cut",
+              "paramName": "DISTORT_PAHICUT",
+              "paramId": 135,
+              "col": 5
+            },
+            {
+              "label": "Depth",
+              "paramName": "DISTORT_DEPTH",
+              "paramId": 22,
+              "col": 6
+            },
+            {
+              "label": "Master Volume",
+              "paramName": "DISTORT_MASTER",
+              "paramId": 11,
+              "col": 8
+            },
+            {
+              "label": "Boost",
+              "paramName": "DISTORT_BOOST",
+              "paramId": 42,
+              "col": 0
+            },
+            {
+              "label": "Cut",
+              "paramName": "DISTORT_CUT",
+              "paramId": 47,
+              "col": 2
+            },
+            {
+              "label": "Fat",
+              "paramName": "DISTORT_FAT",
+              "paramId": 80,
+              "col": 3
+            },
+            {
+              "label": "Bright",
+              "paramName": "DISTORT_BRIGHT",
+              "paramId": 41,
+              "col": 4
+            },
+            {
+              "label": "Pres. Shift",
+              "paramName": "DISTORT_PRESSHIFT",
+              "paramId": 106,
+              "col": 5
+            },
+            {
+              "label": "Input Trim",
+              "paramName": "DISTORT_TRIM",
+              "paramId": 49,
+              "col": 0
+            },
+            {
+              "label": "High Treble",
+              "paramName": "DISTORT_HITREBLE",
+              "paramId": 99,
+              "col": 3
+            },
+            {
+              "label": "Bright Cap",
+              "paramName": "DISTORT_BRIGHTCAP",
+              "paramId": 16,
+              "col": 4
+            },
+            {
+              "label": "Master Vol Trim",
+              "paramName": "DISTORT_MVTRIM",
+              "paramId": 79,
+              "col": 8
+            },
+            {
+              "label": "HEADROOM",
+              "paramName": "DISTORT_VPLATEMON",
+              "paramId": 132
+            },
+            {
+              "label": "Level",
+              "paramName": "DISTORT_LEVEL",
+              "paramId": 1
+            },
+            {
+              "label": "Balance",
+              "paramName": "DISTORT_PAN",
+              "paramId": 2
+            },
+            {
+              "label": "Input Select",
+              "paramName": "DISTORT_INPUTSELECT",
+              "paramId": 21
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DISTORT_BYPASSMODE",
+              "paramId": 3
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DISTORT_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DISTORT_SCENEIGNORE",
+              "paramId": 137
+            },
+            {
+              "label": "Overdrive",
+              "paramName": "DISTORT_DRIVE2",
+              "paramId": 76,
+              "col": 1
+            },
+            {
+              "label": "Presence",
+              "paramName": "DISTORT_PRESENCE",
+              "paramId": 26,
+              "col": 5
+            },
+            {
+              "label": "Overdrive Volume",
+              "paramName": "DISTORT_GLOBALMASTER",
+              "paramId": 141,
+              "col": 7
+            },
+            {
+              "label": "Preamp Presence",
+              "paramName": "DISTORT_PREPRESENCE",
+              "paramId": 133,
+              "col": 5
+            },
+            {
+              "label": "Bass",
+              "paramName": "DISTORT_EQ1",
+              "paramId": 57,
+              "col": 2
+            },
+            {
+              "label": "Mid",
+              "paramName": "DISTORT_EQ2",
+              "paramId": 58,
+              "col": 3
+            },
+            {
+              "label": "Treble",
+              "paramName": "DISTORT_EQ3",
+              "paramId": 59,
+              "col": 4
+            },
+            {
+              "label": "Presence",
+              "paramName": "DISTORT_EQ4",
+              "paramId": 60,
+              "col": 5
+            },
+            {
+              "label": "Negative Feedback",
+              "paramName": "DISTORT_BETA",
+              "paramId": 27,
+              "col": 5
+            }
+          ]
+        },
+        {
+          "name": "Preamp",
+          "controls": [
+            {
+              "label": "Boost",
+              "paramName": "DISTORT_BOOST",
+              "paramId": 42,
+              "col": 0
+            },
+            {
+              "label": "Boost Type",
+              "paramName": "DISTORT_BOOSTTYPE",
+              "paramId": 125,
+              "col": 1
+            },
+            {
+              "label": "Boost Level",
+              "paramName": "DISTORT_BOOSTLVL",
+              "paramId": 124,
+              "col": 2
+            },
+            {
+              "label": "Saturation Switch",
+              "paramName": "DISTORT_SATSWITCH",
+              "paramId": 56,
+              "col": 3
+            },
+            {
+              "label": "Saturation Drive",
+              "paramName": "DISTORT_SATDRIVE",
+              "paramId": 107,
+              "col": 4
+            },
+            {
+              "label": "Preamp Tube Type",
+              "paramName": "DISTORT_PRETUBETYPE",
+              "paramId": 71,
+              "col": 5
+            },
+            {
+              "label": "Low Cut Frequency",
+              "paramName": "DISTORT_HPFREQ",
+              "paramId": 12,
+              "col": 7
+            },
+            {
+              "label": "High Cut Frequency",
+              "paramName": "DISTORT_LPFREQ",
+              "paramId": 13,
+              "col": 8
+            },
+            {
+              "label": "Preamp Sag",
+              "paramName": "DISTORT_PRESAG",
+              "paramId": 98,
+              "col": 0
+            },
+            {
+              "label": "Tube Hardness",
+              "paramName": "DISTORT_HARDNESS2",
+              "paramId": 50,
+              "col": 1
+            },
+            {
+              "label": "Triode 1 Plate Freq",
+              "paramName": "DISTORT_FEEDFWDFREQ1",
+              "paramId": 69,
+              "col": 2
+            },
+            {
+              "label": "Triode 2 Plate Freq",
+              "paramName": "DISTORT_FEEDFWDFREQ2",
+              "paramId": 68,
+              "col": 3
+            },
+            {
+              "label": "Preamp Bias",
+              "paramName": "DISTORT_OFFSET2",
+              "paramId": 44,
+              "col": 4
+            },
+            {
+              "label": "Preamp Bias Excursion",
+              "paramName": "DISTORT_TRIODE2RATIO",
+              "paramId": 108,
+              "col": 5
+            },
+            {
+              "label": "Tonestack Type",
+              "paramName": "DISTORT_TONETYPE",
+              "paramId": 36,
+              "col": 6
+            },
+            {
+              "label": "Tonestack Freq",
+              "paramName": "DISTORT_TONEFREQ",
+              "paramId": 14,
+              "col": 7
+            },
+            {
+              "label": "Tonestack Location",
+              "paramName": "DISTORT_TONELOC",
+              "paramId": 20,
+              "col": 8
+            },
+            {
+              "label": "Level",
+              "paramName": "DISTORT_LEVEL",
+              "paramId": 1
+            },
+            {
+              "label": "Balance",
+              "paramName": "DISTORT_PAN",
+              "paramId": 2
+            },
+            {
+              "label": "Input Select",
+              "paramName": "DISTORT_INPUTSELECT",
+              "paramId": 21
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DISTORT_BYPASSMODE",
+              "paramId": 3
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DISTORT_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DISTORT_SCENEIGNORE",
+              "paramId": 137
+            }
+          ]
+        },
+        {
+          "name": "Power Amp",
+          "controls": [
+            {
+              "label": "Power Amp Modeling",
+              "paramName": "DISTORT_PAONOFF",
+              "paramId": 136,
+              "col": 0
+            },
+            {
+              "label": "Negative Feedback",
+              "paramName": "DISTORT_BETA",
+              "paramId": 27,
+              "col": 1
+            },
+            {
+              "label": "NFB Compensation",
+              "paramName": "DISTORT_NFBCOMP",
+              "paramId": 143,
+              "col": 2
+            },
+            {
+              "label": "Pres. Shift",
+              "paramName": "DISTORT_PRESSHIFT",
+              "paramId": 106,
+              "col": 3
+            },
+            {
+              "label": "Presence Frequency",
+              "paramName": "DISTORT_PRESFREQ",
+              "paramId": 28,
+              "col": 4
+            },
+            {
+              "label": "Depth Frequency",
+              "paramName": "DISTORT_DEPTHFREQ",
+              "paramId": 31,
+              "col": 5
+            },
+            {
+              "label": "Master Vol Cap",
+              "paramName": "DISTORT_MVCAP",
+              "paramId": 33,
+              "col": 7
+            },
+            {
+              "label": "Master Vol Location",
+              "paramName": "DISTORT_MVPOSITION",
+              "paramId": 51,
+              "col": 8
+            },
+            {
+              "label": "XFormer Drive",
+              "paramName": "DISTORT_XDRIVE",
+              "paramId": 48,
+              "col": 0
+            },
+            {
+              "label": "XFormer Matching",
+              "paramName": "DISTORT_XFMATCH",
+              "paramId": 53,
+              "col": 1
+            },
+            {
+              "label": "Speaker Impedance",
+              "paramName": "DISTORT_SPKRDCR",
+              "paramId": 129,
+              "col": 3
+            },
+            {
+              "label": "PI Bias Excursion",
+              "paramName": "DISTORT_PIEXCURSION",
+              "paramId": 116,
+              "col": 5
+            },
+            {
+              "label": "Cathode Resistance",
+              "paramName": "DISTORT_CBRATIO",
+              "paramId": 95,
+              "col": 7
+            },
+            {
+              "label": "Cathode Time Const",
+              "paramName": "DISTORT_CBTIME",
+              "paramId": 96,
+              "col": 8
+            },
+            {
+              "label": "Level",
+              "paramName": "DISTORT_LEVEL",
+              "paramId": 1
+            },
+            {
+              "label": "Balance",
+              "paramName": "DISTORT_PAN",
+              "paramId": 2
+            },
+            {
+              "label": "Input Select",
+              "paramName": "DISTORT_INPUTSELECT",
+              "paramId": 21
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DISTORT_BYPASSMODE",
+              "paramId": 3
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DISTORT_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DISTORT_SCENEIGNORE",
+              "paramId": 137
+            }
+          ]
+        },
+        {
+          "name": "Pwr Tubes + CF",
+          "controls": [
+            {
+              "label": "Power Tube Type",
+              "paramName": "DISTORT_TUBETYPE",
+              "paramId": 70,
+              "col": 0
+            },
+            {
+              "label": "Grid Bias",
+              "paramName": "DISTORT_BIAS",
+              "paramId": 38,
+              "col": 1
+            },
+            {
+              "label": "Hardness",
+              "paramName": "DISTORT_PAHARDNESS",
+              "paramId": 90,
+              "col": 2
+            },
+            {
+              "label": "Mismatch",
+              "paramName": "DISTORT_PAOFFSET",
+              "paramId": 100,
+              "col": 3
+            },
+            {
+              "label": "Bias Excursion",
+              "paramName": "DISTORT_BIASEXCURSION",
+              "paramId": 65,
+              "col": 4
+            },
+            {
+              "label": "Plate Suppr. Diodes",
+              "paramName": "DISTORT_PLATEDIODE",
+              "paramId": 140,
+              "col": 5
+            },
+            {
+              "label": "Compression",
+              "paramName": "DISTORT_CFTHRESH",
+              "paramId": 82,
+              "col": 3
+            },
+            {
+              "label": "Harmonics",
+              "paramName": "DISTORT_CFCLIP",
+              "paramId": 35,
+              "col": 4
+            },
+            {
+              "label": "Level",
+              "paramName": "DISTORT_LEVEL",
+              "paramId": 1
+            },
+            {
+              "label": "Balance",
+              "paramName": "DISTORT_PAN",
+              "paramId": 2
+            },
+            {
+              "label": "Input Select",
+              "paramName": "DISTORT_INPUTSELECT",
+              "paramId": 21
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DISTORT_BYPASSMODE",
+              "paramId": 3
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DISTORT_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DISTORT_SCENEIGNORE",
+              "paramId": 137
+            }
+          ]
+        },
+        {
+          "name": "Power Supply",
+          "controls": [
+            {
+              "label": "Supply Sag",
+              "paramName": "DISTORT_SUPPLYSAG",
+              "paramId": 25,
+              "col": 0
+            },
+            {
+              "label": "B+",
+              "paramName": "DISTORT_VCCMON",
+              "paramId": 120,
+              "col": 1
+            },
+            {
+              "label": "Power Type",
+              "paramName": "DISTORT_SUPPLYTYPE",
+              "paramId": 88,
+              "col": 3
+            },
+            {
+              "label": "AC Line Frequency",
+              "paramName": "DISTORT_LINEFREQ",
+              "paramId": 89,
+              "col": 4
+            },
+            {
+              "label": "Variac",
+              "paramName": "DISTORT_VARIAC",
+              "paramId": 103,
+              "col": 5
+            },
+            {
+              "label": "B+ Time Constant",
+              "paramName": "DISTORT_TIMECONST",
+              "paramId": 37,
+              "col": 0
+            },
+            {
+              "label": "Screen Frequency",
+              "paramName": "DISTORT_SCREENFREQ",
+              "paramId": 54,
+              "col": 3
+            },
+            {
+              "label": "Screen Q",
+              "paramName": "DISTORT_SCREENQ",
+              "paramId": 55,
+              "col": 4
+            },
+            {
+              "label": "Level",
+              "paramName": "DISTORT_LEVEL",
+              "paramId": 1
+            },
+            {
+              "label": "Balance",
+              "paramName": "DISTORT_PAN",
+              "paramId": 2
+            },
+            {
+              "label": "Input Select",
+              "paramName": "DISTORT_INPUTSELECT",
+              "paramId": 21
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DISTORT_BYPASSMODE",
+              "paramId": 3
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DISTORT_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DISTORT_SCENEIGNORE",
+              "paramId": 137
+            }
+          ]
+        },
+        {
+          "name": "Speaker",
+          "controls": [
+            {
+              "label": "Low Freq",
+              "paramName": "DISTORT_SPKRLFREQ",
+              "paramId": 29
+            },
+            {
+              "label": "LF Reso",
+              "paramName": "DISTORT_SPKRLFGAIN",
+              "paramId": 30
+            },
+            {
+              "label": "LF Q",
+              "paramName": "DISTORT_SPKRLFQ",
+              "paramId": 43
+            },
+            {
+              "label": "XFormer Low Freq",
+              "paramName": "DISTORT_XFHPF",
+              "paramId": 18
+            },
+            {
+              "label": "Speaker Imp. Curve",
+              "paramName": "DISTORT_SPKRMODEL",
+              "paramId": 130
+            },
+            {
+              "label": "Auto Dyna-Cab Imp.",
+              "paramName": "DISTORT_AUTO_SPKR_Z",
+              "paramId": 142
+            },
+            {
+              "label": "Cab Resonance",
+              "paramName": "DISTORT_CABRESONANCE",
+              "paramId": 131
+            },
+            {
+              "label": "Speaker Breakup",
+              "paramName": "DISTORT_SPKRBREAKUP",
+              "paramId": 138
+            },
+            {
+              "label": "High Freq",
+              "paramName": "DISTORT_SPKRHFREQ",
+              "paramId": 45
+            },
+            {
+              "label": "HF Reso",
+              "paramName": "DISTORT_SPKRHFGAIN",
+              "paramId": 46
+            },
+            {
+              "label": "HF Slope",
+              "paramName": "DISTORT_SPKRHFQ",
+              "paramId": 102
+            },
+            {
+              "label": "XFormer Hi Freq",
+              "paramName": "DISTORT_XFLPF",
+              "paramId": 19
+            },
+            {
+              "label": "Speaker Drive",
+              "paramName": "DISTORT_SPKRDRIVE",
+              "paramId": 52
+            },
+            {
+              "label": "Speaker Compress.",
+              "paramName": "DISTORT_MOTORDRIVE",
+              "paramId": 117
+            },
+            {
+              "label": "Speaker Compliance",
+              "paramName": "DISTORT_SPKRDYNAMICS",
+              "paramId": 127
+            },
+            {
+              "label": "Speaker Time Const",
+              "paramName": "DISTORT_MDTIME",
+              "paramId": 118
+            },
+            {
+              "label": "Speaker Thump",
+              "paramName": "DISTORT_SPKRTHUMP",
+              "paramId": 139
+            },
+            {
+              "label": "Output Mode",
+              "paramName": "DISTORT_OUTPUTTYPE",
+              "paramId": 126
+            },
+            {
+              "label": "Gain",
+              "paramName": "DISTORT_MDMON",
+              "paramId": 122
+            },
+            {
+              "label": "Level",
+              "paramName": "DISTORT_LEVEL",
+              "paramId": 1
+            },
+            {
+              "label": "Balance",
+              "paramName": "DISTORT_PAN",
+              "paramId": 2
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DISTORT_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DISTORT_SCENEIGNORE",
+              "paramId": 137
+            }
+          ]
+        },
+        {
+          "name": "Input EQ",
+          "controls": [
+            {
+              "label": "Type",
+              "paramName": "DISTORT_INEQTYPE",
+              "paramId": 104
+            },
+            {
+              "label": "Frequency",
+              "paramName": "DISTORT_INEQFREQ",
+              "paramId": 74
+            },
+            {
+              "label": "Q",
+              "paramName": "DISTORT_INEQQ",
+              "paramId": 73
+            },
+            {
+              "label": "Gain",
+              "paramName": "DISTORT_INEQGAIN",
+              "paramId": 75
+            },
+            {
+              "label": "Low Cut",
+              "paramName": "DISTORT_HPFREQ",
+              "paramId": 12
+            },
+            {
+              "label": "High Cut",
+              "paramName": "DISTORT_HICUT",
+              "paramId": 85
+            },
+            {
+              "label": "Definition",
+              "paramName": "DISTORT_DEFINITION",
+              "paramId": 81
+            },
+            {
+              "label": "Level",
+              "paramName": "DISTORT_LEVEL",
+              "paramId": 1
+            },
+            {
+              "label": "Balance",
+              "paramName": "DISTORT_PAN",
+              "paramId": 2
+            },
+            {
+              "label": "Input Select",
+              "paramName": "DISTORT_INPUTSELECT",
+              "paramId": 21
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DISTORT_BYPASSMODE",
+              "paramId": 3
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DISTORT_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DISTORT_SCENEIGNORE",
+              "paramId": 137
+            }
+          ]
+        },
+        {
+          "name": "Output EQ",
+          "controls": [
+            {
+              "label": "Type",
+              "paramName": "DISTORT_EQTYPE",
+              "paramId": 94
+            },
+            {
+              "label": "Location",
+              "paramName": "DISTORT_EQPOSITION",
+              "paramId": 112
+            },
+            {
+              "label": "Zero All",
+              "paramName": "DISTORT_ZEROEQ",
+              "paramId": 65520
+            },
+            {
+              "label": "Off / On",
+              "paramName": "DISTORT_EQONOFF",
+              "paramId": 128
+            },
+            {
+              "label": "62",
+              "paramName": "DISTORT_EQ1",
+              "paramId": 57
+            },
+            {
+              "label": "125",
+              "paramName": "DISTORT_EQ2",
+              "paramId": 58
+            },
+            {
+              "label": "250",
+              "paramName": "DISTORT_EQ3",
+              "paramId": 59
+            },
+            {
+              "label": "500",
+              "paramName": "DISTORT_EQ4",
+              "paramId": 60
+            },
+            {
+              "label": "1K",
+              "paramName": "DISTORT_EQ5",
+              "paramId": 61
+            },
+            {
+              "label": "2K",
+              "paramName": "DISTORT_EQ6",
+              "paramId": 62
+            },
+            {
+              "label": "4K",
+              "paramName": "DISTORT_EQ7",
+              "paramId": 63
+            },
+            {
+              "label": "8K",
+              "paramName": "DISTORT_EQ8",
+              "paramId": 64
+            },
+            {
+              "label": "Level",
+              "paramName": "DISTORT_LEVEL",
+              "paramId": 1
+            },
+            {
+              "label": "Balance",
+              "paramName": "DISTORT_PAN",
+              "paramId": 2
+            },
+            {
+              "label": "Input Select",
+              "paramName": "DISTORT_INPUTSELECT",
+              "paramId": 21
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DISTORT_BYPASSMODE",
+              "paramId": 3
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DISTORT_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DISTORT_SCENEIGNORE",
+              "paramId": 137
+            }
+          ]
+        },
+        {
+          "name": "Dynamics",
+          "controls": [
+            {
+              "label": "Out Compression",
+              "paramName": "DISTORT_COMPRESSION",
+              "paramId": 77,
+              "col": 0
+            },
+            {
+              "label": "Out Comp Threshold",
+              "paramName": "DISTORT_THRESHOLD",
+              "paramId": 78,
+              "col": 1
+            },
+            {
+              "label": "Out Comp Clarity",
+              "paramName": "DISTORT_CLARITY",
+              "paramId": 72,
+              "col": 2
+            },
+            {
+              "label": "Gain",
+              "paramName": "DISTORT_GAINMON",
+              "paramId": 121,
+              "col": 3
+            },
+            {
+              "label": "Master Bias Excursion",
+              "paramName": "DISTORT_BIASX",
+              "paramId": 134,
+              "col": 5
+            },
+            {
+              "label": "Out Comp Type",
+              "paramName": "DISTORT_COMPTYPE",
+              "paramId": 111,
+              "col": 0
+            },
+            {
+              "label": "Level",
+              "paramName": "DISTORT_LEVEL",
+              "paramId": 1
+            },
+            {
+              "label": "Balance",
+              "paramName": "DISTORT_PAN",
+              "paramId": 2
+            },
+            {
+              "label": "Input Select",
+              "paramName": "DISTORT_INPUTSELECT",
+              "paramId": 21
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DISTORT_BYPASSMODE",
+              "paramId": 3
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DISTORT_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DISTORT_SCENEIGNORE",
+              "paramId": 137
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

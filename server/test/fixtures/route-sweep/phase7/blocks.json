@@ -1,0 +1,572 @@
+{
+  "status": 200,
+  "body": [
+    {
+      "slug": "amp",
+      "family": "amp",
+      "instance": 1,
+      "name": "Amp",
+      "page": 58,
+      "paramCount": 143,
+      "typeCount": 331
+    },
+    {
+      "slug": "cab",
+      "family": "cab",
+      "instance": 1,
+      "name": "Cab",
+      "page": 62,
+      "paramCount": 105,
+      "typeCount": 45
+    },
+    {
+      "slug": "chorus",
+      "family": "chorus",
+      "instance": 1,
+      "name": "Chorus 1",
+      "page": 78,
+      "paramCount": 29,
+      "typeCount": 0
+    },
+    {
+      "slug": "chorus",
+      "family": "chorus",
+      "instance": 2,
+      "name": "Chorus 2",
+      "page": 79,
+      "paramCount": 29,
+      "typeCount": 0
+    },
+    {
+      "slug": "comp",
+      "family": "comp",
+      "instance": 1,
+      "name": "Compressor 1",
+      "page": 46,
+      "paramCount": 37,
+      "typeCount": 19
+    },
+    {
+      "slug": "comp",
+      "family": "comp",
+      "instance": 2,
+      "name": "Compressor 2",
+      "page": 47,
+      "paramCount": 37,
+      "typeCount": 19
+    },
+    {
+      "slug": "delay",
+      "family": "delay",
+      "instance": 1,
+      "name": "Delay 1",
+      "page": 70,
+      "paramCount": 88,
+      "typeCount": 22
+    },
+    {
+      "slug": "delay",
+      "family": "delay",
+      "instance": 2,
+      "name": "Delay 2",
+      "page": 71,
+      "paramCount": 88,
+      "typeCount": 22
+    },
+    {
+      "slug": "drive",
+      "family": "drive",
+      "instance": 1,
+      "name": "Drive 1",
+      "page": 118,
+      "paramCount": 43,
+      "typeCount": 86
+    },
+    {
+      "slug": "drive",
+      "family": "drive",
+      "instance": 2,
+      "name": "Drive 2",
+      "page": 119,
+      "paramCount": 43,
+      "typeCount": 86
+    },
+    {
+      "slug": "enhancer",
+      "family": "enhancer",
+      "instance": 1,
+      "name": "Enhancer 1",
+      "page": 122,
+      "paramCount": 12,
+      "typeCount": 0
+    },
+    {
+      "slug": "enhancer",
+      "family": "enhancer",
+      "instance": 2,
+      "name": "Enhancer 2",
+      "page": 123,
+      "paramCount": 12,
+      "typeCount": 0
+    },
+    {
+      "slug": "filter",
+      "family": "filter",
+      "instance": 1,
+      "name": "Filter 1",
+      "page": 114,
+      "paramCount": 37,
+      "typeCount": 0
+    },
+    {
+      "slug": "filter",
+      "family": "filter",
+      "instance": 2,
+      "name": "Filter 2",
+      "page": 115,
+      "paramCount": 37,
+      "typeCount": 0
+    },
+    {
+      "slug": "filter",
+      "family": "filter",
+      "instance": 3,
+      "name": "Filter 3",
+      "page": 116,
+      "paramCount": 37,
+      "typeCount": 0
+    },
+    {
+      "slug": "filter",
+      "family": "filter",
+      "instance": 4,
+      "name": "Filter 4",
+      "page": 117,
+      "paramCount": 37,
+      "typeCount": 0
+    },
+    {
+      "slug": "flanger",
+      "family": "flanger",
+      "instance": 1,
+      "name": "Flanger 1",
+      "page": 82,
+      "paramCount": 55,
+      "typeCount": 0
+    },
+    {
+      "slug": "flanger",
+      "family": "flanger",
+      "instance": 2,
+      "name": "Flanger 2",
+      "page": 83,
+      "paramCount": 55,
+      "typeCount": 0
+    },
+    {
+      "slug": "formant",
+      "family": "formant",
+      "instance": 1,
+      "name": "Formant 1",
+      "page": 98,
+      "paramCount": 12,
+      "typeCount": 0
+    },
+    {
+      "slug": "formant",
+      "family": "formant",
+      "instance": 2,
+      "name": "Formant 2",
+      "page": 99,
+      "paramCount": 12,
+      "typeCount": 0
+    },
+    {
+      "slug": "gate",
+      "family": "gate",
+      "instance": 1,
+      "name": "Gate 1",
+      "page": 146,
+      "paramCount": 19,
+      "typeCount": 0
+    },
+    {
+      "slug": "gate",
+      "family": "gate",
+      "instance": 2,
+      "name": "Gate 2",
+      "page": 147,
+      "paramCount": 19,
+      "typeCount": 0
+    },
+    {
+      "slug": "geq",
+      "family": "geq",
+      "instance": 1,
+      "name": "Graphic EQ 1",
+      "page": 50,
+      "paramCount": 21,
+      "typeCount": 18
+    },
+    {
+      "slug": "geq",
+      "family": "geq",
+      "instance": 2,
+      "name": "Graphic EQ 2",
+      "page": 51,
+      "paramCount": 21,
+      "typeCount": 18
+    },
+    {
+      "slug": "input",
+      "family": "input",
+      "instance": 1,
+      "name": "Input 1",
+      "page": 37,
+      "paramCount": 10,
+      "typeCount": 0
+    },
+    {
+      "slug": "input",
+      "family": "input",
+      "instance": 2,
+      "name": "Input 2",
+      "page": 38,
+      "paramCount": 10,
+      "typeCount": 0
+    },
+    {
+      "slug": "looper",
+      "family": "looper",
+      "instance": 1,
+      "name": "Looper",
+      "page": 166,
+      "paramCount": 24,
+      "typeCount": 0
+    },
+    {
+      "slug": "megatap",
+      "family": "megatap",
+      "instance": 1,
+      "name": "Megatap Delay",
+      "page": 138,
+      "paramCount": 35,
+      "typeCount": 0
+    },
+    {
+      "slug": "mixer",
+      "family": "mixer",
+      "instance": 1,
+      "name": "Mixer 1",
+      "page": 126,
+      "paramCount": 17,
+      "typeCount": 0
+    },
+    {
+      "slug": "mixer",
+      "family": "mixer",
+      "instance": 2,
+      "name": "Mixer 2",
+      "page": 127,
+      "paramCount": 17,
+      "typeCount": 0
+    },
+    {
+      "slug": "mixer",
+      "family": "mixer",
+      "instance": 3,
+      "name": "Mixer 3",
+      "page": 128,
+      "paramCount": 17,
+      "typeCount": 0
+    },
+    {
+      "slug": "mixer",
+      "family": "mixer",
+      "instance": 4,
+      "name": "Mixer 4",
+      "page": 129,
+      "paramCount": 17,
+      "typeCount": 0
+    },
+    {
+      "slug": "multicomp",
+      "family": "multicomp",
+      "instance": 1,
+      "name": "Multiband Comp",
+      "page": 154,
+      "paramCount": 37,
+      "typeCount": 0
+    },
+    {
+      "slug": "multiplexer",
+      "family": "multiplexer",
+      "instance": 1,
+      "name": "Multiplexer 1",
+      "page": 191,
+      "paramCount": 7,
+      "typeCount": 0
+    },
+    {
+      "slug": "multiplexer",
+      "family": "multiplexer",
+      "instance": 2,
+      "name": "Multiplexer 2",
+      "page": 192,
+      "paramCount": 7,
+      "typeCount": 0
+    },
+    {
+      "slug": "multitap",
+      "family": "multitap",
+      "instance": 1,
+      "name": "Multitap Delay 1",
+      "page": 74,
+      "paramCount": 121,
+      "typeCount": 0
+    },
+    {
+      "slug": "multitap",
+      "family": "multitap",
+      "instance": 2,
+      "name": "Multitap Delay 2",
+      "page": 75,
+      "paramCount": 121,
+      "typeCount": 0
+    },
+    {
+      "slug": "output",
+      "family": "output",
+      "instance": 1,
+      "name": "Output 1",
+      "page": 42,
+      "paramCount": 26,
+      "typeCount": 0
+    },
+    {
+      "slug": "output",
+      "family": "output",
+      "instance": 2,
+      "name": "Output 2",
+      "page": 43,
+      "paramCount": 26,
+      "typeCount": 0
+    },
+    {
+      "slug": "peq",
+      "family": "peq",
+      "instance": 1,
+      "name": "Parametric EQ 1",
+      "page": 54,
+      "paramCount": 33,
+      "typeCount": 0
+    },
+    {
+      "slug": "peq",
+      "family": "peq",
+      "instance": 2,
+      "name": "Parametric EQ 2",
+      "page": 55,
+      "paramCount": 33,
+      "typeCount": 0
+    },
+    {
+      "slug": "phaser",
+      "family": "phaser",
+      "instance": 1,
+      "name": "Phaser 1",
+      "page": 90,
+      "paramCount": 35,
+      "typeCount": 0
+    },
+    {
+      "slug": "phaser",
+      "family": "phaser",
+      "instance": 2,
+      "name": "Phaser 2",
+      "page": 91,
+      "paramCount": 35,
+      "typeCount": 0
+    },
+    {
+      "slug": "pitch",
+      "family": "pitch",
+      "instance": 1,
+      "name": "Pitch",
+      "page": 110,
+      "paramCount": 114,
+      "typeCount": 0
+    },
+    {
+      "slug": "plex",
+      "family": "plex",
+      "instance": 1,
+      "name": "Plex Delay",
+      "page": 178,
+      "paramCount": 95,
+      "typeCount": 0
+    },
+    {
+      "slug": "resonator",
+      "family": "resonator",
+      "instance": 1,
+      "name": "Resonator 1",
+      "page": 162,
+      "paramCount": 40,
+      "typeCount": 0
+    },
+    {
+      "slug": "resonator",
+      "family": "resonator",
+      "instance": 2,
+      "name": "Resonator 2",
+      "page": 163,
+      "paramCount": 40,
+      "typeCount": 0
+    },
+    {
+      "slug": "return",
+      "family": "return",
+      "instance": 1,
+      "name": "Return 1",
+      "page": 186,
+      "paramCount": 6,
+      "typeCount": 0
+    },
+    {
+      "slug": "return",
+      "family": "return",
+      "instance": 2,
+      "name": "Return 2",
+      "page": 187,
+      "paramCount": 6,
+      "typeCount": 0
+    },
+    {
+      "slug": "reverb",
+      "family": "reverb",
+      "instance": 1,
+      "name": "Reverb",
+      "page": 66,
+      "paramCount": 71,
+      "typeCount": 79
+    },
+    {
+      "slug": "ringmod",
+      "family": "ringmod",
+      "instance": 1,
+      "name": "Ring Modulator",
+      "page": 150,
+      "paramCount": 13,
+      "typeCount": 0
+    },
+    {
+      "slug": "rotary",
+      "family": "rotary",
+      "instance": 1,
+      "name": "Rotary 1",
+      "page": 86,
+      "paramCount": 21,
+      "typeCount": 0
+    },
+    {
+      "slug": "rotary",
+      "family": "rotary",
+      "instance": 2,
+      "name": "Rotary 2",
+      "page": 87,
+      "paramCount": 21,
+      "typeCount": 0
+    },
+    {
+      "slug": "send",
+      "family": "send",
+      "instance": 1,
+      "name": "Send 1",
+      "page": 182,
+      "paramCount": 2,
+      "typeCount": 0
+    },
+    {
+      "slug": "send",
+      "family": "send",
+      "instance": 2,
+      "name": "Send 2",
+      "page": 183,
+      "paramCount": 2,
+      "typeCount": 0
+    },
+    {
+      "slug": "synth",
+      "family": "synth",
+      "instance": 1,
+      "name": "Synth",
+      "page": 130,
+      "paramCount": 42,
+      "typeCount": 0
+    },
+    {
+      "slug": "tentap",
+      "family": "tentap",
+      "instance": 1,
+      "name": "Ten-Tap Delay",
+      "page": 158,
+      "paramCount": 49,
+      "typeCount": 0
+    },
+    {
+      "slug": "tremolo",
+      "family": "tremolo",
+      "instance": 1,
+      "name": "Tremolo 1",
+      "page": 106,
+      "paramCount": 22,
+      "typeCount": 0
+    },
+    {
+      "slug": "tremolo",
+      "family": "tremolo",
+      "instance": 2,
+      "name": "Tremolo 2",
+      "page": 107,
+      "paramCount": 22,
+      "typeCount": 0
+    },
+    {
+      "slug": "volume",
+      "family": "volume",
+      "instance": 1,
+      "name": "Volume/Pan 1",
+      "page": 102,
+      "paramCount": 15,
+      "typeCount": 0
+    },
+    {
+      "slug": "volume",
+      "family": "volume",
+      "instance": 2,
+      "name": "Volume/Pan 2",
+      "page": 103,
+      "paramCount": 15,
+      "typeCount": 0
+    },
+    {
+      "slug": "wah",
+      "family": "wah",
+      "instance": 1,
+      "name": "Wah 1",
+      "page": 94,
+      "paramCount": 25,
+      "typeCount": 9
+    },
+    {
+      "slug": "wah",
+      "family": "wah",
+      "instance": 2,
+      "name": "Wah 2",
+      "page": 95,
+      "paramCount": 25,
+      "typeCount": 9
+    }
+  ]
+}

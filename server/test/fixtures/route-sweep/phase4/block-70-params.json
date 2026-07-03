@@ -1,0 +1,3808 @@
+{
+  "status": 200,
+  "body": {
+    "block": "Delay",
+    "slug": "delay",
+    "page": 70,
+    "named": [
+      {
+        "id": 0,
+        "name": "Mix",
+        "value": 35,
+        "norm": 0.3500015259254738,
+        "unit": "%",
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 1,
+        "name": "Level 1",
+        "value": 0,
+        "norm": 0.7999969481490524,
+        "unit": "dB",
+        "min": -80,
+        "max": 20
+      },
+      {
+        "id": 2,
+        "name": "Balance",
+        "value": 0,
+        "norm": 0.5,
+        "unit": "%",
+        "min": -100,
+        "max": 100
+      },
+      {
+        "id": 8,
+        "name": "Time 1",
+        "value": 500.007,
+        "norm": 0.031189916684469132,
+        "unit": "ms",
+        "min": 1,
+        "max": 16000
+      },
+      {
+        "id": 9,
+        "name": "L/R Time Ratio",
+        "value": 100,
+        "norm": 1,
+        "min": 1,
+        "max": 100
+      },
+      {
+        "id": 10,
+        "name": "Feedback",
+        "value": 19.999,
+        "norm": 0.5999938962981048,
+        "min": -100,
+        "max": 100
+      },
+      {
+        "id": 12,
+        "name": "Feedback R",
+        "value": 19.999,
+        "norm": 0.5999938962981048,
+        "min": -100,
+        "max": 100
+      },
+      {
+        "id": 13,
+        "name": "Echo Pan",
+        "value": 0,
+        "norm": 0.5,
+        "min": -100,
+        "max": 100
+      },
+      {
+        "id": 14,
+        "name": "Spread",
+        "value": 100,
+        "norm": 1,
+        "min": -100,
+        "max": 100
+      },
+      {
+        "id": 16,
+        "name": "Low Cut",
+        "value": 20,
+        "norm": 0,
+        "unit": "Hz",
+        "min": 20,
+        "max": 2000,
+        "log": true
+      },
+      {
+        "id": 17,
+        "name": "High Cut",
+        "value": 16000.506,
+        "norm": 0.9515518662068545,
+        "unit": "Hz",
+        "min": 200,
+        "max": 20000,
+        "log": true
+      },
+      {
+        "id": 18,
+        "name": "Rate 1",
+        "value": 4,
+        "norm": 0.8010345774712363,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 19,
+        "name": "Rate 2",
+        "value": 10,
+        "norm": 0.8494827112643818,
+        "min": 0.2,
+        "max": 20,
+        "log": true
+      },
+      {
+        "id": 20,
+        "name": "Depth 1",
+        "value": 25.001,
+        "norm": 0.250007629627369,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 21,
+        "name": "Depth 2",
+        "value": 0,
+        "norm": 0,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 22,
+        "name": "Drive",
+        "value": 0.5,
+        "norm": 0,
+        "min": 0.5,
+        "max": 500,
+        "log": true
+      },
+      {
+        "id": 23,
+        "name": "Input Gain",
+        "value": 100,
+        "norm": 1,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 26,
+        "name": "Time R",
+        "value": 500.007,
+        "norm": 0.031189916684469132,
+        "min": 1,
+        "max": 16000
+      },
+      {
+        "id": 28,
+        "name": "Master Feedback",
+        "value": 100,
+        "norm": 0.5,
+        "unit": "%",
+        "min": 0,
+        "max": 200
+      },
+      {
+        "id": 30,
+        "name": "Rotation",
+        "value": 0,
+        "norm": 0.5,
+        "min": -100,
+        "max": 100
+      },
+      {
+        "id": 32,
+        "name": "Level 2",
+        "value": 100,
+        "norm": 1,
+        "unit": "%",
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 33,
+        "name": "Level 3",
+        "value": 100,
+        "norm": 1,
+        "unit": "%",
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 34,
+        "name": "Pan 1",
+        "value": -100,
+        "norm": 0,
+        "unit": "%",
+        "min": -100,
+        "max": 100
+      },
+      {
+        "id": 35,
+        "name": "Pan 2",
+        "value": 100,
+        "norm": 1,
+        "unit": "%",
+        "min": -100,
+        "max": 100
+      },
+      {
+        "id": 36,
+        "name": "Phase 1",
+        "value": 0,
+        "norm": 0,
+        "min": 0,
+        "max": 180
+      },
+      {
+        "id": 37,
+        "name": "Phase 2",
+        "value": 0,
+        "norm": 0,
+        "min": 0,
+        "max": 180
+      },
+      {
+        "id": 38,
+        "name": "Crossfade Time",
+        "value": 10,
+        "norm": 0.03543198950163274,
+        "min": 1,
+        "max": 255
+      },
+      {
+        "id": 42,
+        "name": "Attenuation",
+        "value": 0,
+        "norm": 0,
+        "min": 0,
+        "max": 80
+      },
+      {
+        "id": 43,
+        "name": "Threshold 1",
+        "value": -30,
+        "norm": 0.5,
+        "min": -80,
+        "max": 20
+      },
+      {
+        "id": 44,
+        "name": "Release Time",
+        "value": 99.996,
+        "norm": 0.6666615802484207,
+        "min": 1,
+        "max": 1000,
+        "log": true
+      },
+      {
+        "id": 52,
+        "name": "Sweep Rate",
+        "value": 0.1,
+        "norm": 0,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 54,
+        "name": "Sweep Phase",
+        "value": 0,
+        "norm": 0,
+        "min": 0,
+        "max": 180
+      },
+      {
+        "id": 56,
+        "name": "Start Frequency",
+        "value": 100,
+        "norm": 0,
+        "min": 100,
+        "max": 1000,
+        "log": true
+      },
+      {
+        "id": 57,
+        "name": "Stop Frequency",
+        "value": 500,
+        "norm": 0,
+        "min": 500,
+        "max": 5000,
+        "log": true
+      },
+      {
+        "id": 58,
+        "name": "Resonance",
+        "value": 5,
+        "norm": 0.1989654225287637,
+        "min": 2,
+        "max": 200,
+        "log": true
+      },
+      {
+        "id": 59,
+        "name": "Q",
+        "value": 0.707,
+        "norm": 0.4247108371227149,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 61,
+        "name": "Freq 1",
+        "value": 400.004,
+        "norm": 0.6505172887356182,
+        "min": 20,
+        "max": 2000,
+        "log": true
+      },
+      {
+        "id": 62,
+        "name": "Freq 2",
+        "value": 800.025,
+        "norm": 0.45155186620685445,
+        "min": 100,
+        "max": 10000,
+        "log": true
+      },
+      {
+        "id": 63,
+        "name": "Q 1",
+        "value": 0.707,
+        "norm": 0.4247108371227149,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 64,
+        "name": "Q 2",
+        "value": 0.707,
+        "norm": 0.4247108371227149,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 65,
+        "name": "Gain 1",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 66,
+        "name": "Gain 2",
+        "value": 0,
+        "norm": 0.5,
+        "min": -12,
+        "max": 12
+      },
+      {
+        "id": 68,
+        "name": "Motor Speed",
+        "value": 1,
+        "norm": 0.5,
+        "min": 0.5,
+        "max": 2,
+        "log": true
+      },
+      {
+        "id": 69,
+        "name": "Right Post Delay",
+        "value": 0,
+        "norm": 0,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 72,
+        "name": "Time 2",
+        "value": 10,
+        "norm": 0.5,
+        "min": 1,
+        "max": 100,
+        "log": true
+      },
+      {
+        "id": 73,
+        "name": "Threshold 2",
+        "value": -60,
+        "norm": 0.5,
+        "min": -100,
+        "max": -20
+      },
+      {
+        "id": 74,
+        "name": "Master Time",
+        "value": 100,
+        "norm": 0.5,
+        "unit": "%",
+        "min": 25,
+        "max": 400,
+        "log": true
+      },
+      {
+        "id": 78,
+        "name": "Rate 3",
+        "value": 1,
+        "norm": 0.5,
+        "min": 0.1,
+        "max": 10,
+        "log": true
+      },
+      {
+        "id": 80,
+        "name": "Depth 3",
+        "value": 100,
+        "norm": 1,
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 81,
+        "name": "Phase 3",
+        "value": 180,
+        "norm": 1,
+        "min": 0,
+        "max": 180
+      },
+      {
+        "id": 84,
+        "name": "Stack Feedback",
+        "value": 100,
+        "norm": 1,
+        "unit": "%",
+        "min": 0,
+        "max": 100
+      },
+      {
+        "id": 85,
+        "name": "Hold Feedback",
+        "value": 100,
+        "norm": 1,
+        "unit": "%",
+        "min": 0,
+        "max": 100
+      }
+    ],
+    "enums": [
+      {
+        "id": 3,
+        "name": "Bypass Mode",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "THRU"
+          },
+          {
+            "value": 1,
+            "label": "MUTE FX OUT"
+          },
+          {
+            "value": 2,
+            "label": "MUTE OUT"
+          },
+          {
+            "value": 3,
+            "label": "MUTE FX IN"
+          },
+          {
+            "value": 4,
+            "label": "MUTE IN"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "name": "MODEL",
+        "value": 12,
+        "options": [
+          {
+            "value": 0,
+            "label": "Digital Mono"
+          },
+          {
+            "value": 1,
+            "label": "Digital Stereo"
+          },
+          {
+            "value": 2,
+            "label": "Analog Mono"
+          },
+          {
+            "value": 3,
+            "label": "Analog Stereo"
+          },
+          {
+            "value": 4,
+            "label": "Mono Tape"
+          },
+          {
+            "value": 5,
+            "label": "Stereo Tape"
+          },
+          {
+            "value": 6,
+            "label": "Ping-Pong"
+          },
+          {
+            "value": 7,
+            "label": "Dual Delay"
+          },
+          {
+            "value": 8,
+            "label": "Reverse Delay"
+          },
+          {
+            "value": 9,
+            "label": "Sweep Delay"
+          },
+          {
+            "value": 10,
+            "label": "Ducking Delay"
+          },
+          {
+            "value": 11,
+            "label": "Vintage Digital"
+          },
+          {
+            "value": 12,
+            "label": "2290 w/ Modulation"
+          },
+          {
+            "value": 13,
+            "label": "Ambient Stereo"
+          },
+          {
+            "value": 14,
+            "label": "Deluxe Mind Guy"
+          },
+          {
+            "value": 15,
+            "label": "Mono BBD"
+          },
+          {
+            "value": 16,
+            "label": "Stereo BBD"
+          },
+          {
+            "value": 17,
+            "label": "Lo-Fi Tape"
+          },
+          {
+            "value": 18,
+            "label": "Stereo Mind Guy"
+          },
+          {
+            "value": 19,
+            "label": "Graphite Copy Delay"
+          },
+          {
+            "value": 20,
+            "label": "DM-Two Delay"
+          },
+          {
+            "value": 21,
+            "label": "Worn Tape"
+          },
+          {
+            "value": 22,
+            "label": "Pan Delay"
+          },
+          {
+            "value": 23,
+            "label": "Stereo Trem Delay"
+          },
+          {
+            "value": 24,
+            "label": "Wandering Delays"
+          },
+          {
+            "value": 25,
+            "label": "Dual Head Tape"
+          },
+          {
+            "value": 26,
+            "label": "Surround Delay"
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "name": "Tempo 1",
+        "value": 12,
+        "options": [
+          {
+            "value": 0,
+            "label": "NONE "
+          },
+          {
+            "value": 1,
+            "label": "1/64 TRIP"
+          },
+          {
+            "value": 2,
+            "label": "1/64"
+          },
+          {
+            "value": 3,
+            "label": "1/64 DOT"
+          },
+          {
+            "value": 4,
+            "label": "1/32 TRIP"
+          },
+          {
+            "value": 5,
+            "label": "1/32"
+          },
+          {
+            "value": 6,
+            "label": "1/32 DOT"
+          },
+          {
+            "value": 7,
+            "label": "1/16 TRIP"
+          },
+          {
+            "value": 8,
+            "label": "1/16"
+          },
+          {
+            "value": 9,
+            "label": "1/16 DOT"
+          },
+          {
+            "value": 10,
+            "label": "1/8 TRIP"
+          },
+          {
+            "value": 11,
+            "label": "1/8"
+          },
+          {
+            "value": 12,
+            "label": "1/8 DOT"
+          },
+          {
+            "value": 13,
+            "label": "1/4 TRIP"
+          },
+          {
+            "value": 14,
+            "label": "1/4"
+          },
+          {
+            "value": 15,
+            "label": "1/4 DOT"
+          },
+          {
+            "value": 16,
+            "label": "1/2 TRIP"
+          },
+          {
+            "value": 17,
+            "label": "1/2"
+          },
+          {
+            "value": 18,
+            "label": "1/2 DOT"
+          },
+          {
+            "value": 19,
+            "label": "1 TRIP"
+          },
+          {
+            "value": 20,
+            "label": "1"
+          },
+          {
+            "value": 21,
+            "label": "1 DOT"
+          },
+          {
+            "value": 22,
+            "label": "2"
+          },
+          {
+            "value": 23,
+            "label": "3"
+          },
+          {
+            "value": 24,
+            "label": "4"
+          },
+          {
+            "value": 25,
+            "label": "4/3"
+          },
+          {
+            "value": 26,
+            "label": "5/4"
+          },
+          {
+            "value": 27,
+            "label": "5/64"
+          },
+          {
+            "value": 28,
+            "label": "7/64"
+          },
+          {
+            "value": 29,
+            "label": "9/64"
+          },
+          {
+            "value": 30,
+            "label": "10/64 (5/32)"
+          },
+          {
+            "value": 31,
+            "label": "11/64"
+          },
+          {
+            "value": 32,
+            "label": "13/64"
+          },
+          {
+            "value": 33,
+            "label": "14/64 (7/32)"
+          },
+          {
+            "value": 34,
+            "label": "15/64"
+          },
+          {
+            "value": 35,
+            "label": "17/64"
+          },
+          {
+            "value": 36,
+            "label": "18/64 (9/32)"
+          },
+          {
+            "value": 37,
+            "label": "19/64"
+          },
+          {
+            "value": 38,
+            "label": "20/64 (5/16)"
+          },
+          {
+            "value": 39,
+            "label": "21/64"
+          },
+          {
+            "value": 40,
+            "label": "22/64 (11/32)"
+          },
+          {
+            "value": 41,
+            "label": "23/64"
+          },
+          {
+            "value": 42,
+            "label": "25/64"
+          },
+          {
+            "value": 43,
+            "label": "26/64 (13/32)"
+          },
+          {
+            "value": 44,
+            "label": "27/64"
+          },
+          {
+            "value": 45,
+            "label": "28/64 (7/16)"
+          },
+          {
+            "value": 46,
+            "label": "29/64"
+          },
+          {
+            "value": 47,
+            "label": "30/64 (15/32)"
+          },
+          {
+            "value": 48,
+            "label": "31/64"
+          },
+          {
+            "value": 49,
+            "label": "33/64"
+          },
+          {
+            "value": 50,
+            "label": "34/64 (17/32)"
+          },
+          {
+            "value": 51,
+            "label": "35/64"
+          },
+          {
+            "value": 52,
+            "label": "36/64 (9/16)"
+          },
+          {
+            "value": 53,
+            "label": "37/64"
+          },
+          {
+            "value": 54,
+            "label": "38/64 (19/32)"
+          },
+          {
+            "value": 55,
+            "label": "39/64"
+          },
+          {
+            "value": 56,
+            "label": "40/64 (5/8)"
+          },
+          {
+            "value": 57,
+            "label": "41/64"
+          },
+          {
+            "value": 58,
+            "label": "42/64 (21/32)"
+          },
+          {
+            "value": 59,
+            "label": "43/64"
+          },
+          {
+            "value": 60,
+            "label": "44/64 (11/16)"
+          },
+          {
+            "value": 61,
+            "label": "45/64"
+          },
+          {
+            "value": 62,
+            "label": "46/64 (23/32)"
+          },
+          {
+            "value": 63,
+            "label": "47/64"
+          },
+          {
+            "value": 64,
+            "label": "49/64"
+          },
+          {
+            "value": 65,
+            "label": "50/64 (25/32)"
+          },
+          {
+            "value": 66,
+            "label": "51/64"
+          },
+          {
+            "value": 67,
+            "label": "52/64 (13/16)"
+          },
+          {
+            "value": 68,
+            "label": "53/64"
+          },
+          {
+            "value": 69,
+            "label": "54/64 (27/32)"
+          },
+          {
+            "value": 70,
+            "label": "55/64"
+          },
+          {
+            "value": 71,
+            "label": "56/64 (7/8)"
+          },
+          {
+            "value": 72,
+            "label": "57/64"
+          },
+          {
+            "value": 73,
+            "label": "58/64 (29/32)"
+          },
+          {
+            "value": 74,
+            "label": "59/64"
+          },
+          {
+            "value": 75,
+            "label": "60/64 (15/16)"
+          },
+          {
+            "value": 76,
+            "label": "61/64"
+          },
+          {
+            "value": 77,
+            "label": "62/64 (31/32)"
+          },
+          {
+            "value": 78,
+            "label": "63/64"
+          }
+        ]
+      },
+      {
+        "id": 24,
+        "name": "Type 1",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "SINE"
+          },
+          {
+            "value": 1,
+            "label": "TRIANGLE"
+          },
+          {
+            "value": 2,
+            "label": "SQUARE"
+          },
+          {
+            "value": 3,
+            "label": "SAW UP"
+          },
+          {
+            "value": 4,
+            "label": "SAW DOWN"
+          },
+          {
+            "value": 5,
+            "label": "RANDOM"
+          },
+          {
+            "value": 6,
+            "label": "LOG"
+          },
+          {
+            "value": 7,
+            "label": "EXP"
+          },
+          {
+            "value": 8,
+            "label": "TRAPEZOID"
+          },
+          {
+            "value": 9,
+            "label": "ASTABLE"
+          }
+        ]
+      },
+      {
+        "id": 25,
+        "name": "Type 2",
+        "value": 6,
+        "options": [
+          {
+            "value": 0,
+            "label": "SINE"
+          },
+          {
+            "value": 1,
+            "label": "TRIANGLE"
+          },
+          {
+            "value": 2,
+            "label": "SQUARE"
+          },
+          {
+            "value": 3,
+            "label": "SAW UP"
+          },
+          {
+            "value": 4,
+            "label": "SAW DOWN"
+          },
+          {
+            "value": 5,
+            "label": "RANDOM"
+          },
+          {
+            "value": 6,
+            "label": "LOG"
+          },
+          {
+            "value": 7,
+            "label": "EXP"
+          },
+          {
+            "value": 8,
+            "label": "TRAPEZOID"
+          },
+          {
+            "value": 9,
+            "label": "ASTABLE"
+          }
+        ]
+      },
+      {
+        "id": 27,
+        "name": "Repeat Stack/Hold",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "STACK"
+          },
+          {
+            "value": 2,
+            "label": "HOLD"
+          }
+        ]
+      },
+      {
+        "id": 29,
+        "name": "Tempo R",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "NONE "
+          },
+          {
+            "value": 1,
+            "label": "1/64 TRIP"
+          },
+          {
+            "value": 2,
+            "label": "1/64"
+          },
+          {
+            "value": 3,
+            "label": "1/64 DOT"
+          },
+          {
+            "value": 4,
+            "label": "1/32 TRIP"
+          },
+          {
+            "value": 5,
+            "label": "1/32"
+          },
+          {
+            "value": 6,
+            "label": "1/32 DOT"
+          },
+          {
+            "value": 7,
+            "label": "1/16 TRIP"
+          },
+          {
+            "value": 8,
+            "label": "1/16"
+          },
+          {
+            "value": 9,
+            "label": "1/16 DOT"
+          },
+          {
+            "value": 10,
+            "label": "1/8 TRIP"
+          },
+          {
+            "value": 11,
+            "label": "1/8"
+          },
+          {
+            "value": 12,
+            "label": "1/8 DOT"
+          },
+          {
+            "value": 13,
+            "label": "1/4 TRIP"
+          },
+          {
+            "value": 14,
+            "label": "1/4"
+          },
+          {
+            "value": 15,
+            "label": "1/4 DOT"
+          },
+          {
+            "value": 16,
+            "label": "1/2 TRIP"
+          },
+          {
+            "value": 17,
+            "label": "1/2"
+          },
+          {
+            "value": 18,
+            "label": "1/2 DOT"
+          },
+          {
+            "value": 19,
+            "label": "1 TRIP"
+          },
+          {
+            "value": 20,
+            "label": "1"
+          },
+          {
+            "value": 21,
+            "label": "1 DOT"
+          },
+          {
+            "value": 22,
+            "label": "2"
+          },
+          {
+            "value": 23,
+            "label": "3"
+          },
+          {
+            "value": 24,
+            "label": "4"
+          },
+          {
+            "value": 25,
+            "label": "4/3"
+          },
+          {
+            "value": 26,
+            "label": "5/4"
+          },
+          {
+            "value": 27,
+            "label": "5/64"
+          },
+          {
+            "value": 28,
+            "label": "7/64"
+          },
+          {
+            "value": 29,
+            "label": "9/64"
+          },
+          {
+            "value": 30,
+            "label": "10/64 (5/32)"
+          },
+          {
+            "value": 31,
+            "label": "11/64"
+          },
+          {
+            "value": 32,
+            "label": "13/64"
+          },
+          {
+            "value": 33,
+            "label": "14/64 (7/32)"
+          },
+          {
+            "value": 34,
+            "label": "15/64"
+          },
+          {
+            "value": 35,
+            "label": "17/64"
+          },
+          {
+            "value": 36,
+            "label": "18/64 (9/32)"
+          },
+          {
+            "value": 37,
+            "label": "19/64"
+          },
+          {
+            "value": 38,
+            "label": "20/64 (5/16)"
+          },
+          {
+            "value": 39,
+            "label": "21/64"
+          },
+          {
+            "value": 40,
+            "label": "22/64 (11/32)"
+          },
+          {
+            "value": 41,
+            "label": "23/64"
+          },
+          {
+            "value": 42,
+            "label": "25/64"
+          },
+          {
+            "value": 43,
+            "label": "26/64 (13/32)"
+          },
+          {
+            "value": 44,
+            "label": "27/64"
+          },
+          {
+            "value": 45,
+            "label": "28/64 (7/16)"
+          },
+          {
+            "value": 46,
+            "label": "29/64"
+          },
+          {
+            "value": 47,
+            "label": "30/64 (15/32)"
+          },
+          {
+            "value": 48,
+            "label": "31/64"
+          },
+          {
+            "value": 49,
+            "label": "33/64"
+          },
+          {
+            "value": 50,
+            "label": "34/64 (17/32)"
+          },
+          {
+            "value": 51,
+            "label": "35/64"
+          },
+          {
+            "value": 52,
+            "label": "36/64 (9/16)"
+          },
+          {
+            "value": 53,
+            "label": "37/64"
+          },
+          {
+            "value": 54,
+            "label": "38/64 (19/32)"
+          },
+          {
+            "value": 55,
+            "label": "39/64"
+          },
+          {
+            "value": 56,
+            "label": "40/64 (5/8)"
+          },
+          {
+            "value": 57,
+            "label": "41/64"
+          },
+          {
+            "value": 58,
+            "label": "42/64 (21/32)"
+          },
+          {
+            "value": 59,
+            "label": "43/64"
+          },
+          {
+            "value": 60,
+            "label": "44/64 (11/16)"
+          },
+          {
+            "value": 61,
+            "label": "45/64"
+          },
+          {
+            "value": 62,
+            "label": "46/64 (23/32)"
+          },
+          {
+            "value": 63,
+            "label": "47/64"
+          },
+          {
+            "value": 64,
+            "label": "49/64"
+          },
+          {
+            "value": 65,
+            "label": "50/64 (25/32)"
+          },
+          {
+            "value": 66,
+            "label": "51/64"
+          },
+          {
+            "value": 67,
+            "label": "52/64 (13/16)"
+          },
+          {
+            "value": 68,
+            "label": "53/64"
+          },
+          {
+            "value": 69,
+            "label": "54/64 (27/32)"
+          },
+          {
+            "value": 70,
+            "label": "55/64"
+          },
+          {
+            "value": 71,
+            "label": "56/64 (7/8)"
+          },
+          {
+            "value": 72,
+            "label": "57/64"
+          },
+          {
+            "value": 73,
+            "label": "58/64 (29/32)"
+          },
+          {
+            "value": 74,
+            "label": "59/64"
+          },
+          {
+            "value": 75,
+            "label": "60/64 (15/16)"
+          },
+          {
+            "value": 76,
+            "label": "61/64"
+          },
+          {
+            "value": 77,
+            "label": "62/64 (31/32)"
+          },
+          {
+            "value": 78,
+            "label": "63/64"
+          }
+        ]
+      },
+      {
+        "id": 39,
+        "name": "Run",
+        "value": 1,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 40,
+        "name": "Trigger Restart",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 41,
+        "name": "High Cut Slope",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "6 dB/OCT"
+          },
+          {
+            "value": 1,
+            "label": "12 dB/OCT"
+          },
+          {
+            "value": 2,
+            "label": "24 dB/OCT"
+          },
+          {
+            "value": 3,
+            "label": "36 dB/OCT"
+          },
+          {
+            "value": 4,
+            "label": "48 dB/OCT"
+          }
+        ]
+      },
+      {
+        "id": 47,
+        "name": "Phase Reverse",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "NONE"
+          },
+          {
+            "value": 1,
+            "label": "RIGHT"
+          },
+          {
+            "value": 2,
+            "label": "LEFT"
+          },
+          {
+            "value": 3,
+            "label": "BOTH"
+          }
+        ]
+      },
+      {
+        "id": 48,
+        "name": "Target 1",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "BOTH"
+          },
+          {
+            "value": 1,
+            "label": "LEFT"
+          },
+          {
+            "value": 2,
+            "label": "RIGHT"
+          }
+        ]
+      },
+      {
+        "id": 49,
+        "name": "Target 2",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "BOTH"
+          },
+          {
+            "value": 1,
+            "label": "LEFT"
+          },
+          {
+            "value": 2,
+            "label": "RIGHT"
+          }
+        ]
+      },
+      {
+        "id": 50,
+        "name": "Tempo 2",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "NONE "
+          },
+          {
+            "value": 1,
+            "label": "1/64 TRIP"
+          },
+          {
+            "value": 2,
+            "label": "1/64"
+          },
+          {
+            "value": 3,
+            "label": "1/64 DOT"
+          },
+          {
+            "value": 4,
+            "label": "1/32 TRIP"
+          },
+          {
+            "value": 5,
+            "label": "1/32"
+          },
+          {
+            "value": 6,
+            "label": "1/32 DOT"
+          },
+          {
+            "value": 7,
+            "label": "1/16 TRIP"
+          },
+          {
+            "value": 8,
+            "label": "1/16"
+          },
+          {
+            "value": 9,
+            "label": "1/16 DOT"
+          },
+          {
+            "value": 10,
+            "label": "1/8 TRIP"
+          },
+          {
+            "value": 11,
+            "label": "1/8"
+          },
+          {
+            "value": 12,
+            "label": "1/8 DOT"
+          },
+          {
+            "value": 13,
+            "label": "1/4 TRIP"
+          },
+          {
+            "value": 14,
+            "label": "1/4"
+          },
+          {
+            "value": 15,
+            "label": "1/4 DOT"
+          },
+          {
+            "value": 16,
+            "label": "1/2 TRIP"
+          },
+          {
+            "value": 17,
+            "label": "1/2"
+          },
+          {
+            "value": 18,
+            "label": "1/2 DOT"
+          },
+          {
+            "value": 19,
+            "label": "1 TRIP"
+          },
+          {
+            "value": 20,
+            "label": "1"
+          },
+          {
+            "value": 21,
+            "label": "1 DOT"
+          },
+          {
+            "value": 22,
+            "label": "2"
+          },
+          {
+            "value": 23,
+            "label": "3"
+          },
+          {
+            "value": 24,
+            "label": "4"
+          },
+          {
+            "value": 25,
+            "label": "4/3"
+          },
+          {
+            "value": 26,
+            "label": "5/4"
+          },
+          {
+            "value": 27,
+            "label": "5/64"
+          },
+          {
+            "value": 28,
+            "label": "7/64"
+          },
+          {
+            "value": 29,
+            "label": "9/64"
+          },
+          {
+            "value": 30,
+            "label": "10/64 (5/32)"
+          },
+          {
+            "value": 31,
+            "label": "11/64"
+          },
+          {
+            "value": 32,
+            "label": "13/64"
+          },
+          {
+            "value": 33,
+            "label": "14/64 (7/32)"
+          },
+          {
+            "value": 34,
+            "label": "15/64"
+          },
+          {
+            "value": 35,
+            "label": "17/64"
+          },
+          {
+            "value": 36,
+            "label": "18/64 (9/32)"
+          },
+          {
+            "value": 37,
+            "label": "19/64"
+          },
+          {
+            "value": 38,
+            "label": "20/64 (5/16)"
+          },
+          {
+            "value": 39,
+            "label": "21/64"
+          },
+          {
+            "value": 40,
+            "label": "22/64 (11/32)"
+          },
+          {
+            "value": 41,
+            "label": "23/64"
+          },
+          {
+            "value": 42,
+            "label": "25/64"
+          },
+          {
+            "value": 43,
+            "label": "26/64 (13/32)"
+          },
+          {
+            "value": 44,
+            "label": "27/64"
+          },
+          {
+            "value": 45,
+            "label": "28/64 (7/16)"
+          },
+          {
+            "value": 46,
+            "label": "29/64"
+          },
+          {
+            "value": 47,
+            "label": "30/64 (15/32)"
+          },
+          {
+            "value": 48,
+            "label": "31/64"
+          },
+          {
+            "value": 49,
+            "label": "33/64"
+          },
+          {
+            "value": 50,
+            "label": "34/64 (17/32)"
+          },
+          {
+            "value": 51,
+            "label": "35/64"
+          },
+          {
+            "value": 52,
+            "label": "36/64 (9/16)"
+          },
+          {
+            "value": 53,
+            "label": "37/64"
+          },
+          {
+            "value": 54,
+            "label": "38/64 (19/32)"
+          },
+          {
+            "value": 55,
+            "label": "39/64"
+          },
+          {
+            "value": 56,
+            "label": "40/64 (5/8)"
+          },
+          {
+            "value": 57,
+            "label": "41/64"
+          },
+          {
+            "value": 58,
+            "label": "42/64 (21/32)"
+          },
+          {
+            "value": 59,
+            "label": "43/64"
+          },
+          {
+            "value": 60,
+            "label": "44/64 (11/16)"
+          },
+          {
+            "value": 61,
+            "label": "45/64"
+          },
+          {
+            "value": 62,
+            "label": "46/64 (23/32)"
+          },
+          {
+            "value": 63,
+            "label": "47/64"
+          },
+          {
+            "value": 64,
+            "label": "49/64"
+          },
+          {
+            "value": 65,
+            "label": "50/64 (25/32)"
+          },
+          {
+            "value": 66,
+            "label": "51/64"
+          },
+          {
+            "value": 67,
+            "label": "52/64 (13/16)"
+          },
+          {
+            "value": 68,
+            "label": "53/64"
+          },
+          {
+            "value": 69,
+            "label": "54/64 (27/32)"
+          },
+          {
+            "value": 70,
+            "label": "55/64"
+          },
+          {
+            "value": 71,
+            "label": "56/64 (7/8)"
+          },
+          {
+            "value": 72,
+            "label": "57/64"
+          },
+          {
+            "value": 73,
+            "label": "58/64 (29/32)"
+          },
+          {
+            "value": 74,
+            "label": "59/64"
+          },
+          {
+            "value": 75,
+            "label": "60/64 (15/16)"
+          },
+          {
+            "value": 76,
+            "label": "61/64"
+          },
+          {
+            "value": 77,
+            "label": "62/64 (31/32)"
+          },
+          {
+            "value": 78,
+            "label": "63/64"
+          }
+        ]
+      },
+      {
+        "id": 51,
+        "name": "Tempo 3",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "NONE "
+          },
+          {
+            "value": 1,
+            "label": "1/64 TRIP"
+          },
+          {
+            "value": 2,
+            "label": "1/64"
+          },
+          {
+            "value": 3,
+            "label": "1/64 DOT"
+          },
+          {
+            "value": 4,
+            "label": "1/32 TRIP"
+          },
+          {
+            "value": 5,
+            "label": "1/32"
+          },
+          {
+            "value": 6,
+            "label": "1/32 DOT"
+          },
+          {
+            "value": 7,
+            "label": "1/16 TRIP"
+          },
+          {
+            "value": 8,
+            "label": "1/16"
+          },
+          {
+            "value": 9,
+            "label": "1/16 DOT"
+          },
+          {
+            "value": 10,
+            "label": "1/8 TRIP"
+          },
+          {
+            "value": 11,
+            "label": "1/8"
+          },
+          {
+            "value": 12,
+            "label": "1/8 DOT"
+          },
+          {
+            "value": 13,
+            "label": "1/4 TRIP"
+          },
+          {
+            "value": 14,
+            "label": "1/4"
+          },
+          {
+            "value": 15,
+            "label": "1/4 DOT"
+          },
+          {
+            "value": 16,
+            "label": "1/2 TRIP"
+          },
+          {
+            "value": 17,
+            "label": "1/2"
+          },
+          {
+            "value": 18,
+            "label": "1/2 DOT"
+          },
+          {
+            "value": 19,
+            "label": "1 TRIP"
+          },
+          {
+            "value": 20,
+            "label": "1"
+          },
+          {
+            "value": 21,
+            "label": "1 DOT"
+          },
+          {
+            "value": 22,
+            "label": "2"
+          },
+          {
+            "value": 23,
+            "label": "3"
+          },
+          {
+            "value": 24,
+            "label": "4"
+          },
+          {
+            "value": 25,
+            "label": "4/3"
+          },
+          {
+            "value": 26,
+            "label": "5/4"
+          },
+          {
+            "value": 27,
+            "label": "5/64"
+          },
+          {
+            "value": 28,
+            "label": "7/64"
+          },
+          {
+            "value": 29,
+            "label": "9/64"
+          },
+          {
+            "value": 30,
+            "label": "10/64 (5/32)"
+          },
+          {
+            "value": 31,
+            "label": "11/64"
+          },
+          {
+            "value": 32,
+            "label": "13/64"
+          },
+          {
+            "value": 33,
+            "label": "14/64 (7/32)"
+          },
+          {
+            "value": 34,
+            "label": "15/64"
+          },
+          {
+            "value": 35,
+            "label": "17/64"
+          },
+          {
+            "value": 36,
+            "label": "18/64 (9/32)"
+          },
+          {
+            "value": 37,
+            "label": "19/64"
+          },
+          {
+            "value": 38,
+            "label": "20/64 (5/16)"
+          },
+          {
+            "value": 39,
+            "label": "21/64"
+          },
+          {
+            "value": 40,
+            "label": "22/64 (11/32)"
+          },
+          {
+            "value": 41,
+            "label": "23/64"
+          },
+          {
+            "value": 42,
+            "label": "25/64"
+          },
+          {
+            "value": 43,
+            "label": "26/64 (13/32)"
+          },
+          {
+            "value": 44,
+            "label": "27/64"
+          },
+          {
+            "value": 45,
+            "label": "28/64 (7/16)"
+          },
+          {
+            "value": 46,
+            "label": "29/64"
+          },
+          {
+            "value": 47,
+            "label": "30/64 (15/32)"
+          },
+          {
+            "value": 48,
+            "label": "31/64"
+          },
+          {
+            "value": 49,
+            "label": "33/64"
+          },
+          {
+            "value": 50,
+            "label": "34/64 (17/32)"
+          },
+          {
+            "value": 51,
+            "label": "35/64"
+          },
+          {
+            "value": 52,
+            "label": "36/64 (9/16)"
+          },
+          {
+            "value": 53,
+            "label": "37/64"
+          },
+          {
+            "value": 54,
+            "label": "38/64 (19/32)"
+          },
+          {
+            "value": 55,
+            "label": "39/64"
+          },
+          {
+            "value": 56,
+            "label": "40/64 (5/8)"
+          },
+          {
+            "value": 57,
+            "label": "41/64"
+          },
+          {
+            "value": 58,
+            "label": "42/64 (21/32)"
+          },
+          {
+            "value": 59,
+            "label": "43/64"
+          },
+          {
+            "value": 60,
+            "label": "44/64 (11/16)"
+          },
+          {
+            "value": 61,
+            "label": "45/64"
+          },
+          {
+            "value": 62,
+            "label": "46/64 (23/32)"
+          },
+          {
+            "value": 63,
+            "label": "47/64"
+          },
+          {
+            "value": 64,
+            "label": "49/64"
+          },
+          {
+            "value": 65,
+            "label": "50/64 (25/32)"
+          },
+          {
+            "value": 66,
+            "label": "51/64"
+          },
+          {
+            "value": 67,
+            "label": "52/64 (13/16)"
+          },
+          {
+            "value": 68,
+            "label": "53/64"
+          },
+          {
+            "value": 69,
+            "label": "54/64 (27/32)"
+          },
+          {
+            "value": 70,
+            "label": "55/64"
+          },
+          {
+            "value": 71,
+            "label": "56/64 (7/8)"
+          },
+          {
+            "value": 72,
+            "label": "57/64"
+          },
+          {
+            "value": 73,
+            "label": "58/64 (29/32)"
+          },
+          {
+            "value": 74,
+            "label": "59/64"
+          },
+          {
+            "value": 75,
+            "label": "60/64 (15/16)"
+          },
+          {
+            "value": 76,
+            "label": "61/64"
+          },
+          {
+            "value": 77,
+            "label": "62/64 (31/32)"
+          },
+          {
+            "value": 78,
+            "label": "63/64"
+          }
+        ]
+      },
+      {
+        "id": 53,
+        "name": "Sweep Type",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "SINE"
+          },
+          {
+            "value": 1,
+            "label": "TRIANGLE"
+          },
+          {
+            "value": 2,
+            "label": "SQUARE"
+          },
+          {
+            "value": 3,
+            "label": "SAW UP"
+          },
+          {
+            "value": 4,
+            "label": "SAW DOWN"
+          },
+          {
+            "value": 5,
+            "label": "RANDOM"
+          },
+          {
+            "value": 6,
+            "label": "LOG"
+          },
+          {
+            "value": 7,
+            "label": "EXP"
+          },
+          {
+            "value": 8,
+            "label": "TRAPEZOID"
+          },
+          {
+            "value": 9,
+            "label": "ASTABLE"
+          }
+        ]
+      },
+      {
+        "id": 55,
+        "name": "Sweep Tempo",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "NONE "
+          },
+          {
+            "value": 1,
+            "label": "1/64 TRIP"
+          },
+          {
+            "value": 2,
+            "label": "1/64"
+          },
+          {
+            "value": 3,
+            "label": "1/64 DOT"
+          },
+          {
+            "value": 4,
+            "label": "1/32 TRIP"
+          },
+          {
+            "value": 5,
+            "label": "1/32"
+          },
+          {
+            "value": 6,
+            "label": "1/32 DOT"
+          },
+          {
+            "value": 7,
+            "label": "1/16 TRIP"
+          },
+          {
+            "value": 8,
+            "label": "1/16"
+          },
+          {
+            "value": 9,
+            "label": "1/16 DOT"
+          },
+          {
+            "value": 10,
+            "label": "1/8 TRIP"
+          },
+          {
+            "value": 11,
+            "label": "1/8"
+          },
+          {
+            "value": 12,
+            "label": "1/8 DOT"
+          },
+          {
+            "value": 13,
+            "label": "1/4 TRIP"
+          },
+          {
+            "value": 14,
+            "label": "1/4"
+          },
+          {
+            "value": 15,
+            "label": "1/4 DOT"
+          },
+          {
+            "value": 16,
+            "label": "1/2 TRIP"
+          },
+          {
+            "value": 17,
+            "label": "1/2"
+          },
+          {
+            "value": 18,
+            "label": "1/2 DOT"
+          },
+          {
+            "value": 19,
+            "label": "1 TRIP"
+          },
+          {
+            "value": 20,
+            "label": "1"
+          },
+          {
+            "value": 21,
+            "label": "1 DOT"
+          },
+          {
+            "value": 22,
+            "label": "2"
+          },
+          {
+            "value": 23,
+            "label": "3"
+          },
+          {
+            "value": 24,
+            "label": "4"
+          },
+          {
+            "value": 25,
+            "label": "4/3"
+          },
+          {
+            "value": 26,
+            "label": "5/4"
+          },
+          {
+            "value": 27,
+            "label": "5/64"
+          },
+          {
+            "value": 28,
+            "label": "7/64"
+          },
+          {
+            "value": 29,
+            "label": "9/64"
+          },
+          {
+            "value": 30,
+            "label": "10/64 (5/32)"
+          },
+          {
+            "value": 31,
+            "label": "11/64"
+          },
+          {
+            "value": 32,
+            "label": "13/64"
+          },
+          {
+            "value": 33,
+            "label": "14/64 (7/32)"
+          },
+          {
+            "value": 34,
+            "label": "15/64"
+          },
+          {
+            "value": 35,
+            "label": "17/64"
+          },
+          {
+            "value": 36,
+            "label": "18/64 (9/32)"
+          },
+          {
+            "value": 37,
+            "label": "19/64"
+          },
+          {
+            "value": 38,
+            "label": "20/64 (5/16)"
+          },
+          {
+            "value": 39,
+            "label": "21/64"
+          },
+          {
+            "value": 40,
+            "label": "22/64 (11/32)"
+          },
+          {
+            "value": 41,
+            "label": "23/64"
+          },
+          {
+            "value": 42,
+            "label": "25/64"
+          },
+          {
+            "value": 43,
+            "label": "26/64 (13/32)"
+          },
+          {
+            "value": 44,
+            "label": "27/64"
+          },
+          {
+            "value": 45,
+            "label": "28/64 (7/16)"
+          },
+          {
+            "value": 46,
+            "label": "29/64"
+          },
+          {
+            "value": 47,
+            "label": "30/64 (15/32)"
+          },
+          {
+            "value": 48,
+            "label": "31/64"
+          },
+          {
+            "value": 49,
+            "label": "33/64"
+          },
+          {
+            "value": 50,
+            "label": "34/64 (17/32)"
+          },
+          {
+            "value": 51,
+            "label": "35/64"
+          },
+          {
+            "value": 52,
+            "label": "36/64 (9/16)"
+          },
+          {
+            "value": 53,
+            "label": "37/64"
+          },
+          {
+            "value": 54,
+            "label": "38/64 (19/32)"
+          },
+          {
+            "value": 55,
+            "label": "39/64"
+          },
+          {
+            "value": 56,
+            "label": "40/64 (5/8)"
+          },
+          {
+            "value": 57,
+            "label": "41/64"
+          },
+          {
+            "value": 58,
+            "label": "42/64 (21/32)"
+          },
+          {
+            "value": 59,
+            "label": "43/64"
+          },
+          {
+            "value": 60,
+            "label": "44/64 (11/16)"
+          },
+          {
+            "value": 61,
+            "label": "45/64"
+          },
+          {
+            "value": 62,
+            "label": "46/64 (23/32)"
+          },
+          {
+            "value": 63,
+            "label": "47/64"
+          },
+          {
+            "value": 64,
+            "label": "49/64"
+          },
+          {
+            "value": 65,
+            "label": "50/64 (25/32)"
+          },
+          {
+            "value": 66,
+            "label": "51/64"
+          },
+          {
+            "value": 67,
+            "label": "52/64 (13/16)"
+          },
+          {
+            "value": 68,
+            "label": "53/64"
+          },
+          {
+            "value": 69,
+            "label": "54/64 (27/32)"
+          },
+          {
+            "value": 70,
+            "label": "55/64"
+          },
+          {
+            "value": 71,
+            "label": "56/64 (7/8)"
+          },
+          {
+            "value": 72,
+            "label": "57/64"
+          },
+          {
+            "value": 73,
+            "label": "58/64 (29/32)"
+          },
+          {
+            "value": 74,
+            "label": "59/64"
+          },
+          {
+            "value": 75,
+            "label": "60/64 (15/16)"
+          },
+          {
+            "value": 76,
+            "label": "61/64"
+          },
+          {
+            "value": 77,
+            "label": "62/64 (31/32)"
+          },
+          {
+            "value": 78,
+            "label": "63/64"
+          }
+        ]
+      },
+      {
+        "id": 67,
+        "name": "LFO Depth Range",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "LOW"
+          },
+          {
+            "value": 1,
+            "label": "HIGH"
+          }
+        ]
+      },
+      {
+        "id": 70,
+        "name": "Low Cut Slope",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "6 dB/OCT"
+          },
+          {
+            "value": 1,
+            "label": "12 dB/OCT"
+          },
+          {
+            "value": 2,
+            "label": "24 dB/OCT"
+          },
+          {
+            "value": 3,
+            "label": "36 dB/OCT"
+          },
+          {
+            "value": 4,
+            "label": "48 dB/OCT"
+          }
+        ]
+      },
+      {
+        "id": 71,
+        "name": "Compander",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 77,
+        "name": "Type 3",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "SINE"
+          },
+          {
+            "value": 1,
+            "label": "TRIANGLE"
+          },
+          {
+            "value": 2,
+            "label": "SQUARE"
+          },
+          {
+            "value": 3,
+            "label": "SAW UP"
+          },
+          {
+            "value": 4,
+            "label": "SAW DOWN"
+          },
+          {
+            "value": 5,
+            "label": "RANDOM"
+          },
+          {
+            "value": 6,
+            "label": "LOG"
+          },
+          {
+            "value": 7,
+            "label": "EXP"
+          },
+          {
+            "value": 8,
+            "label": "TRAPEZOID"
+          },
+          {
+            "value": 9,
+            "label": "ASTABLE"
+          }
+        ]
+      },
+      {
+        "id": 79,
+        "name": "Tempo 4",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "NONE "
+          },
+          {
+            "value": 1,
+            "label": "1/64 TRIP"
+          },
+          {
+            "value": 2,
+            "label": "1/64"
+          },
+          {
+            "value": 3,
+            "label": "1/64 DOT"
+          },
+          {
+            "value": 4,
+            "label": "1/32 TRIP"
+          },
+          {
+            "value": 5,
+            "label": "1/32"
+          },
+          {
+            "value": 6,
+            "label": "1/32 DOT"
+          },
+          {
+            "value": 7,
+            "label": "1/16 TRIP"
+          },
+          {
+            "value": 8,
+            "label": "1/16"
+          },
+          {
+            "value": 9,
+            "label": "1/16 DOT"
+          },
+          {
+            "value": 10,
+            "label": "1/8 TRIP"
+          },
+          {
+            "value": 11,
+            "label": "1/8"
+          },
+          {
+            "value": 12,
+            "label": "1/8 DOT"
+          },
+          {
+            "value": 13,
+            "label": "1/4 TRIP"
+          },
+          {
+            "value": 14,
+            "label": "1/4"
+          },
+          {
+            "value": 15,
+            "label": "1/4 DOT"
+          },
+          {
+            "value": 16,
+            "label": "1/2 TRIP"
+          },
+          {
+            "value": 17,
+            "label": "1/2"
+          },
+          {
+            "value": 18,
+            "label": "1/2 DOT"
+          },
+          {
+            "value": 19,
+            "label": "1 TRIP"
+          },
+          {
+            "value": 20,
+            "label": "1"
+          },
+          {
+            "value": 21,
+            "label": "1 DOT"
+          },
+          {
+            "value": 22,
+            "label": "2"
+          },
+          {
+            "value": 23,
+            "label": "3"
+          },
+          {
+            "value": 24,
+            "label": "4"
+          },
+          {
+            "value": 25,
+            "label": "4/3"
+          },
+          {
+            "value": 26,
+            "label": "5/4"
+          },
+          {
+            "value": 27,
+            "label": "5/64"
+          },
+          {
+            "value": 28,
+            "label": "7/64"
+          },
+          {
+            "value": 29,
+            "label": "9/64"
+          },
+          {
+            "value": 30,
+            "label": "10/64 (5/32)"
+          },
+          {
+            "value": 31,
+            "label": "11/64"
+          },
+          {
+            "value": 32,
+            "label": "13/64"
+          },
+          {
+            "value": 33,
+            "label": "14/64 (7/32)"
+          },
+          {
+            "value": 34,
+            "label": "15/64"
+          },
+          {
+            "value": 35,
+            "label": "17/64"
+          },
+          {
+            "value": 36,
+            "label": "18/64 (9/32)"
+          },
+          {
+            "value": 37,
+            "label": "19/64"
+          },
+          {
+            "value": 38,
+            "label": "20/64 (5/16)"
+          },
+          {
+            "value": 39,
+            "label": "21/64"
+          },
+          {
+            "value": 40,
+            "label": "22/64 (11/32)"
+          },
+          {
+            "value": 41,
+            "label": "23/64"
+          },
+          {
+            "value": 42,
+            "label": "25/64"
+          },
+          {
+            "value": 43,
+            "label": "26/64 (13/32)"
+          },
+          {
+            "value": 44,
+            "label": "27/64"
+          },
+          {
+            "value": 45,
+            "label": "28/64 (7/16)"
+          },
+          {
+            "value": 46,
+            "label": "29/64"
+          },
+          {
+            "value": 47,
+            "label": "30/64 (15/32)"
+          },
+          {
+            "value": 48,
+            "label": "31/64"
+          },
+          {
+            "value": 49,
+            "label": "33/64"
+          },
+          {
+            "value": 50,
+            "label": "34/64 (17/32)"
+          },
+          {
+            "value": 51,
+            "label": "35/64"
+          },
+          {
+            "value": 52,
+            "label": "36/64 (9/16)"
+          },
+          {
+            "value": 53,
+            "label": "37/64"
+          },
+          {
+            "value": 54,
+            "label": "38/64 (19/32)"
+          },
+          {
+            "value": 55,
+            "label": "39/64"
+          },
+          {
+            "value": 56,
+            "label": "40/64 (5/8)"
+          },
+          {
+            "value": 57,
+            "label": "41/64"
+          },
+          {
+            "value": 58,
+            "label": "42/64 (21/32)"
+          },
+          {
+            "value": 59,
+            "label": "43/64"
+          },
+          {
+            "value": 60,
+            "label": "44/64 (11/16)"
+          },
+          {
+            "value": 61,
+            "label": "45/64"
+          },
+          {
+            "value": 62,
+            "label": "46/64 (23/32)"
+          },
+          {
+            "value": 63,
+            "label": "47/64"
+          },
+          {
+            "value": 64,
+            "label": "49/64"
+          },
+          {
+            "value": 65,
+            "label": "50/64 (25/32)"
+          },
+          {
+            "value": 66,
+            "label": "51/64"
+          },
+          {
+            "value": 67,
+            "label": "52/64 (13/16)"
+          },
+          {
+            "value": 68,
+            "label": "53/64"
+          },
+          {
+            "value": 69,
+            "label": "54/64 (27/32)"
+          },
+          {
+            "value": 70,
+            "label": "55/64"
+          },
+          {
+            "value": 71,
+            "label": "56/64 (7/8)"
+          },
+          {
+            "value": 72,
+            "label": "57/64"
+          },
+          {
+            "value": 73,
+            "label": "58/64 (29/32)"
+          },
+          {
+            "value": 74,
+            "label": "59/64"
+          },
+          {
+            "value": 75,
+            "label": "60/64 (15/16)"
+          },
+          {
+            "value": 76,
+            "label": "61/64"
+          },
+          {
+            "value": 77,
+            "label": "62/64 (31/32)"
+          },
+          {
+            "value": 78,
+            "label": "63/64"
+          }
+        ]
+      },
+      {
+        "id": 82,
+        "name": "Target 3",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "NONE"
+          },
+          {
+            "value": 1,
+            "label": "LEVEL"
+          },
+          {
+            "value": 2,
+            "label": "PAN"
+          },
+          {
+            "value": 3,
+            "label": "SPREAD"
+          }
+        ]
+      },
+      {
+        "id": 83,
+        "name": "Scene Ignore",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 86,
+        "name": "Kill Dry",
+        "value": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "OFF"
+          },
+          {
+            "value": 1,
+            "label": "ON"
+          }
+        ]
+      },
+      {
+        "id": 87,
+        "name": "Filter Type",
+        "value": 2,
+        "options": [
+          {
+            "value": 1,
+            "label": "BANDPASS"
+          },
+          {
+            "value": 2,
+            "label": "HIGHPASS"
+          },
+          {
+            "value": 3,
+            "label": "3"
+          }
+        ]
+      }
+    ],
+    "type": {
+      "value": 0,
+      "name": "Reverb Pre-Swell"
+    },
+    "layout": {
+      "editorName": "Delay",
+      "pages": [
+        {
+          "name": "Time/FB",
+          "controls": [
+            {
+              "label": "Repeat Stack/Hold",
+              "paramName": "DELAY_HOLD",
+              "paramId": 27
+            },
+            {
+              "label": "Time",
+              "paramName": "DELAY_TIME",
+              "paramId": 8
+            },
+            {
+              "label": "Tempo",
+              "paramName": "DELAY_TEMPO",
+              "paramId": 15
+            },
+            {
+              "label": "Master Time",
+              "paramName": "DELAY_MSTRTIME",
+              "paramId": 74
+            },
+            {
+              "label": "Feedback",
+              "paramName": "DELAY_FEED",
+              "paramId": 10
+            },
+            {
+              "label": "Right Post Delay",
+              "paramName": "DELAY_OFFSET",
+              "paramId": 69
+            },
+            {
+              "label": "Master Feedback",
+              "paramName": "DELAY_MSTRFDBK",
+              "paramId": 28
+            },
+            {
+              "label": "Echo Pan",
+              "paramName": "DELAY_DELAYPAN",
+              "paramId": 13
+            },
+            {
+              "label": "Input Gain",
+              "paramName": "DELAY_GAIN",
+              "paramId": 23,
+              "col": 0
+            },
+            {
+              "label": "Mix",
+              "paramName": "DELAY_MIX",
+              "paramId": 0,
+              "col": 1
+            },
+            {
+              "label": "Level",
+              "paramName": "DELAY_LEVEL",
+              "paramId": 1,
+              "col": 2
+            },
+            {
+              "label": "Balance",
+              "paramName": "DELAY_PAN",
+              "paramId": 2,
+              "col": 0
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DELAY_BYPASSMODE",
+              "paramId": 3,
+              "col": 2
+            },
+            {
+              "label": "Kill Dry",
+              "paramName": "DELAY_KILLDRY",
+              "paramId": 86
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DELAY_SCENEIGNORE",
+              "paramId": 83
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DELAY_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "L/R Time Ratio",
+              "paramName": "DELAY_RATIO",
+              "paramId": 9
+            },
+            {
+              "label": "Feedback R",
+              "paramName": "DELAY_FEEDR",
+              "paramId": 12
+            },
+            {
+              "label": "Spread",
+              "paramName": "DELAY_SPREAD",
+              "paramId": 14,
+              "col": 1
+            },
+            {
+              "label": "Feedback L>R",
+              "paramName": "DELAY_FEEDLR",
+              "paramId": 30
+            },
+            {
+              "label": "Level L",
+              "paramName": "DELAY_LEVELL",
+              "paramId": 32
+            },
+            {
+              "label": "Pan L",
+              "paramName": "DELAY_PANL",
+              "paramId": 34
+            },
+            {
+              "label": "Time R",
+              "paramName": "DELAY_TIMER",
+              "paramId": 26
+            },
+            {
+              "label": "Tempo R",
+              "paramName": "DELAY_TEMPOR",
+              "paramId": 29
+            },
+            {
+              "label": "Feedback R>L",
+              "paramName": "DELAY_FEEDRL",
+              "paramId": 31
+            },
+            {
+              "label": "Level R",
+              "paramName": "DELAY_LEVELR",
+              "paramId": 33
+            },
+            {
+              "label": "Pan R",
+              "paramName": "DELAY_PANR",
+              "paramId": 35
+            },
+            {
+              "label": "Crossfade Time",
+              "paramName": "DELAY_SPLICETIME",
+              "paramId": 38
+            },
+            {
+              "label": "Run",
+              "paramName": "DELAY_RUN",
+              "paramId": 39
+            },
+            {
+              "label": "Trigger Restart",
+              "paramName": "DELAY_MODE",
+              "paramId": 40
+            },
+            {
+              "label": "Motor Speed",
+              "paramName": "DELAY_SPEED",
+              "paramId": 68,
+              "col": 0
+            },
+            {
+              "label": "Drive",
+              "paramName": "DELAY_DRIVE",
+              "paramId": 22,
+              "col": 7
+            },
+            {
+              "label": "LFO 1 Rate",
+              "paramName": "DELAY_RATE1",
+              "paramId": 18
+            },
+            {
+              "label": "LFO 1 Depth",
+              "paramName": "DELAY_DEPTH1",
+              "paramId": 20
+            }
+          ]
+        },
+        {
+          "name": "More",
+          "controls": [
+            {
+              "label": "Drive",
+              "paramName": "DELAY_DRIVE",
+              "paramId": 22,
+              "col": 5
+            },
+            {
+              "label": "Bit Reduction",
+              "paramName": "DELAY_BITREDUCE",
+              "paramId": 60,
+              "col": 6
+            },
+            {
+              "label": "Phase Reverse",
+              "paramName": "DELAY_PHASEREV",
+              "paramId": 47,
+              "col": 7
+            },
+            {
+              "label": "Attenuation",
+              "paramName": "DELAY_ATTEN",
+              "paramId": 42,
+              "col": 0
+            },
+            {
+              "label": "Threshold",
+              "paramName": "DELAY_THRESH",
+              "paramId": 43,
+              "col": 1
+            },
+            {
+              "label": "Release Time",
+              "paramName": "DELAY_RELEASE",
+              "paramId": 44,
+              "col": 2
+            },
+            {
+              "label": "Compander",
+              "paramName": "DELAY_COMPANDER",
+              "paramId": 71,
+              "col": 4
+            },
+            {
+              "label": "Time",
+              "paramName": "DELAY_COMPTIME",
+              "paramId": 72,
+              "col": 5
+            },
+            {
+              "label": "Threshold",
+              "paramName": "DELAY_COMPTHRESH",
+              "paramId": 73,
+              "col": 6
+            },
+            {
+              "label": "Input Gain",
+              "paramName": "DELAY_GAIN",
+              "paramId": 23,
+              "col": 0
+            },
+            {
+              "label": "Mix",
+              "paramName": "DELAY_MIX",
+              "paramId": 0,
+              "col": 1
+            },
+            {
+              "label": "Level",
+              "paramName": "DELAY_LEVEL",
+              "paramId": 1,
+              "col": 2
+            },
+            {
+              "label": "Balance",
+              "paramName": "DELAY_PAN",
+              "paramId": 2,
+              "col": 0
+            },
+            {
+              "label": "Spread",
+              "paramName": "DELAY_SPREAD",
+              "paramId": 14,
+              "col": 1
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DELAY_BYPASSMODE",
+              "paramId": 3,
+              "col": 2
+            },
+            {
+              "label": "Kill Dry",
+              "paramName": "DELAY_KILLDRY",
+              "paramId": 86
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DELAY_SCENEIGNORE",
+              "paramId": 83
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DELAY_BYPASS",
+              "paramId": 5
+            }
+          ]
+        },
+        {
+          "name": "Tone/Duck",
+          "controls": [
+            {
+              "label": "Phase Reverse",
+              "paramName": "DELAY_PHASEREV",
+              "paramId": 47,
+              "col": 7
+            },
+            {
+              "label": "Attenuation",
+              "paramName": "DELAY_ATTEN",
+              "paramId": 42,
+              "col": 0
+            },
+            {
+              "label": "Threshold",
+              "paramName": "DELAY_THRESH",
+              "paramId": 43,
+              "col": 1
+            },
+            {
+              "label": "Release Time",
+              "paramName": "DELAY_RELEASE",
+              "paramId": 44,
+              "col": 2
+            },
+            {
+              "label": "Input Gain",
+              "paramName": "DELAY_GAIN",
+              "paramId": 23,
+              "col": 0
+            },
+            {
+              "label": "Mix",
+              "paramName": "DELAY_MIX",
+              "paramId": 0,
+              "col": 1
+            },
+            {
+              "label": "Level",
+              "paramName": "DELAY_LEVEL",
+              "paramId": 1,
+              "col": 2
+            },
+            {
+              "label": "Balance",
+              "paramName": "DELAY_PAN",
+              "paramId": 2,
+              "col": 0
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DELAY_BYPASSMODE",
+              "paramId": 3,
+              "col": 2
+            },
+            {
+              "label": "Kill Dry",
+              "paramName": "DELAY_KILLDRY",
+              "paramId": 86
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DELAY_SCENEIGNORE",
+              "paramId": 83
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DELAY_BYPASS",
+              "paramId": 5
+            }
+          ]
+        },
+        {
+          "name": "Modulation",
+          "controls": [
+            {
+              "label": "LFO Depth Range",
+              "paramName": "DELAY_MAXDEPTH",
+              "paramId": 67
+            },
+            {
+              "label": "Type",
+              "paramName": "DELAY_LFO1TYPE",
+              "paramId": 24
+            },
+            {
+              "label": "Rate",
+              "paramName": "DELAY_RATE1",
+              "paramId": 18
+            },
+            {
+              "label": "Tempo",
+              "paramName": "DELAY_LFO1TEMPO",
+              "paramId": 50
+            },
+            {
+              "label": "Depth",
+              "paramName": "DELAY_DEPTH1",
+              "paramId": 20
+            },
+            {
+              "label": "Phase",
+              "paramName": "DELAY_LFO1PHASE",
+              "paramId": 36
+            },
+            {
+              "label": "Type",
+              "paramName": "DELAY_LFO2TYPE",
+              "paramId": 25
+            },
+            {
+              "label": "Rate",
+              "paramName": "DELAY_RATE2",
+              "paramId": 19
+            },
+            {
+              "label": "Tempo",
+              "paramName": "DELAY_LFO2TEMPO",
+              "paramId": 51
+            },
+            {
+              "label": "Depth",
+              "paramName": "DELAY_DEPTH2",
+              "paramId": 21
+            },
+            {
+              "label": "Phase",
+              "paramName": "DELAY_LFO2PHASE",
+              "paramId": 37
+            },
+            {
+              "label": "Type",
+              "paramName": "DELAY_LFO4TYPE",
+              "paramId": 77
+            },
+            {
+              "label": "Target",
+              "paramName": "DELAY_LFO4TARGET",
+              "paramId": 82
+            },
+            {
+              "label": "Rate",
+              "paramName": "DELAY_RATE4",
+              "paramId": 78
+            },
+            {
+              "label": "Tempo",
+              "paramName": "DELAY_LFO4TEMPO",
+              "paramId": 79
+            },
+            {
+              "label": "Depth",
+              "paramName": "DELAY_DEPTH4",
+              "paramId": 80
+            },
+            {
+              "label": "Phase",
+              "paramName": "DELAY_LFO4PHASE",
+              "paramId": 81
+            },
+            {
+              "label": "Input Gain",
+              "paramName": "DELAY_GAIN",
+              "paramId": 23,
+              "col": 0
+            },
+            {
+              "label": "Mix",
+              "paramName": "DELAY_MIX",
+              "paramId": 0,
+              "col": 1
+            },
+            {
+              "label": "Level",
+              "paramName": "DELAY_LEVEL",
+              "paramId": 1,
+              "col": 2
+            },
+            {
+              "label": "Balance",
+              "paramName": "DELAY_PAN",
+              "paramId": 2,
+              "col": 0
+            },
+            {
+              "label": "Spread",
+              "paramName": "DELAY_SPREAD",
+              "paramId": 14,
+              "col": 1
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DELAY_BYPASSMODE",
+              "paramId": 3,
+              "col": 2
+            },
+            {
+              "label": "Kill Dry",
+              "paramName": "DELAY_KILLDRY",
+              "paramId": 86
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DELAY_SCENEIGNORE",
+              "paramId": 83
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DELAY_BYPASS",
+              "paramId": 5
+            },
+            {
+              "label": "Target",
+              "paramName": "DELAY_LFO1TARGET",
+              "paramId": 48
+            },
+            {
+              "label": "Target",
+              "paramName": "DELAY_LFO2TARGET",
+              "paramId": 49
+            }
+          ]
+        },
+        {
+          "name": "EQ",
+          "controls": [
+            {
+              "label": "Low Cut Frequency",
+              "paramName": "DELAY_LOCUT",
+              "paramId": 16,
+              "col": 0
+            },
+            {
+              "label": "Freq 1",
+              "paramName": "DELAY_FREQ1",
+              "paramId": 61,
+              "col": 1
+            },
+            {
+              "label": "Q 1",
+              "paramName": "DELAY_Q1",
+              "paramId": 63,
+              "col": 2
+            },
+            {
+              "label": "Gain 1",
+              "paramName": "DELAY_GAIN1",
+              "paramId": 65,
+              "col": 3
+            },
+            {
+              "label": "Freq 2",
+              "paramName": "DELAY_FREQ2",
+              "paramId": 62,
+              "col": 4
+            },
+            {
+              "label": "Q 2",
+              "paramName": "DELAY_Q2",
+              "paramId": 64,
+              "col": 5
+            },
+            {
+              "label": "Gain 2",
+              "paramName": "DELAY_GAIN2",
+              "paramId": 66,
+              "col": 6
+            },
+            {
+              "label": "High Cut Frequency",
+              "paramName": "DELAY_HICUT",
+              "paramId": 17,
+              "col": 7
+            },
+            {
+              "label": "Low Cut Slope",
+              "paramName": "DELAY_HPF_ORDER",
+              "paramId": 70
+            },
+            {
+              "label": "High Cut Slope",
+              "paramName": "DELAY_LPF_ORDER",
+              "paramId": 41
+            },
+            {
+              "label": "Q (High+Low)",
+              "paramName": "DELAY_FILTERQ",
+              "paramId": 59
+            },
+            {
+              "label": "Input Gain",
+              "paramName": "DELAY_GAIN",
+              "paramId": 23,
+              "col": 0
+            },
+            {
+              "label": "Mix",
+              "paramName": "DELAY_MIX",
+              "paramId": 0,
+              "col": 1
+            },
+            {
+              "label": "Level",
+              "paramName": "DELAY_LEVEL",
+              "paramId": 1,
+              "col": 2
+            },
+            {
+              "label": "Balance",
+              "paramName": "DELAY_PAN",
+              "paramId": 2,
+              "col": 0
+            },
+            {
+              "label": "Spread",
+              "paramName": "DELAY_SPREAD",
+              "paramId": 14,
+              "col": 1
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DELAY_BYPASSMODE",
+              "paramId": 3,
+              "col": 2
+            },
+            {
+              "label": "Kill Dry",
+              "paramName": "DELAY_KILLDRY",
+              "paramId": 86
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DELAY_SCENEIGNORE",
+              "paramId": 83
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DELAY_BYPASS",
+              "paramId": 5
+            }
+          ]
+        },
+        {
+          "name": "Sweep",
+          "controls": [
+            {
+              "label": "Sweep Type",
+              "paramName": "DELAY_LFO3TYPE",
+              "paramId": 53
+            },
+            {
+              "label": "Sweep Rate",
+              "paramName": "DELAY_RATE3",
+              "paramId": 52
+            },
+            {
+              "label": "Sweep Tempo",
+              "paramName": "DELAY_LFO3TEMPO",
+              "paramId": 55
+            },
+            {
+              "label": "Sweep Phase",
+              "paramName": "DELAY_LFO3PHASE",
+              "paramId": 54
+            },
+            {
+              "label": "Filter Type",
+              "paramName": "DELAY_SVFTYPE",
+              "paramId": 87
+            },
+            {
+              "label": "Start Frequency",
+              "paramName": "DELAY_FSTART",
+              "paramId": 56
+            },
+            {
+              "label": "Stop Frequency",
+              "paramName": "DELAY_FSTOP",
+              "paramId": 57
+            },
+            {
+              "label": "Resonance",
+              "paramName": "DELAY_Q",
+              "paramId": 58
+            },
+            {
+              "label": "Input Gain",
+              "paramName": "DELAY_GAIN",
+              "paramId": 23,
+              "col": 0
+            },
+            {
+              "label": "Mix",
+              "paramName": "DELAY_MIX",
+              "paramId": 0,
+              "col": 1
+            },
+            {
+              "label": "Level",
+              "paramName": "DELAY_LEVEL",
+              "paramId": 1,
+              "col": 2
+            },
+            {
+              "label": "Balance",
+              "paramName": "DELAY_PAN",
+              "paramId": 2,
+              "col": 0
+            },
+            {
+              "label": "Spread",
+              "paramName": "DELAY_SPREAD",
+              "paramId": 14,
+              "col": 1
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DELAY_BYPASSMODE",
+              "paramId": 3,
+              "col": 2
+            },
+            {
+              "label": "Kill Dry",
+              "paramName": "DELAY_KILLDRY",
+              "paramId": 86
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DELAY_SCENEIGNORE",
+              "paramId": 83
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DELAY_BYPASS",
+              "paramId": 5
+            }
+          ]
+        },
+        {
+          "name": "Stack/Hold",
+          "controls": [
+            {
+              "label": "Repeat Stack/Hold",
+              "paramName": "DELAY_HOLD",
+              "paramId": 27
+            },
+            {
+              "label": "Stack Feedback",
+              "paramName": "DELAY_STACKFDBK",
+              "paramId": 84
+            },
+            {
+              "label": "Hold Feedback",
+              "paramName": "DELAY_HOLDFDBK",
+              "paramId": 85
+            },
+            {
+              "label": "Input Gain",
+              "paramName": "DELAY_GAIN",
+              "paramId": 23,
+              "col": 0
+            },
+            {
+              "label": "Mix",
+              "paramName": "DELAY_MIX",
+              "paramId": 0,
+              "col": 1
+            },
+            {
+              "label": "Level",
+              "paramName": "DELAY_LEVEL",
+              "paramId": 1,
+              "col": 2
+            },
+            {
+              "label": "Balance",
+              "paramName": "DELAY_PAN",
+              "paramId": 2,
+              "col": 0
+            },
+            {
+              "label": "Spread",
+              "paramName": "DELAY_SPREAD",
+              "paramId": 14,
+              "col": 1
+            },
+            {
+              "label": "Bypass Mode",
+              "paramName": "DELAY_BYPASSMODE",
+              "paramId": 3,
+              "col": 2
+            },
+            {
+              "label": "Kill Dry",
+              "paramName": "DELAY_KILLDRY",
+              "paramId": 86
+            },
+            {
+              "label": "Scene Ignore",
+              "paramName": "DELAY_SCENEIGNORE",
+              "paramId": 83
+            },
+            {
+              "label": "Bypass",
+              "paramName": "DELAY_BYPASS",
+              "paramId": 5
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

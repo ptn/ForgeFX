@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "body": {
+    "connected": true,
+    "modelId": 17,
+    "name": "FM3",
+    "short": "FM3",
+    "gen": 3,
+    "supported": true,
+    "port": "/dev/ttyACM0"
+  }
+}

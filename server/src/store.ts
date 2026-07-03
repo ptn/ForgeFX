@@ -138,6 +138,19 @@ export function addVersionRaw(v: PresetVersion, packed: Uint8Array): void {
   saveVIndex(all);
 }
 
+/** Import a version with raw .syx in hand (local Sync-folder restore). Content-addressed like
+ *  addVersionRaw; re-packs the bytes (blob may not exist locally) and keeps the record's identity
+ *  (id/capturedAt/hash) verbatim so re-sync recognizes it. Skips if the version id is already local. */
+export function importVersion(v: PresetVersion, syx: Uint8Array): void {
+  const all = vIndex();
+  if (all.some((x) => x.id === v.id)) return;
+  const packed = packSyx(syx);
+  ensure(BLOBS_DIR);
+  if (!existsSync(blobPathByHash(v.hash))) writeFileSync(blobPathByHash(v.hash), packed);
+  all.push({ ...v, bytes: syx.length, stored: packed.length });
+  saveVIndex(all);
+}
+
 // ─────────────────────────── full-device backups ───────────────────────────
 export interface Backup { id: string; createdAt: number; label: string; model: string; count: number }
 const bkPath = () => join(DATA_DIR, 'backups.json');

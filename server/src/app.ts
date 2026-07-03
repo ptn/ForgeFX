@@ -20,6 +20,7 @@ import { join, resolve, extname } from 'node:path';
 import type { DeviceRegistry } from './drivers/registry.js';
 import * as backups from './services/backups.js';
 import * as store from './store.js';
+import { registerLocalRoutes } from './localStore.js';
 import { registerHelpRoutes } from './help.js';
 import { telemetryStatus, uploadDebugReport, type DebugReport } from './telemetry.js';
 
@@ -209,6 +210,16 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     if (!d.decodePresetBytes) return unsupported(reply, 'presetDump');
     try { return d.decodePresetBytes(bytes); } catch (e) { reply.code(422); return { error: (e as Error).message }; }
   };
+  // Same model-byte dispatch as decodeH, but THROWING instead of reply-coding — for callers that
+  // decode many files in one request (the local Presets/ scan) and must not touch the route reply.
+  const decodeBytes = async (bytes: Uint8Array): Promise<Record<string, unknown>> => {
+    const f0 = bytes.indexOf(0xf0);
+    const model = f0 >= 0 ? bytes[f0 + 4] : undefined;
+    if (model === 0x15) return { model: 'am4', ...registry.am4().decodeSyx([...bytes]) } as Record<string, unknown>;
+    const d = await driver();
+    if (!d.decodePresetBytes) throw new Error('unsupported: presetDump');
+    return d.decodePresetBytes(bytes) as Record<string, unknown>;
+  };
 
   // ── preset ──
   app.get('/preset', async (_req, reply) => {
@@ -250,6 +261,9 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     return doc;
   });
   app.delete<{ Params: { c: string; id: string } }>('/store/:c/:id', (req) => { store.delDoc(req.params.c, req.params.id); return { ok: true }; });
+
+  // ── local storage folder (Presets/ library + Sync/ plain-syx mirror; see localStore.ts) ──
+  registerLocalRoutes(app, decodeBytes);
 
   // ── backups + version control ──
   // snapshot one preset (version control); body optional { source }

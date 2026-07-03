@@ -61,7 +61,9 @@ function checkGen3Common(caps: Caps, label: string): void {
   assertEqual(caps.modifiers.model, true, `${label} modifiers.model`);
   assertEqual(caps.modifiers.bind, true, `${label} modifiers.bind`);
   assertEqual(caps.firmwareValidate, false, `${label} firmwareValidate`);
-  assertEqual(caps.backupDump, false, `${label} backupDump`);
+  // gen-3 dumps raw .syx by slot (library export-to-disk + audition); restore stays the
+  // version-store flow (loadPresetBytes + store), so restoreDump remains false.
+  assertEqual(caps.backupDump, true, `${label} backupDump`);
   assertEqual(caps.restoreDump, false, `${label} restoreDump`);
   assertEqual(caps.versionStore, true, `${label} versionStore`);
   assertEqual(caps.deviceParams, false, `${label} deviceParams`);

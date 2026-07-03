@@ -297,6 +297,15 @@ class Gen3Driver implements DeviceDriver {
     return { bytes: Uint8Array.from(frames.flat()), summary };
   }
 
+  /** Verbatim .syx dump for POST /preset/backup (capability `backupDump`) — the library's
+   *  export-to-disk + audition source. Location omitted → the currently selected preset's slot
+   *  (gen-3 dumps by slot; the raw edit-buffer stream is a different frame format, not a .syx). */
+  async backupPreset(location?: number): Promise<{ location: number | null; code: string | null; name: string; bytes: number[] }> {
+    const n = location ?? (await this.presetRef()).number;
+    const { bytes, summary } = await this.dumpRaw(n);
+    return { location: n, code: null, name: summary.name, bytes: Array.from(bytes) };
+  }
+
   /** Decode a preset from raw .syx bytes (a saved/exported dump) — offline, no device needed. Splits
    *  the byte stream into F0..F7 SysEx frames and runs the same decoder. For a file-based library. */
   decodePresetBytes(bytes: Uint8Array): PresetSummary {

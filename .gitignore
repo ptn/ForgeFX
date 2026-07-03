@@ -490,3 +490,6 @@ server/scripts/*-from-cache.ts
 
 # local reverse-engineering notes — never publish
 *FINDINGS*.md
+
+# local docker-build staging copy of the sibling codec repo (see Dockerfile header)
+/forgefx-midi/

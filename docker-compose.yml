@@ -8,6 +8,8 @@
 services:
   forgefx:
     build:
+      # prerequisite: stage the sibling codec repo into the context first (Dockerfile header):
+      #   rsync -a --exclude node_modules --exclude .git ../forgefx-midi/ ./forgefx-midi/
       context: .
       target: runtime
     # Or pull a prebuilt image instead of building locally:

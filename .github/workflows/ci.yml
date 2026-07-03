@@ -6,28 +6,56 @@ on:
   pull_request:
     branches: [main]
 
+# The server consumes forgefx-midi as a sibling workspace link (server/package.json:
+# "forgefx-midi": "file:../../forgefx-midi"), so every job checks out BOTH repos side by
+# side under the workspace and builds the codec package first (its exports point at dist/).
 jobs:
   server:
-    name: server (typecheck + build)
+    name: server (codec tests + typecheck + tests + build)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: ForgeFX
+      - uses: actions/checkout@v4
+        with:
+          repository: sKuhLight/forgefx-midi
+          path: forgefx-midi
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: server/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run build
+          cache-dependency-path: |
+            ForgeFX/server/package-lock.json
+            forgefx-midi/package-lock.json
+      - name: Build + test forgefx-midi (golden SysEx suites)
+        working-directory: forgefx-midi
+        run: |
+          npm ci
+          npm test
+          npm run build
+      - name: Server install + typecheck + tests + build
+        working-directory: ForgeFX/server
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
 
   docker:
     name: docker image builds
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: ForgeFX
+      - uses: actions/checkout@v4
+        with:
+          repository: sKuhLight/forgefx-midi
+          path: forgefx-midi
+      # The Dockerfile expects a forgefx-midi/ copy inside the build context (it builds the
+      # codec in-image and mounts it at /forgefx-midi, where the server's file: link resolves).
+      - name: Stage forgefx-midi into the build context
+        run: rsync -a --exclude node_modules --exclude .git forgefx-midi/ ForgeFX/forgefx-midi/
       - name: Build runtime image
-        run: docker build -t forgefx:ci .
+        run: docker build -t forgefx:ci ForgeFX

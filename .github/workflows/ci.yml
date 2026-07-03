@@ -30,10 +30,11 @@ jobs:
             forgefx-midi/package-lock.json
       - name: Build + test forgefx-midi (golden SysEx suites)
         working-directory: forgefx-midi
+        # build BEFORE test: the devices-smoke suite loads the descriptors from dist/
         run: |
           npm ci
-          npm test
           npm run build
+          npm test
       - name: Server install + typecheck + tests + build
         working-directory: ForgeFX/server
         run: |

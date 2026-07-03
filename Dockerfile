@@ -30,14 +30,12 @@ COPY --from=build /forgefx-midi/package.json /forgefx-midi/package.json
 COPY --from=build /forgefx-midi/dist /forgefx-midi/dist
 COPY --from=build /forgefx-midi/catalog /forgefx-midi/catalog
 WORKDIR /app
-COPY definitions ./definitions
 COPY server/package.json server/package-lock.json ./server/
 WORKDIR /app/server
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/server/dist ./dist
 ENV NODE_ENV=production \
-    PORT=5056 \
-    FORGEFX_DEFINITIONS=/app/definitions
+    PORT=5056
 EXPOSE 5056
 # the FM3 is passed through to the container at a stable path (see docker-compose.yml)
 CMD ["node", "dist/index.js"]

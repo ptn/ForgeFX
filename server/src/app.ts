@@ -13,6 +13,11 @@
 // `buildApp(registry)` exists so the API tests can `app.inject()` against an ISOLATED mocked
 // registry without listening; the production entry (index.ts) builds the app over the singleton
 // registry and listens — identical behavior to the pre-factory module.
+//
+// The NON-TRIVIAL handler bodies (grid/blocks/param writes/preset ops/decode) live in
+// runtime/handlers.ts and are shared verbatim with the browser-facing runtime router
+// (runtime/router.ts) — this module keeps only the Fastify wiring, the deprecated /am4/* alias
+// shims, SSE, static UI and the Node-gated cloud/remote/telemetry surface.
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import { existsSync, statSync, createReadStream } from 'node:fs';
@@ -20,6 +25,8 @@ import { join, resolve, extname } from 'node:path';
 import type { DeviceRegistry } from './drivers/registry.js';
 import * as backups from './services/backups.js';
 import * as store from './store.js';
+import { createUnifiedHandlers } from './runtime/handlers.js';
+import { putStoreDoc } from './runtime/services.js';
 import { registerLocalRoutes } from './localStore.js';
 import { registerHelpRoutes } from './help.js';
 import { telemetryStatus, uploadDebugReport, type DebugReport } from './telemetry.js';
@@ -37,13 +44,14 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   // accept raw .syx bytes (preset files) on POST /preset/decode
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
 
-  const driver = () => registry.driver();
-
-  /** Capability-gate reply: the active driver doesn't implement this optional method. */
-  const unsupported = (reply: FastifyReply, capability: string) => {
-    reply.code(501);
-    return { error: 'unsupported', capability };
-  };
+  // The unified handler bodies + capability gate — shared with the runtime router (see handlers.ts).
+  const {
+    driver, unsupported,
+    gridH, blocksH, blockParamsH, setParamH, bypassH, sceneSetH,
+    presetSelectH, presetStoreH, presetNameH, locationsH,
+    backupH, restoreH, fwValidateH, deviceParamH, modModelH,
+    decodeH, decodeBytes
+  } = createUnifiedHandlers(registry);
 
   // ── deprecated-alias plumbing (the folded /am4/* routes) ──
   // Every alias hit gets `Deprecation: true` + a `Sunset` date (≈ one release after Axis migrates to
@@ -64,7 +72,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   };
 
   // ── block & parameter help (curated tooltips; see help.ts) ──
-  registerHelpRoutes(app);
+  registerHelpRoutes(app, registry);
 
   // ── debug probe (raw SysEx round-trip; for FC read-decode RE) ──
   app.post<{ Body: { hex: string } }>('/debug/raw', async (req, reply) => {
@@ -91,135 +99,10 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     return registry.selectConnection(null, model); // clear the port back to auto (a forced profile can remain via `model`)
   }); // manual pick
 
-  // Decode-path errors are surfaced to the client AND logged (console.error → the desktop debug log),
-  // so a failing grid/blocks decode (e.g. on Axe-Fx III presets) shows WHY in the user's log, not just 503.
-  const decodeFail = (reply: FastifyReply, where: string, e: unknown) => {
-    const err = e as Error;
-    console.error(`[forgefx] ${where} failed: ${err?.message ?? e}${err?.stack ? `\n${err.stack}` : ''}`);
-    reply.code(503);
-    return { error: err?.message ?? String(e) };
-  };
-
   // ── unified handlers ──────────────────────────────────────────────────────────────────────────
-  // Each capability-gated handler that a /am4/* alias folds into is a named function: the unified
-  // route AND its alias call the SAME function (aliases only shim params/body) — no fastify inject.
-  const gridH = async (reply: FastifyReply) => {
-    try { return await (await driver()).grid(); } catch (e) { return decodeFail(reply, 'grid decode', e); }
-  };
-  const blocksH = async (reply: FastifyReply) => {
-    try {
-      const d = await driver();
-      if (!d.placedBlocks) return unsupported(reply, 'placedBlocks');
-      return await d.placedBlocks();
-    } catch (e) { return decodeFail(reply, 'blocks decode', e); }
-  };
-  const blockParamsH = async (reply: FastifyReply, addr: number) => {
-    try {
-      const d = await driver();
-      if (!d.blockParams) return unsupported(reply, 'blockParams');
-      return await d.blockParams(addr);
-    } catch (e) { reply.code(404); return { error: (e as Error).message }; }
-  };
-  // Unified param write: {value, continuous}. continuous:true → the driver's normalized write
-  // (gen-3 continuous SET; AM4 SET_NORM with value as 0..1), continuous:false → discrete ordinal.
-  const setParamH = async (reply: FastifyReply, addr: number, paramId: number, value: number, continuous: boolean) => {
-    const d = await driver();
-    if (!d.setParam) return unsupported(reply, 'setParam');
-    return d.setParam(addr, paramId, value, continuous);
-  };
-  const bypassH = async (reply: FastifyReply, addr: number, bypassed: boolean) => {
-    const d = await driver();
-    if (!d.setBypass) return unsupported(reply, 'setBypass');
-    return d.setBypass(addr, bypassed);
-  };
-  const sceneSetH = async (reply: FastifyReply, index: number) => {
-    const d = await driver();
-    if (!d.setScene) return unsupported(reply, 'scenes');
-    return d.setScene(index);
-  };
-  const presetSelectH = async (reply: FastifyReply, number: number) => {
-    const d = await driver();
-    if (!d.selectPreset) return unsupported(reply, 'selectPreset');
-    const r = await d.selectPreset(number);
-    // `code` is ADDITIVE: the AM4 reports its bank-letter location code (e.g. "C02"); gen-3 doesn't.
-    return { ok: r.ok, number, ...(r.code != null ? { code: r.code } : {}) };
-  };
-  const presetStoreH = async (reply: FastifyReply, number?: number) => {
-    const d = await driver();
-    if (!d.store) return unsupported(reply, 'supportsSave');
-    // number omitted → store to the CURRENT slot (needs a live preset-number query).
-    const n = number ?? (d.presetRef ? (await d.presetRef()).number : undefined);
-    if (n == null || !Number.isFinite(n) || n < 0) { reply.code(400); return { error: 'number required' }; }
-    return d.store(n); // gen-3: {ok}; AM4 additionally carries {location, code}
-  };
-  // Stored preset name: driver-backed where supported (AM4 → {number, name, code}); the gen-3
-  // drivers don't implement it, so they keep the pre-Phase-6 {number, name:''} stub byte-identically.
-  const presetNameH = async (n: number) => {
-    const d = await driver();
-    if (d.storedPresetName) {
-      try { return await d.storedPresetName(n); } catch { /* device unreachable → stub below */ }
-    }
-    return { number: n, name: '' };
-  };
-  const locationsH = async (reply: FastifyReply) => {
-    const d = await driver();
-    if (!d.scanPresets) return unsupported(reply, 'presets.canScanNames');
-    try {
-      const r = await d.scanPresets();
-      return { count: r.count, locations: r.presets };
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  };
-  const backupH = async (reply: FastifyReply, location?: number) => {
-    const d = await driver();
-    if (!d.backupPreset) return unsupported(reply, 'backupDump');
-    try { return await d.backupPreset(location); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  };
-  const restoreH = async (reply: FastifyReply, bytes?: number[]) => {
-    if (!Array.isArray(bytes) || !bytes.length) { reply.code(400); return { error: 'bytes[] of one preset dump required' }; }
-    const d = await driver();
-    if (!d.restorePreset) return unsupported(reply, 'restoreDump');
-    try { return await d.restorePreset(bytes); } catch (e) { reply.code(400); return { error: (e as Error).message }; }
-  };
-  const fwValidateH = async (reply: FastifyReply, bytes?: number[]) => {
-    if (!Array.isArray(bytes) || !bytes.length) { reply.code(400); return { error: 'bytes[] of a firmware .syx required' }; }
-    const d = await driver();
-    if (!d.validateFirmware) return unsupported(reply, 'firmwareValidate');
-    return d.validateFirmware(bytes);
-  };
-  const deviceParamH = async (reply: FastifyReply, key?: string, value?: number) => {
-    if (!key || value == null) { reply.code(400); return { error: 'key + value required' }; }
-    const d = await driver();
-    if (!d.setParamByKey) return unsupported(reply, 'deviceParams');
-    try { return await d.setParamByKey(key, value); } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  };
-  const modModelH = async () => {
-    const d = await driver();
-    return d.modifierModel ? d.modifierModel() : null;
-  };
-  // Offline preset decode with model-byte dispatch: sniff frame[4] of the first F0 frame. 0x15 →
-  // the AM4 offline decoder (works whatever unit is attached — decode touches no transport);
-  // anything else → the active driver's gen-3 decode, byte-identical to the pre-Phase-6 behavior.
-  const decodeH = async (reply: FastifyReply, bytes: Uint8Array) => {
-    const f0 = bytes.indexOf(0xf0);
-    const model = f0 >= 0 ? bytes[f0 + 4] : undefined;
-    if (model === 0x15) {
-      try { return { model: 'am4', ...registry.am4().decodeSyx([...bytes]) }; }
-      catch (e) { reply.code(400); return { error: (e as Error).message }; }
-    }
-    const d = await driver();
-    if (!d.decodePresetBytes) return unsupported(reply, 'presetDump');
-    try { return d.decodePresetBytes(bytes); } catch (e) { reply.code(422); return { error: (e as Error).message }; }
-  };
-  // Same model-byte dispatch as decodeH, but THROWING instead of reply-coding — for callers that
-  // decode many files in one request (the local Presets/ scan) and must not touch the route reply.
-  const decodeBytes = async (bytes: Uint8Array): Promise<Record<string, unknown>> => {
-    const f0 = bytes.indexOf(0xf0);
-    const model = f0 >= 0 ? bytes[f0 + 4] : undefined;
-    if (model === 0x15) return { model: 'am4', ...registry.am4().decodeSyx([...bytes]) } as Record<string, unknown>;
-    const d = await driver();
-    if (!d.decodePresetBytes) throw new Error('unsupported: presetDump');
-    return d.decodePresetBytes(bytes) as Record<string, unknown>;
-  };
+  // Each capability-gated handler that a /am4/* alias folds into is a named function from
+  // createUnifiedHandlers above: the unified route AND its alias call the SAME function (aliases
+  // only shim params/body) — no fastify inject.
 
   // ── preset ──
   app.get('/preset', async (_req, reply) => {
@@ -252,14 +135,9 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     if (!d) { reply.code(404); return { error: 'not found' }; }
     return d;
   });
-  app.put<{ Params: { c: string; id: string }; Body: { data: unknown; origin?: string } }>('/store/:c/:id', (req) => {
-    const doc = store.putDoc(req.params.c, req.params.id, req.body?.data);
-    // Fan config writes out to every live UI (host SSE + remote relay) so shared layouts/quick-actions/arrange
-    // sync both directions in real time. `origin` lets the writer ignore its own echo. The library index is
-    // excluded — it's large and isn't a live-applied doc (remotes pull it once at connect).
-    if (req.params.c === 'config' && req.params.id !== 'library') registry.broadcastConfig(req.params.id, req.body?.data, req.body?.origin);
-    return doc;
-  });
+  // Config writes fan out to every live UI (host SSE + remote relay) — see runtime/services.ts.
+  app.put<{ Params: { c: string; id: string }; Body: { data: unknown; origin?: string } }>('/store/:c/:id', (req) =>
+    putStoreDoc(store.defaultStore, registry, req.params.c, req.params.id, req.body?.data, req.body?.origin));
   app.delete<{ Params: { c: string; id: string } }>('/store/:c/:id', (req) => { store.delDoc(req.params.c, req.params.id); return { ok: true }; });
 
   // ── local storage folder (Presets/ library + Sync/ plain-syx mirror; see localStore.ts) ──
@@ -271,7 +149,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     try {
       const d = await driver();
       if (!d.dumpRaw) return unsupported(reply, 'presetDump');
-      const v = await backups.backupPreset(d, Number(req.params.n));
+      const v = await backups.backupPreset(store.defaultStore, d, Number(req.params.n));
       return v ? { version: v } : (reply.code(422), { error: 'empty/invalid preset' });
     } catch (e) { reply.code(503); return { error: (e as Error).message }; }
   });
@@ -280,7 +158,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     try {
       const d = await driver();
       if (!d.dumpRaw) return unsupported(reply, 'presetDump');
-      return await backups.backupDevice(d, req.body?.label ?? 'Device backup', req.body?.from ?? 0, req.body?.to ?? 511);
+      return await backups.backupDevice(store.defaultStore, d, req.body?.label ?? 'Device backup', req.body?.from ?? 0, req.body?.to ?? 511);
     } catch (e) { reply.code(503); return { error: (e as Error).message }; }
   });
   app.get('/backups', () => ({ backups: store.listBackups() }));
@@ -289,7 +167,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     try {
       const d = await driver();
       if (!d.loadPresetBytes) return unsupported(reply, 'loadPresetBytes');
-      return await backups.loadVersion(d, req.params.id);
+      return await backups.loadVersion(store.defaultStore, d, req.params.id);
     } catch (e) { reply.code(503); return { error: (e as Error).message }; }
   });
   // restore a snapshot to its origin slot (load + commit to that slot — destructive for the slot)
@@ -297,7 +175,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     try {
       const d = await driver();
       if (!d.loadPresetBytes || !d.store) return unsupported(reply, 'loadPresetBytes');
-      return await backups.restoreVersion(d, req.params.id);
+      return await backups.restoreVersion(store.defaultStore, d, req.params.id);
     } catch (e) { reply.code(503); return { error: (e as Error).message }; }
   });
   // load arbitrary raw .syx bytes (e.g. a cloud/file preset) into the edit buffer

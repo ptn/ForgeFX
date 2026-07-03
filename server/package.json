@@ -5,6 +5,17 @@
   "description": "ForgeFX — open HTTP API for Fractal devices. Node backend powered by fractal-midi.",
   "license": "MIT",
   "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "default": "./dist/runtime/index.js"
+    }
+  },
   "engines": {
     "node": ">=20"
   },
@@ -13,7 +24,8 @@
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx test/run-all.ts",
+    "check:browser": "tsx scripts/check-browser-safe.ts",
+    "test": "tsx test/run-all.ts && tsx scripts/check-browser-safe.ts",
     "probe:grid": "tsx src/probes/grid-read.ts",
     "probe:grid2e": "tsx src/probes/grid-2e.ts"
   },
@@ -29,6 +41,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },

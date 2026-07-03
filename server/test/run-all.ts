@@ -12,6 +12,7 @@ import { runCapsTests, CAPS_CASE_COUNT } from './api/caps.test.js';
 import { runRemoteTests, REMOTE_CASE_COUNT } from './api/remote.test.js';
 import { runLocalTests, LOCAL_CASE_COUNT } from './api/local.test.js';
 import { runSyncPlanTests, SYNCPLAN_CASE_COUNT } from './api/syncplan.test.js';
+import { runRouterParityTests, ROUTER_PARITY_CASE_COUNT } from './api/router.test.js';
 
 const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `drivers/detection (${DETECTION_CASE_COUNT} cases, mocked Conn/Transport)`, run: runDetectionTests },
@@ -21,7 +22,8 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `api/caps (${CAPS_CASE_COUNT} device capability matrices)`, run: runCapsTests },
   { name: `api/remote (${REMOTE_CASE_COUNT} whitelist decisions)`, run: runRemoteTests },
   { name: `api/local (${LOCAL_CASE_COUNT} local-folder cases, temp root)`, run: runLocalTests },
-  { name: `api/syncplan (${SYNCPLAN_CASE_COUNT} free-tier reconcile plans, pure)`, run: runSyncPlanTests }
+  { name: `api/syncplan (${SYNCPLAN_CASE_COUNT} free-tier reconcile plans, pure)`, run: runSyncPlanTests },
+  { name: `api/router (${ROUTER_PARITY_CASE_COUNT} app↔runtime-router parity twins, mocked FM3)`, run: runRouterParityTests }
 ];
 
 let failures = 0;

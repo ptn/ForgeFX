@@ -1,10 +1,12 @@
 // Axis Cloud sync client (Supabase) — GATED. Only active when AXIS_CLOUD=1; otherwise ForgeFX never
 // imports this module (index.ts dynamic-imports it behind the flag), so release builds ship it dark.
 // ForgeFX is the sync client: the local store (store.ts) stays the source of truth, this pushes/pulls
-// changed `config` documents (last-write-wins by updatedAt) to/from Supabase. Per-user isolation is
-// enforced by RLS, so the public anon/publishable key is safe here. Preset-blob sync = a later step.
+// changed `config` documents (last-write-wins by updatedAt) and preset versions/blobs to/from Supabase.
+// Per-user isolation is enforced by RLS, so the public anon/publishable key is safe here. Free-tier
+// preset sync is quota-limited (reconcile-to-target — see syncPlan.ts); paid = unlimited.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import * as store from './store.js';
+import { planVersionSync, type FreeLimits, type PlanVersion } from './syncPlan.js';
 
 // Env-only — no hardcoded instance. The hosted Axis build injects these at build/run time; self-hosters
 // set them (e.g. in ForgeFX/server/.env, loaded by index.ts). Publishable key only; never a secret.
@@ -82,12 +84,26 @@ class Cloud {
       return { active: !!data.active && notExpired, plan: (data.plan as string) ?? null };
     } catch { return { active: false, plan: null }; }
   }
+  /** Free-tier quota readout via the preset_quota() RPC (deployed with the quota migration). Null when
+   *  signed out or the server predates the migration — callers treat null as "no quota UI, no limits". */
+  async quota(): Promise<{ paid: boolean; usedBytes: number; snapshots: number; backups: number; limits: FreeLimits | null } | null> {
+    try {
+      const { data, error } = await this.#c().rpc('preset_quota');
+      if (error || !data) return null;
+      const q = data as { paid: boolean; usedBytes: number; snapshots: number; backups: number; limits: { max_stored_bytes: number; max_snapshots: number; max_backups: number } | null };
+      return {
+        paid: !!q.paid, usedBytes: q.usedBytes ?? 0, snapshots: q.snapshots ?? 0, backups: q.backups ?? 0,
+        limits: q.limits ? { maxStoredBytes: q.limits.max_stored_bytes, maxSnapshots: q.limits.max_snapshots, maxBackups: q.limits.max_backups } : null
+      };
+    } catch { return null; }
+  }
   async status() {
     if (!cloudEnabled()) return { enabled: false, user: null };
     const { data } = await this.#c().auth.getUser();
     const user = data.user ? { id: data.user.id, email: data.user.email } : null;
     const subscription = user ? await this.#subscription(user.id) : { active: false, plan: null };
-    return { enabled: true, url: URL, user, subscription };
+    const quota = user ? await this.quota() : null;
+    return { enabled: true, url: URL, user, subscription, quota };
   }
 
   /** For Axis Cloud Remote: the authed Supabase client + current user id (for the Realtime host channel),
@@ -137,32 +153,67 @@ class Cloud {
     return { pushed: toPush.length, pulled };
   }
 
-  /** Sync preset version snapshots: push local-only ones (blob → Storage, metadata → preset_versions),
-   *  pull cloud-only ones (download blob → local store). Versions are immutable (id = location+crc+ts),
-   *  so this is a simple set-difference, no LWW. This is what enables cloud-only presets + cross-device. */
-  async syncVersions() {
+  /** Sync preset version snapshots: reconcile the cloud to a TARGET SET (see syncPlan.ts) — paid =
+   *  the whole local∪remote union (set-difference push, unchanged behavior); free = the newest
+   *  full-backup group + the newest N snapshots, pruning replaced remote rows first (the DB trigger
+   *  rejects a second backup group until the old one is gone). Versions are immutable
+   *  (id = location+crc+ts), so no LWW is needed. Pull is unlimited for everyone — quota is push-only. */
+  async syncVersions(paid: boolean) {
     const c = this.#c();
     const user = (await c.auth.getUser()).data.user;
     if (!user) throw new Error('not logged in');
     const bucket = c.storage.from('preset-blobs');
+    const blobPath = (hash: string) => `${user.id}/blobs/${hash}.syx.br`;
 
     console.log('[cloud] syncVersions: listing remote…');
     const { data: remoteRows, error: rerr } = await c.from('preset_versions').select('*');
     if (rerr) throw new Error(`versions pull-list: ${rerr.message}`);
-    const remoteIds = new Set((remoteRows ?? []).map((r) => r.id as string));
     const local = store.listPresetVersions();
-    console.log(`[cloud] syncVersions: ${remoteIds.size} remote, ${local.length} local`);
+    console.log(`[cloud] syncVersions: ${remoteRows?.length ?? 0} remote, ${local.length} local`);
 
-    // A full-device backup creates 100+ versions; the first sync must push them all. Do it in
-    // concurrent batches (instead of one-at-a-time) so a fresh backup syncs in seconds, not minutes.
-    // A full-device backup creates many version records, but content-addressed blobs mean unchanged
-    // presets share one blob — upload each unique hash once. Concurrent batches keep it fast.
-    const toPush = local.filter((v) => !remoteIds.has(v.id));
+    // Union view for the planner (dedup all size accounting by blob_path — content-addressed blobs
+    // are shared across versions). RPC failure (server predates the quota migration) → no limits.
+    const limits = paid ? null : ((await this.quota())?.limits ?? null);
+    const byId = new Map<string, PlanVersion>();
+    for (const v of local) byId.set(v.id, { id: v.id, capturedAt: v.capturedAt, source: v.source, backupId: v.backupId ?? null, stored: v.stored, blobPath: blobPath(v.hash), local: true, remote: false });
+    for (const r of remoteRows ?? []) {
+      const prev = byId.get(r.id as string);
+      if (prev) prev.remote = true;
+      else byId.set(r.id as string, { id: r.id, capturedAt: r.captured_at, source: r.source, backupId: r.backup_id ?? null, stored: r.stored, blobPath: r.blob_path, local: false, remote: true });
+    }
+    const plan = planVersionSync(paid || !limits, limits, [...byId.values()]);
+    if (plan.overCap) {
+      const mb = (limits!.maxStoredBytes / 1048576).toFixed(0);
+      throw new Error(`Cloud storage full — the free plan includes ${mb} MB of preset storage. Delete old snapshots or upgrade.`);
+    }
+
+    // 1 — prune replaced remote rows FIRST (the quota trigger admits a new backup group only after
+    // the old group's rows are gone), then their now-unreferenced blobs. RLS scopes deletes to us.
+    if (plan.pruneRemote.length) {
+      console.log(`[cloud] syncVersions: pruning ${plan.pruneRemote.length} replaced remote version(s)`);
+      for (let i = 0; i < plan.pruneRemote.length; i += 200) {
+        const { error } = await c.from('preset_versions').delete().eq('user_id', user.id).in('id', plan.pruneRemote.slice(i, i + 200));
+        if (error) throw new Error(`prune: ${error.message}`);
+      }
+      for (let i = 0; i < plan.pruneBlobPaths.length; i += 100) {
+        const { error } = await withTimeout(bucket.remove(plan.pruneBlobPaths.slice(i, i + 100)), 20000, 'blob prune');
+        if (error) console.warn(`[cloud] blob prune: ${error.message}`); // orphans are swept by gc-blobs
+      }
+    }
+
+    // 2 — push. A full-device backup creates 100+ versions; content-addressed blobs mean unchanged
+    // presets share one blob (upload each unique hash once), and concurrent batches keep it fast.
+    const localById = new Map(local.map((v) => [v.id, v]));
+    const toPush = plan.push.map((id) => localById.get(id)!).filter(Boolean);
     console.log(`[cloud] syncVersions: pushing ${toPush.length} new version record(s)`);
     let pushed = 0;
     const uploaded = new Set<string>(); // hashes already uploaded this run → skip duplicate blob writes
-    const blobPath = (hash: string) => `${user.id}/blobs/${hash}.syx.br`;
     const CONCURRENCY = 6;
+    const friendlyQuota = (msg: string): string =>
+      msg.includes('quota:storage') ? 'Cloud storage full — free plan limit reached. Delete old snapshots or upgrade.'
+      : msg.includes('quota:backups') ? 'The free plan keeps one full backup — another device may be syncing right now; try again in a moment.'
+      : msg.includes('quota:snapshots') ? 'Snapshot limit reached on the free plan. Delete old snapshots or upgrade.'
+      : msg;
     for (let i = 0; i < toPush.length; i += CONCURRENCY) {
       await Promise.all(toPush.slice(i, i + CONCURRENCY).map(async (v) => {
         const path = blobPath(v.hash);
@@ -178,15 +229,17 @@ class Cloud {
           user_id: user.id, id: v.id, location: v.location, crc: v.crc, name: v.name, model: v.model,
           captured_at: v.capturedAt, source: v.source, backup_id: v.backupId ?? null, bytes: v.bytes, stored: v.stored, blob_path: path
         });
-        if (mErr) throw new Error(`version meta: ${mErr.message}`);
+        if (mErr) throw new Error(friendlyQuota(mErr.message)); // quota:* = the DB backstop (pre-flight normally prevents this)
         pushed++;
       }));
       console.log(`[cloud] syncVersions: pushed ${pushed}/${toPush.length}`);
     }
 
+    // 3 — pull cloud-only versions (skipping the ones we just pruned). Unlimited for every tier.
+    const prunedIds = new Set(plan.pruneRemote);
     let pulled = 0;
     for (const r of remoteRows ?? []) {
-      if (store.hasPresetVersion(r.id)) continue;
+      if (prunedIds.has(r.id as string) || store.hasPresetVersion(r.id)) continue;
       // blob_path is `<uid>/blobs/<hash>.syx.br` — recover the content hash from it.
       const hash = String(r.blob_path).split('/').pop()?.replace(/\.syx\.br$/, '') ?? '';
       const { data: blob, error: dErr } = await withTimeout(bucket.download(r.blob_path), 20000, `blob download ${r.id}`);
@@ -195,7 +248,7 @@ class Cloud {
       store.addVersionRaw({ id: r.id, location: r.location, crc: r.crc, hash, name: r.name, model: r.model, capturedAt: r.captured_at, source: r.source, backupId: r.backup_id ?? undefined, bytes: r.bytes, stored: r.stored }, packed);
       pulled++;
     }
-    return { pushed, pulled };
+    return { pushed, pulled, pruned: plan.pruneRemote.length };
   }
 
   /** The cloud's view of every preset version this user has — metadata only (no blobs). Lets Axis
@@ -223,15 +276,16 @@ class Cloud {
    *  `presets` covers version snapshots + blobs. */
   async sync(scopes?: { config?: boolean; presets?: boolean }) {
     const doConfig = scopes?.config ?? true;
-    // Preset-blob sync is a paid-tier feature. Enforce it here (not just in the UI): even if the client
-    // asks for presets, only run it for an active subscriber. Free tier = config only.
+    // Preset sync is open to every tier since 0.7.1 — the free tier is quota-limited (3 MB / 1 full
+    // backup / N snapshots), enforced by syncVersions' reconcile-to-target plan client-side and the
+    // preset_quota DB trigger as the server backstop. Paid = unlimited (yesterday's behavior).
     const user = (await this.#c().auth.getUser()).data.user;
     const sub = user ? await this.#subscription(user.id) : { active: false, plan: null };
-    const doPresets = (scopes?.presets ?? true) && sub.active;
-    console.log(`[cloud] sync: start (config=${doConfig} presets=${doPresets} plan=${sub.plan ?? 'free'})`);
+    const doPresets = scopes?.presets ?? true;
+    console.log(`[cloud] sync: start (config=${doConfig} presets=${doPresets} plan=${sub.plan ?? 'free'} paid=${sub.active})`);
     const config = doConfig ? await this.syncConfig() : { pushed: 0, pulled: 0 };
     console.log('[cloud] sync: config done, versions…');
-    const versions = doPresets ? await this.syncVersions() : { pushed: 0, pulled: 0 };
+    const versions = doPresets ? await this.syncVersions(sub.active) : { pushed: 0, pulled: 0, pruned: 0 };
     console.log('[cloud] sync: done');
     return { config, versions };
   }

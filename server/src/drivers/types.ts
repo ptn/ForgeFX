@@ -118,6 +118,13 @@ export interface DriverCapabilities {
   cabIrs: boolean;
   /** Store-to-slot save supported. */
   supportsSave: boolean;
+  /** The device does NOT push front-panel / editor edits, so the registry supervisor should poll the
+   *  driver's `readDeviceEditState()` to catch out-of-band edits (AM4 only — HW-107). Absent = no poll. */
+  deviceEditWatch?: boolean;
+  /** The device PUSHES front-panel / editor edits as an unsolicited 0x74/0x75/0x76 state-broadcast
+   *  burst, so the registry installs a persistent RX listener that reflects them as `param` events
+   *  via the driver's `decodeEditBurst()` (gen-3 — the push mirror of deviceEditWatch). Absent = no listener. */
+  deviceEditPush?: boolean;
 }
 
 /** What the registry hands each driver: the ONE shared transport (a single exclusive MIDI/serial
@@ -169,6 +176,12 @@ export interface DeviceDriver {
     { effectId: number; slug: string; defaultId: number; defaultName: string; typeName: string; vals: Record<number, MeterVal> }[]
   >;
   liveMonitors?(onlyEid?: number): Promise<{ effectId: number; family: string; paramName: string; role: string; norm: number; db: number | null; minDb?: number; maxDb?: number }[]>;
+  /** Looper page telemetry (GET /preset/looper): live waveform envelope (0..1 magnitudes) + playhead
+   *  position (0..1) + level (0..1). Empty when the block isn't a looper. gen-3 (capability liveMonitors). */
+  looperTelemetry?(eid: number): Promise<{ wave: number[]; position: number | null; level: number | null }>;
+  /** Toggle a looper transport control (POST /preset/looper/control). `action` ∈ record|play|stop|
+   *  overdub|undo|once|reverse|half; `on` = 1.0/0.0. gen-3. */
+  looperControl?(eid: number, action: string, on: boolean): Promise<{ ok: boolean }>;
 
   // ── FC / modifier ──
   fcReadSwitch?(layout: number, view: number, sw: number): Promise<FcSwitchState>;
@@ -213,4 +226,17 @@ export interface DeviceDriver {
   setParamByKey?(key: string, value: number): Promise<{ ok: boolean }>;
   /** Modifier address model (GET /mod/model). Superset DTO: always carries `bindingSupported`. */
   modifierModel?(): Record<string, unknown> | null;
+
+  // ── device-edit watch (capability deviceEditWatch; AM4-only today) ──
+  /** One poll tick of out-of-band edit detection for devices that don't push edits (AM4 front-panel /
+   *  AM4-Edit — HW-107). Returns `{changed:true}` when a DEVICE-originated edit happened since the last
+   *  tick; suppresses the app's own writes. The registry supervisor calls this while an SSE client is
+   *  listening and emits `changed{scope:'preset'}` on a true. */
+  readDeviceEditState?(): Promise<{ changed: boolean }>;
+  /** Decode a reassembled unsolicited state-broadcast burst (front-panel / editor edit the device
+   *  PUSHED — gen-3) into per-param `param` events, diffed against the last-known snapshot so a
+   *  whole-block burst yields only the moved param(s). `reload:true` means the burst couldn't be diffed
+   *  (first sight of the block) → the registry emits a `changed` reload instead so the edit isn't lost.
+   *  Capability `deviceEditPush`. */
+  decodeEditBurst?(frames: number[][]): { events: { effectId: number; paramId: number; norm: number }[]; reload: boolean };
 }

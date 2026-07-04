@@ -8,6 +8,15 @@ import {
   resolveEnumValues,
   ROUTING_OP_CONNECT,
   ROUTING_OP_DISCONNECT,
+  buildBlockMonitorPoll,
+  isBlockMonitorResponse,
+  parseBlockMonitorNorm,
+  parseOutputMeterRms,
+  meterRmsToDb,
+  buildLooperWaveformPoll,
+  isLooperWaveformResponse,
+  parseLooperWaveform,
+  buildLooperControl,
   type ModernFractalCodec
 } from 'forgefx-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'forgefx-midi/shared';
@@ -170,7 +179,14 @@ class Gen3Driver implements DeviceDriver {
       fcLiveRead: !!profile.fcModel?.liveState,
       modBind: !!profile.modModel,
       cabIrs: Object.keys(profile.cabIrs()).length > 0,
-      supportsSave: true
+      supportsSave: true,
+      // Device-edit reflection splits by whether the unit PUSHES front-panel edits:
+      //  • FM9 / Axe-Fx III / VP4 push an unsolicited 0x74/0x75/0x76 burst → registry LISTENS (deviceEditPush).
+      //  • FM3 (0x11) proven NOT to push (tap 2026-07-04: a front-panel knob emitted zero unsolicited
+      //    frames) → registry POLLS the open block instead (deviceEditWatch → readDeviceEditState below),
+      //    the same poll-fallback shape as the AM4. Disable in the field via FORGEFX_FM3_EDITSYNC=0.
+      deviceEditPush: profile.model !== 0x11,
+      deviceEditWatch: profile.model === 0x11 && process.env.FORGEFX_FM3_EDITSYNC !== '0'
     };
   }
 
@@ -444,6 +460,7 @@ class Gen3Driver implements DeviceDriver {
    * (e.g. 1.2k Hz, -12 dB) where the cache has a range, else the 0..10 position.
    */
   async blockParams(eid: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null; layout?: DeviceLayout }> {
+    this.#watchedEid = eid; // this is the block the user has open → the target the FM3 device-edit poll re-reads
     const codecSlug = slugForEffectId(eid) ?? ''; // audio blocks resolve via the codec
     // virtual effects (GLOBAL=1, Controllers=2, Modifier=3, FC=199) resolve via the profile's effectId map
     const family = SLUG_FAMILY[codecSlug.toLowerCase()] ?? this.#prof.familyForEffectId(eid);
@@ -493,6 +510,9 @@ class Gen3Driver implements DeviceDriver {
         const stride = Math.max(1, ...defs.map((p) => p.paramId)) + 1;
         const channelCount = Math.max(1, Math.floor(bulk.values.length / stride));
         const base = Math.min(activeCh, channelCount - 1) * stride;
+        // Prime the device-edit-push baseline: with the open block's channel-A values known, a later
+        // front-panel edit's burst diffs cleanly to the moved param (no first-sight reload — see decodeEditBurst).
+        this.#editSnapshot.set(eid, bulk.values.slice(base, base + stride));
         for (const p of knobs) {
           const raw = bulk.values[base + p.paramId] ?? 0;
           named.push({ id: p.paramId, name: paramLabel(p), ...this.#display(family, p.paramId, raw) });
@@ -848,42 +868,101 @@ class Gen3Driver implements DeviceDriver {
   async liveMonitors(onlyEid?: number): Promise<{ effectId: number; family: string; paramName: string; role: string; norm: number; db: number | null; minDb?: number; maxDb?: number }[]> {
     const mon = this.#prof.monitorParams;
     if (!mon) return [];
-    // family → its primary monitor def (first table entry for that family)
-    const primaryByFamily = new Map<string, { paramName: string; family: string; role: string; minDb?: number; maxDb?: number }>();
-    for (const [paramName, def] of Object.entries(mon)) if (!primaryByFamily.has(def.family)) primaryByFamily.set(def.family, { paramName, ...def });
-    const decodeNorm = (f: number[], o: number): number => {
-      let v = 0;
-      for (let i = 0; i < 5; i++) v |= (f[o + i]! & 0x7f) << (7 * i);
-      const val = new Float32Array(new Uint32Array([v >>> 0]).buffer)[0]!;
-      return Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0;
-    };
-    const g = await this.grid();
+    // family → ALL its monitor defs (a block can expose several: OUTPUT VU L+R, M-Comp 3 bands, cab
+    // gain+VU, drive gain+supply+headroom). Previously only the family's first def was read.
+    const byFamily = new Map<string, { paramName: string; family: string; pid: number; role: string; minDb?: number; maxDb?: number }[]>();
+    for (const [paramName, def] of Object.entries(mon)) {
+      const arr = byFamily.get(def.family) ?? [];
+      arr.push({ paramName, ...def });
+      byFamily.set(def.family, arr);
+    }
     const dev = await this.#conn();
     const model = this.#prof.model;
-    const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
     const out: { effectId: number; family: string; paramName: string; role: string; norm: number; db: number | null; minDb?: number; maxDb?: number }[] = [];
-    for (const c of g.cells) {
-      if (c.isShunt) continue;
-      if (onlyEid != null && c.effectId !== onlyEid) continue; // gentle single-block poll
-      const slug = slugForEffectId(c.effectId);
+    // Which block(s) to poll. Axis polls the OPEN block (onlyEid) at UI rate — resolve its family
+    // straight from the effectId; do NOT fetch grid() here. grid()'s 500ms cache expires right at the
+    // ~500ms meter-poll interval, so a full ~24KB preset dump was firing on every tick and serializing
+    // behind every read → link latency ballooned to ~400ms. Only the (rare) all-blocks call needs grid().
+    const eids = onlyEid != null ? [onlyEid] : (await this.grid()).cells.filter((c) => !c.isShunt).map((c) => c.effectId);
+    for (const eid of eids) {
+      const slug = slugForEffectId(eid);
       const family = slug ? SLUG_FAMILY[slug] : undefined;
-      const pm = family ? primaryByFamily.get(family) : undefined;
-      if (!pm) continue;
-      const req = [0xf0, 0x00, 0x01, 0x74, model, 0x01, 0x01, 0x00, ...enc14(c.effectId), 0, 0, 0, 0, 0, 0, 0, 0, 0];
-      let cs = 0; for (const b of req) cs ^= b; req.push(cs & 0x7f, 0xf7);
-      const match = (r: number[]) => r[5] === 0x01 && r[6] === 0x01 && r[7] === 0x00 && (r[8]! | (r[9]! << 7)) === c.effectId && r.length >= 18;
-      try {
-        const frames = await dev.request(req, { timeoutMs: 800, quietMs: 40, match: (fs) => fs.some(match) });
-        const r = frames.find(match);
-        if (!r) continue;
-        const norm = decodeNorm(r, 12);
-        const db = pm.minDb != null && pm.maxDb != null ? pm.minDb + norm * (pm.maxDb - pm.minDb) : null;
-        out.push({ effectId: c.effectId, family: pm.family, paramName: pm.paramName, role: pm.role, norm, db, minDb: pm.minDb, maxDb: pm.maxDb });
-      } catch {
-        /* skip this block */
+      const defs = family ? byFamily.get(family) : undefined;
+      if (!defs) continue;
+      // Poll each monitor pid via the capture-confirmed fn 0x01 sub 0x19 state read (FM3-Edit's live-meter
+      // poll; value is a normalized 0..1 float mapped to dB by the table's linear range). Model-generic.
+      for (const def of defs) {
+        try {
+          const frames = await dev.request(buildBlockMonitorPoll(eid, def.pid, model), {
+            timeoutMs: 800, quietMs: 40,
+            match: (fs) => fs.some((f) => isBlockMonitorResponse(f, eid, def.pid))
+          });
+          const r = frames.find((f) => isBlockMonitorResponse(f, eid, def.pid));
+          if (!r) continue;
+          // The OUTPUT block's VU (eid 0x2a, pid 16/17 = sub 0x10/0x11) is the SAME frame as the
+          // leveling meters → its value is RMS ENERGY, not a 0..1 norm. Decode it via 10·log10 and
+          // renormalize into [min,max] for the bar. Every other block monitor is a 0..1 norm.
+          let norm: number;
+          let db: number | null;
+          if (def.family === 'OUTPUT') {
+            const lo = def.minDb ?? -40, hi = def.maxDb ?? 6;
+            db = meterRmsToDb(parseOutputMeterRms(r), lo, hi);
+            norm = hi > lo ? (db - lo) / (hi - lo) : 0;
+          } else {
+            norm = parseBlockMonitorNorm(r);
+            db = def.minDb != null && def.maxDb != null ? def.minDb + norm * (def.maxDb - def.minDb) : null;
+          }
+          out.push({ effectId: eid, family: def.family, paramName: def.paramName, role: def.role, norm, db, minDb: def.minDb, maxDb: def.maxDb });
+        } catch {
+          /* skip this monitor */
+        }
       }
     }
     return out;
+  }
+
+  /** Looper page telemetry: the live waveform envelope + playhead position + level (FM3 capture 2026-07-04;
+   *  gen-3 shared). Waveform = fn 0x01 sub 0x23 (~595 raw 7-bit magnitudes → 0..1); position = sub 0x19
+   *  pid 14 (0..1 across the loop); level = sub 0x19 pid 22. Returns empty with NO device I/O when the
+   *  block isn't a looper, so Axis can poll it for whatever block is open without cost. */
+  async looperTelemetry(eid: number): Promise<{ wave: number[]; position: number | null; level: number | null }> {
+    if (slugForEffectId(eid) !== 'looper') return { wave: [], position: null, level: null };
+    const dev = await this.#conn();
+    const model = this.#prof.model;
+    let wave: number[] = [];
+    let position: number | null = null;
+    let level: number | null = null;
+    try {
+      const wf = await dev.request(buildLooperWaveformPoll(eid, model), { timeoutMs: 900, quietMs: 60, match: (fs) => fs.some((f) => isLooperWaveformResponse(f, eid)) });
+      const r = wf.find((f) => isLooperWaveformResponse(f, eid));
+      if (r) wave = parseLooperWaveform(r);
+    } catch { /* no waveform this tick */ }
+    for (const [pid, isPos] of [[14, true], [22, false]] as const) {
+      try {
+        const fr = await dev.request(buildBlockMonitorPoll(eid, pid, model), { timeoutMs: 500, quietMs: 40, match: (fs) => fs.some((f) => isBlockMonitorResponse(f, eid, pid)) });
+        const rr = fr.find((f) => isBlockMonitorResponse(f, eid, pid));
+        if (rr) { const v = parseBlockMonitorNorm(rr); if (isPos) position = v; else level = v; }
+      } catch { /* skip */ }
+    }
+    return { wave, position, level };
+  }
+
+  /** Toggle a looper transport control (record/play/stop/overdub/undo/once/reverse/half) — the sub-0x10
+   *  float-1.0/0.0 write FM3-Edit uses (capture 2026-07-04). `action` resolves to the block's control pid
+   *  via the device catalog, so it's model-agnostic. Fire-and-forget (serialized). */
+  async looperControl(eid: number, action: string, on: boolean): Promise<{ ok: boolean }> {
+    if (slugForEffectId(eid) !== 'looper') return { ok: false };
+    const NAME: Record<string, string> = {
+      record: 'LOOPER_RECORD', play: 'LOOPER_PLAY', stop: 'LOOPER_STOP', overdub: 'LOOPER_DUB',
+      undo: 'LOOPER_UNDO', once: 'LOOPER_ONCE', reverse: 'LOOPER_REVERSE', half: 'LOOPER_HALF'
+    };
+    const name = NAME[action];
+    if (!name) return { ok: false };
+    const pid = (this.#prof.params['LOOPER'] ?? []).find((p) => p.name === name)?.paramId;
+    if (pid == null) return { ok: false };
+    const dev = await this.#conn();
+    await dev.sendQueued(buildLooperControl(eid, pid, on, this.#prof.model));
+    return { ok: true };
   }
 
   /** Build dropdown options for an enum param. Labels come from fractal-midi's enum overlay
@@ -924,11 +1003,66 @@ class Gen3Driver implements DeviceDriver {
     return defs.find((p) => p.displayLabel === name || p.name === name)?.paramId;
   }
 
+  // ── device-edit push (capability deviceEditPush): reflect front-panel / editor edits the device
+  // broadcasts unsolicited (0x74/0x75/0x76). The registry's persistent RX listener hands us the
+  // reassembled burst; we diff it against the last-known channel-A values so a whole-block packet
+  // yields only the moved param(s). blockParams() primes the baseline when a block is opened. ──
+  #editSnapshot = new Map<number, number[]>(); // effectId → last-known channel-A wire values
+  #watchedEid: number | null = null; // FM3 poll target: the block Axis last opened (set in blockParams)
+  #lastLocalEditAt = 0; // ms of the last local param write — the FM3 poll pauses briefly after (no self-echo)
+
+  /** FM3 device-edit POLL (capability deviceEditWatch — FM3 doesn't push, unlike FM9/III). The registry
+   *  supervisor calls this on a timer; we re-read the currently-open block via the fn-0x1F bulk read and
+   *  reuse decodeEditBurst's diff to emit per-param `param` events for any knob moved on the front panel.
+   *  Returns {changed:true} only for a first-sight reload (registry emits `changed`); per-param events are
+   *  emitted directly here. Paused for ~2s after a local write so it never echoes our own edit mid-drag. */
+  async readDeviceEditState(): Promise<{ changed: boolean }> {
+    const eid = this.#watchedEid;
+    if (eid == null) return { changed: false }; // no block opened yet — nothing to watch
+    if (Date.now() - this.#lastLocalEditAt < 2000) return { changed: false }; // mid local edit → skip (avoid echo)
+    const dev = await this.#conn();
+    let frames: number[][];
+    try {
+      frames = await dev.request(this.#codec.buildBlockBulkReadPoll(eid), { timeoutMs: dev.slow ? 4000 : 1500, quietMs: dev.slow ? 300 : 100, match: (fs) => fs.some((f) => f[5] === 0x76) });
+    } catch { return { changed: false }; } // no reply / timeout — keep last baseline
+    const res = this.decodeEditBurst(frames);
+    if (res.reload) return { changed: true }; // first sight of this block → let the registry emit a reload
+    for (const e of res.events) this.#emit({ type: 'param', effectId: e.effectId, paramId: e.paramId, norm: e.norm });
+    return { changed: false }; // per-param events already emitted
+  }
+
+  decodeEditBurst(frames: number[][]): { events: { effectId: number; paramId: number; norm: number }[]; reload: boolean } {
+    let bulk: ReturnType<ModernFractalCodec['assembleGen3BlockBulkRead']>;
+    try { bulk = this.#codec.assembleGen3BlockBulkRead(frames); } catch { return { events: [], reload: false }; }
+    const eid = bulk.blockId;
+    if (bulk.values.length === 0) return { events: [], reload: false }; // head-only / empty — nothing to read
+    const family = SLUG_FAMILY[(slugForEffectId(eid) ?? '').toLowerCase()] ?? this.#prof.familyForEffectId(eid);
+    const defs = family ? (this.#prof.params[family] ?? []) : [];
+    if (!family || defs.length === 0) return { events: [], reload: false }; // no param family mapped
+    const stride = Math.max(1, ...defs.map((p) => p.paramId)) + 1;
+    const chA = bulk.values.slice(0, stride); // channel A — the default channel blockParams/setParam surface
+    const prev = this.#editSnapshot.get(eid);
+    this.#editSnapshot.set(eid, chA);
+    // First sight of this block (never opened) → we can't diff. Ask the registry for a full reload so the
+    // edit isn't lost; subsequent edits on this block then diff per-param.
+    if (!prev) return { events: [], reload: true };
+    const events: { effectId: number; paramId: number; norm: number }[] = [];
+    for (const p of defs) {
+      const id = p.paramId;
+      if (id >= stride) continue;
+      if (chA[id] === undefined || chA[id] === prev[id]) continue; // unchanged / truncated → skip
+      if (!this.#prof.ranges[family]?.[id]) continue; // only real controls (skip internal/bypass churn)
+      events.push({ effectId: eid, paramId: id, norm: clamp01((chA[id] ?? 0) / 65534) });
+    }
+    return { events, reload: false };
+  }
+
   // ── writes (all address the exact placed instance by effect id) ──
   async setParam(eid: number, paramId: number, value: number, continuous: boolean) {
     // continuous knob writes stream at high frequency → fire-and-forget (instant);
     // a discrete write (enum) is rarer + worth confirming, so reject-watch it.
     const r = continuous ? await this.#send(this.#codec.buildSetParameterContinuous(eid, paramId, clamp01(value))) : await this.#write(this.#codec.buildSetParameter(eid, paramId, value));
+    this.#lastLocalEditAt = Date.now(); // pause the FM3 device-edit poll briefly so it doesn't echo our own write mid-drag
     this.#emit({ type: 'param', effectId: eid, paramId, norm: value }); // live: other UIs move the knob
     return r;
   }

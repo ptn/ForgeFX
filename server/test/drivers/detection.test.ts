@@ -7,7 +7,7 @@ import { setProfileOverride, setConnOverride } from '../../src/transport/connect
 import type { Conn } from '../../src/transport/types.js';
 import { MockTransport, handshakeReply, isIdentifyBroadcast, assert, assertEqual, sleep } from '../helpers/mock.js';
 
-export const DETECTION_CASE_COUNT = 6;
+export const DETECTION_CASE_COUNT = 9;
 
 function makeRegistry(conn: Conn | null, mock: MockTransport): DeviceRegistry {
   return __createRegistryForTest({
@@ -119,6 +119,55 @@ async function silentUnknownMidi(): Promise<void> {
   unsub();
 }
 
+/** g. Axe-Fx II (gen-2) handshake reply model 0x07 → driver 0x07 'axe2' (grid device). */
+async function serialAxe2(): Promise<void> {
+  const mock = new MockTransport('midi', 'Axe-Fx II XL+');
+  mock.reply = (req) => (isIdentifyBroadcast(req) ? [handshakeReply(0x07)] : []);
+  const reg = makeRegistry(
+    { transport: 'midi', id: 'Axe-Fx II XL+ MIDI In', inId: 'Axe-Fx II XL+ MIDI In', outId: 'Axe-Fx II XL+ MIDI Out' },
+    mock
+  );
+  const r = await reg.detect();
+  assertEqual(r.connected, true, 'Axe-Fx II connected');
+  assertEqual(r.modelId, 0x07, 'Axe-Fx II modelId');
+  const d = await reg.driver();
+  assertEqual(d.modelId, 0x07, 'active driver modelId');
+  assertEqual(d.key, 'axe2', 'active driver key');
+  assertEqual(d.capabilities.slotModel, 'grid', 'Axe-Fx II is a grid device');
+}
+
+/** h. VP4 handshake reply model 0x14 → driver 0x14 'vp4' (linear 4-slot). */
+async function serialVp4(): Promise<void> {
+  const mock = new MockTransport('midi', 'VP4');
+  mock.reply = (req) => (isIdentifyBroadcast(req) ? [handshakeReply(0x14)] : []);
+  const reg = makeRegistry({ transport: 'midi', id: 'VP4 MIDI In', inId: 'VP4 MIDI In', outId: 'VP4 MIDI Out' }, mock);
+  const r = await reg.detect();
+  assertEqual(r.connected, true, 'VP4 connected');
+  assertEqual(r.modelId, 0x14, 'VP4 modelId');
+  const d = await reg.driver();
+  assertEqual(d.modelId, 0x14, 'active driver modelId');
+  assertEqual(d.key, 'vp4', 'active driver key');
+  assertEqual(d.capabilities.slotModel, 'linear', 'VP4 is a linear device');
+  assertEqual(d.capabilities.slotCount, 4, 'VP4 has 4 slots');
+}
+
+/** i. Port-name fallback for the newly codec-enabled gen-2 / VP4, and the longest-name regression
+ *     guard: enabling codec on "Axe-Fx II XL+" must NOT steal an "Axe-Fx III" port from 0x10. */
+async function portNameNewDevices(): Promise<void> {
+  const vp4Mock = new MockTransport('midi', 'VP4');
+  const vp4Reg = makeRegistry({ transport: 'midi', id: 'VP4 USB MIDI', inId: 'VP4 USB MIDI', outId: 'VP4 USB MIDI' }, vp4Mock);
+  assertEqual((await vp4Reg.detect()).modelId, 0x14, 'VP4 port-name fallback → 0x14');
+
+  const a2Mock = new MockTransport('midi', 'Axe-Fx II XL+');
+  const a2Reg = makeRegistry({ transport: 'midi', id: 'Axe-Fx II XL+ MIDI', inId: 'Axe-Fx II XL+ MIDI', outId: 'Axe-Fx II XL+ MIDI' }, a2Mock);
+  assertEqual((await a2Reg.detect()).modelId, 0x07, 'Axe-Fx II port-name fallback → 0x07');
+
+  // regression: an Axe-Fx III port must still resolve to 0x10, not be captured by the "Axe-Fx II" substring
+  const a3Mock = new MockTransport('midi', 'Axe-Fx III');
+  const a3Reg = makeRegistry({ transport: 'midi', id: 'Axe-Fx III MIDI In', inId: 'Axe-Fx III MIDI In', outId: 'Axe-Fx III MIDI Out' }, a3Mock);
+  assertEqual((await a3Reg.detect()).modelId, 0x10, 'Axe-Fx III still wins the longest-name match');
+}
+
 export async function runDetectionTests(): Promise<void> {
   // isolation guard: these tests must never run against a persisted user override
   setConnOverride(null);
@@ -129,4 +178,7 @@ export async function runDetectionTests(): Promise<void> {
   await forcedAm4();
   await noDevice();
   await silentUnknownMidi();
+  await serialAxe2();
+  await serialVp4();
+  await portNameNewDevices();
 }

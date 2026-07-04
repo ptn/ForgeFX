@@ -37,13 +37,17 @@ import {
 // instead of hardcoded per-model assumptions.
 import { FM3_DESCRIPTOR, FM9_DESCRIPTOR, AXEFX3_DESCRIPTOR, VP4_DESCRIPTOR } from 'forgefx-midi/devices/gen3';
 import { AM4_DESCRIPTOR } from 'forgefx-midi/devices/am4';
+import { AXEFX2_DESCRIPTOR } from 'forgefx-midi/devices/gen2';
 import type { Transport, Conn, ConnKind } from '../transport/types.js';
 import { DEFAULT_PROFILE, PROFILES, profileForModel, profileForKey, type DeviceProfile } from '../devices.js';
 import { createGen3Driver } from './gen3.js';
 import { createAm4Driver, type Am4Driver } from './am4.js';
+import { createGen2Driver } from './gen2.js';
+import { createVp4Driver } from './vp4.js';
 import type { DeviceDriver, DeviceEvent, DriverCtx } from './types.js';
 
 const DESCRIPTOR_BY_MODEL: Record<number, { capabilities: Record<string, unknown> }> = {
+  0x07: AXEFX2_DESCRIPTOR as never,
   0x10: AXEFX3_DESCRIPTOR as never,
   0x11: FM3_DESCRIPTOR as never,
   0x12: FM9_DESCRIPTOR as never,
@@ -156,9 +160,11 @@ export class DeviceRegistry {
     const cached = this.#drivers.get(modelId);
     if (cached) return cached;
     const make: Record<number, () => DeviceDriver> = {
+      0x07: () => createGen2Driver(this.#ctx),
       0x10: () => createGen3Driver(PROFILES[0x10]!, this.#ctx),
       0x11: () => createGen3Driver(PROFILES[0x11]!, this.#ctx),
       0x12: () => createGen3Driver(PROFILES[0x12]!, this.#ctx),
+      0x14: () => createVp4Driver(this.#ctx),
       0x15: () => createAm4Driver(this.#ctx)
     };
     const f = make[modelId];
@@ -198,7 +204,10 @@ export class DeviceRegistry {
   #forcedModelId(key: string): number {
     const p = profileForKey(key);
     if (p) return p.model;
+    // Descriptor-based devices have no gen-3 DeviceProfile (their codec is separate), so map directly.
     if (key === 'am4') return 0x15;
+    if (key === 'axe2') return 0x07;
+    if (key === 'vp4') return 0x14;
     return -1;
   }
 
@@ -207,9 +216,11 @@ export class DeviceRegistry {
   subscribe(fn: (e: DeviceEvent) => void): () => void {
     this.#subscribers.add(fn);
     this.#startMeters(); // a listener is present → stream CPU + audio meters (gen-3 only)
+    this.#startEditWatch(); // …and poll for front-panel edits on devices that don't push them (AM4 + FM3)
+    this.#startEditPush(); // …and listen for gen-3's unsolicited front-panel state-broadcast bursts
     return () => {
       this.#subscribers.delete(fn);
-      if (this.#subscribers.size === 0) this.#stopMeters();
+      if (this.#subscribers.size === 0) { this.#stopMeters(); this.#stopEditWatch(); this.#stopEditPush(); }
     };
   }
   /** Broadcast a shared-config change to every live UI (SSE + remote relay). Called by the store route on
@@ -241,6 +252,7 @@ export class DeviceRegistry {
         if (!conn) throw new Error('No Fractal device found on any serial or MIDI port. Connect the unit, quit other editors, or pick it under Connection.');
         const t = this.#deps.openConn(conn);
         await t.open();
+        this.#instrumentRequestCounting(t); // so the edit-push listener can tell a poll reply from a front-panel burst
         this.#transport = t;
         return t;
       })().catch((e) => {
@@ -498,6 +510,14 @@ export class DeviceRegistry {
     this.#active = d;
     if (d && !d.capabilities.telemetry.outputMeters) this.#stopMeters();
     if (d && !d.capabilities.telemetry.tuner && this.#tunerTimer) { clearTimeout(this.#tunerTimer); this.#tunerTimer = null; }
+    // Device-edit watch is capability-gated (deviceEditWatch = AM4 + FM3, which don't push): stop it on a device that doesn't need it,
+    // start it on one that does when a listener is already connected (detect() can activate after subscribe).
+    if (d && !d.capabilities.deviceEditWatch) this.#stopEditWatch();
+    else if (d && d.capabilities.deviceEditWatch && this.#subscribers.size > 0) this.#startEditWatch();
+    // Device-edit push (gen-3): (re)attach the RX listener now that detect() has opened the transport +
+    // picked the driver, or drop it on a device that doesn't push.
+    if (d && !d.capabilities.deviceEditPush) this.#stopEditPush();
+    else if (d && d.capabilities.deviceEditPush && this.#subscribers.size > 0) this.#startEditPush();
   }
 
   /** DEBUG probe: send a raw SysEx frame, return every response frame as hex (for FC read-decode). */
@@ -632,6 +652,115 @@ export class DeviceRegistry {
     }
     // short gap after the 4 reads → ~8–10 full meter refreshes/sec
     if (this.#metersTimer) this.#metersTimer = setTimeout(() => this.#pollMeters(), slow ? 2000 : 60);
+  }
+
+  // ── device-edit watch (poll): catch front-panel edits on devices that DON'T push them (AM4 + FM3) ──
+  // AM4 and FM3 emit no unsolicited frame on a front-panel knob turn (AM4 HW-107; FM3 tap-confirmed
+  // 2026-07-04), so — while ≥1 SSE client listens and such a device is active — we poll the driver's
+  // readDeviceEditState(): AM4 uses a device-true edited-bit + fn-0x1F content fingerprint (→ {changed}
+  // → we emit `changed{scope:'preset'}`); FM3 re-reads the open block via fn-0x1F and emits per-param
+  // `param` events itself (→ {changed:false}). Both suppress the app's own writes. Slow-link throttled.
+  // (FM9 / Axe-Fx III DO push → they use the RX listener path instead; see #startEditPush.)
+  #editWatchTimer: ReturnType<typeof setTimeout> | null = null;
+  #startEditWatch() {
+    if (this.#editWatchTimer) return;
+    if (this.#active && !this.#active.capabilities.deviceEditWatch) return; // active device doesn't need it
+    this.#editWatchTimer = setTimeout(() => this.#pollEditWatch(), 1500);
+  }
+  #stopEditWatch() {
+    if (this.#editWatchTimer) clearTimeout(this.#editWatchTimer);
+    this.#editWatchTimer = null;
+  }
+  async #pollEditWatch() {
+    if (!this.#editWatchTimer) return;
+    const d = this.#active;
+    // Wait for a positively-identified driver before poking the unit — subscribe() can start the watch
+    // before detect() runs (mirrors #pollMeters' unknown-device guard).
+    if (!d) { this.#editWatchTimer = setTimeout(() => this.#pollEditWatch(), 1000); return; }
+    if (!d.capabilities.deviceEditWatch || !d.readDeviceEditState) { this.#stopEditWatch(); return; }
+    let slow = false;
+    try {
+      const dev = await this.transport();
+      slow = dev.slow; // a generic 5-pin DIN adapter can't carry the extra poll — back off (see #pollMeters)
+      if (!slow) {
+        const r = await d.readDeviceEditState();
+        if (r.changed) this.#emit({ type: 'changed', scope: 'preset' });
+      }
+    } catch {
+      /* transient — keep polling */
+    }
+    if (this.#editWatchTimer) this.#editWatchTimer = setTimeout(() => this.#pollEditWatch(), slow ? 4000 : 1500);
+  }
+
+  // ── gen-3 device-edit PUSH: reflect front-panel / editor edits the unit broadcasts unsolicited ──
+  // Unlike the AM4 (which pushes nothing → we poll), gen-3 devices emit an unsolicited 0x74/0x75/0x76
+  // state-broadcast burst on a front-panel param edit. We keep ONE persistent onFrame listener (the
+  // transport dispatches every inbound frame to all handlers — additive, coexists with request()'s
+  // temporary waiters) that reassembles an unsolicited burst and asks the driver to decode it into
+  // per-param `param` events. ECHO GUARD: the ONLY server-issued source of a 0x74 burst is our own
+  // fn-0x1F BULK-READ poll (blockParams / meters sweep / cab / monitors) — so if a fn-0x1F read is in
+  // flight the burst is that reply (its request() waiter consumes it) and we skip it; otherwise it's a
+  // genuine front-panel edit. Crucially this counts ONLY fn-0x1F reads: gen-3 also runs a 60ms OUTPUT-
+  // meter poll (fn 0x19) + tempo/scene/writes, none of which elicit a 0x74 burst — gating on those would
+  // wrongly drop a front-panel edit that lands during the meter poll (the bug that broke gen-3 sync).
+  #pendingBulkReads = 0;
+  #editPushUnsub: (() => void) | null = null;
+  #burst: number[][] | null = null;
+  #burstTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Wrap a freshly-opened transport so each in-flight fn-0x1F bulk-read bumps #pendingBulkReads (the
+   *  edit-push echo guard). Only fn-0x1F is counted (bytes[5]===0x1f); every other request is passed
+   *  through untouched. Idempotent per transport instance; harmless for non-push devices. */
+  #instrumentRequestCounting(t: Transport) {
+    const origRequest = t.request.bind(t);
+    t.request = (bytes, opts) => {
+      if (bytes[5] !== 0x1f) return origRequest(bytes, opts); // not a bulk read → can't elicit a 0x74 burst
+      this.#pendingBulkReads++;
+      return origRequest(bytes, opts).finally(() => { this.#pendingBulkReads = Math.max(0, this.#pendingBulkReads - 1); });
+    };
+  }
+
+  #startEditPush() {
+    if (this.#editPushUnsub) return;
+    const t = this.#transport;
+    if (!t?.isOpen) return; // not connected yet — #activate re-attaches once detection opens the transport
+    if (this.#active && !this.#active.capabilities.deviceEditPush) return; // active device doesn't push
+    this.#editPushUnsub = t.onFrame((frame) => this.#onInboundFrame(frame));
+  }
+  #stopEditPush() {
+    this.#editPushUnsub?.();
+    this.#editPushUnsub = null;
+    this.#resetBurst();
+  }
+  #resetBurst() {
+    this.#burst = null;
+    if (this.#burstTimer) { clearTimeout(this.#burstTimer); this.#burstTimer = null; }
+  }
+  #armBurstTimer() {
+    if (this.#burstTimer) clearTimeout(this.#burstTimer);
+    this.#burstTimer = setTimeout(() => this.#finalizeBurst(), 120); // flush even if the 0x76 end was lost
+  }
+  #onInboundFrame(frame: number[]) {
+    const d = this.#active;
+    if (!d?.capabilities.deviceEditPush || !d.decodeEditBurst) return;
+    // Reply to our own fn-0x1F bulk-read — the request()'s own handler owns it; skip (+ drop any partial).
+    if (this.#pendingBulkReads > 0) { this.#resetBurst(); return; }
+    const fn = frame[5];
+    if (fn === 0x74) { this.#burst = [frame]; this.#armBurstTimer(); return; } // burst head (new supersedes partial)
+    if (!this.#burst) return; // stray body/end/other with no head we own
+    if (fn === 0x75) { this.#burst.push(frame); this.#armBurstTimer(); return; } // body chunk
+    if (fn === 0x76) { this.#burst.push(frame); this.#finalizeBurst(); return; } // end terminator
+    this.#finalizeBurst(); // any other frame mid-burst → the burst ended, flush what we have
+  }
+  #finalizeBurst() {
+    const frames = this.#burst;
+    this.#resetBurst();
+    const d = this.#active;
+    if (!frames || frames.length === 0 || !d?.decodeEditBurst) return;
+    let res: { events: { effectId: number; paramId: number; norm: number }[]; reload: boolean };
+    try { res = d.decodeEditBurst(frames); } catch { return; }
+    if (res.reload) { this.#emit({ type: 'changed', scope: 'grid' }); return; } // first sight → full reload
+    for (const e of res.events) this.#emit({ type: 'param', effectId: e.effectId, paramId: e.paramId, norm: e.norm });
   }
 }
 

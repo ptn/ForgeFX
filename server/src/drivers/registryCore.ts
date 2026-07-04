@@ -37,13 +37,17 @@ import {
 // instead of hardcoded per-model assumptions.
 import { FM3_DESCRIPTOR, FM9_DESCRIPTOR, AXEFX3_DESCRIPTOR, VP4_DESCRIPTOR } from 'forgefx-midi/devices/gen3';
 import { AM4_DESCRIPTOR } from 'forgefx-midi/devices/am4';
+import { AXEFX2_DESCRIPTOR } from 'forgefx-midi/devices/gen2';
 import type { Transport, Conn, ConnKind } from '../transport/types.js';
 import { DEFAULT_PROFILE, PROFILES, profileForModel, profileForKey, type DeviceProfile } from '../devices.js';
 import { createGen3Driver } from './gen3.js';
 import { createAm4Driver, type Am4Driver } from './am4.js';
+import { createGen2Driver } from './gen2.js';
+import { createVp4Driver } from './vp4.js';
 import type { DeviceDriver, DeviceEvent, DriverCtx } from './types.js';
 
 const DESCRIPTOR_BY_MODEL: Record<number, { capabilities: Record<string, unknown> }> = {
+  0x07: AXEFX2_DESCRIPTOR as never,
   0x10: AXEFX3_DESCRIPTOR as never,
   0x11: FM3_DESCRIPTOR as never,
   0x12: FM9_DESCRIPTOR as never,
@@ -156,9 +160,11 @@ export class DeviceRegistry {
     const cached = this.#drivers.get(modelId);
     if (cached) return cached;
     const make: Record<number, () => DeviceDriver> = {
+      0x07: () => createGen2Driver(this.#ctx),
       0x10: () => createGen3Driver(PROFILES[0x10]!, this.#ctx),
       0x11: () => createGen3Driver(PROFILES[0x11]!, this.#ctx),
       0x12: () => createGen3Driver(PROFILES[0x12]!, this.#ctx),
+      0x14: () => createVp4Driver(this.#ctx),
       0x15: () => createAm4Driver(this.#ctx)
     };
     const f = make[modelId];
@@ -198,7 +204,10 @@ export class DeviceRegistry {
   #forcedModelId(key: string): number {
     const p = profileForKey(key);
     if (p) return p.model;
+    // Descriptor-based devices have no gen-3 DeviceProfile (their codec is separate), so map directly.
     if (key === 'am4') return 0x15;
+    if (key === 'axe2') return 0x07;
+    if (key === 'vp4') return 0x14;
     return -1;
   }
 

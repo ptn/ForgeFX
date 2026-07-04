@@ -7,9 +7,11 @@ import {
   buildReadParam,
   BLOCK_SLOT_PID_LOW,
   BLOCK_NAMES_BY_VALUE,
+  BLOCK_TYPE_VALUES,
   buildSetParam,
   buildSetParamNorm,
   buildSetFloatParam,
+  buildSetBlockType,
   buildSetBlockBypass,
   buildSwitchScene,
   buildSwitchPreset,
@@ -156,6 +158,12 @@ const AM4_UNIT_LABEL: Record<string, string> = {
 function am4ParamLabel(p: Param): string {
   return p.displayLabel ?? p.name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
+/** Display name for a block slug in the "add a block" palette. Acronyms/compounds that Title-Case badly
+ *  get an explicit label; everything else is just capitalized (drive → Drive, reverb → Reverb). */
+const AM4_BLOCK_LABEL: Record<string, string> = { geq: 'Graphic EQ', peq: 'Parametric EQ', volpan: 'Vol/Pan', ingate: 'Input Gate' };
+function am4BlockLabel(slug: string): string {
+  return AM4_BLOCK_LABEL[slug] ?? slug.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 class Am4Driver implements DeviceDriver {
   readonly modelId = 0x15;
@@ -164,7 +172,7 @@ class Am4Driver implements DeviceDriver {
   readonly capabilities: DriverCapabilities = {
     slotModel: 'linear',
     slotCount: 4,
-    gridEdit: false,
+    gridEdit: true, // slot block-type write (buildSetBlockType): place/change/clear a block in slots 1..4
     scenes: 4,
     channels: false,
     presetDump: false, // AM4 backups run their own verbatim dump path (/am4/preset/backup), not the gen-3 one
@@ -352,6 +360,14 @@ class Am4Driver implements DeviceDriver {
     const named: NamedParam[] = [];
     const enums: EnumParam[] = [];
     let type: { value: number; name: string } | null = null;
+    // A block's page can aggregate more than one hardware sub-block under one name — the amp block
+    // carries its integrated cab (pidLow 0x3e) alongside the amp itself (pidLow 0x3a). Both sub-blocks
+    // number their params from pidHigh 0, so pidHigh ALONE is not a unique id across the page (it caused
+    // duplicate-key crashes) and is ALSO the wrong write address for the foreign sub-block. Encode the id
+    // as the FULL address for foreign params — (pidLow<<16)|pidHigh — and keep the bare pidHigh for the
+    // block's own params (compact + back-compatible). setParam() below reverses this. pidLow ≤ 0xce and
+    // pidHigh ≤ 0x7d2, so the two never overlap: a bare pidHigh is always < 0x10000, a composite ≥ 0x3a0000.
+    const encId = (p: Param) => (p.pidLow === pidLow ? p.pidHigh : (p.pidLow << 16) | p.pidHigh);
     for (const p of params) {
       const display = lookup(p.name);
       if (display === undefined) continue; // param not in the dump (channel-gated / not placed)
@@ -360,11 +376,11 @@ class Am4Driver implements DeviceDriver {
         const value = this.#enumOrdinal(p, display);
         // the block's own type selector is surfaced separately (like gen-3's `type`), not as a plain enum
         if (p.name === 'type') { type = { value, name: p.enumValues?.[value] ?? String(display) }; continue; }
-        enums.push({ id: p.pidHigh, name: am4ParamLabel(p), value, options });
+        enums.push({ id: encId(p), name: am4ParamLabel(p), value, options });
       } else {
         const value = typeof display === 'number' ? display : Number(display) || 0;
         named.push({
-          id: p.pidHigh,
+          id: encId(p),
           name: am4ParamLabel(p),
           value,
           norm: this.#normOf(p, value),
@@ -378,7 +394,9 @@ class Am4Driver implements DeviceDriver {
     // bypass state — the reader already read it into slot.bypassed as part of the same atomic dump, so we
     // surface it as a leading virtual enum (gen-3 exposes bypass via the grid) with no extra round-trip.
     if (slot && slot.bypassed !== undefined) {
-      enums.unshift({ id: 0x0003, name: 'Bypass', value: slot.bypassed ? 1 : 0, options: [{ value: 0, label: 'Engaged' }, { value: 1, label: 'Bypassed' }] });
+      // 0xffff is a virtual id (bypass has its own route /preset/blocks/:eid/bypass, never setParam):
+      // above every bare pidHigh (≤ 0x7d2) and below every composite (≥ 0x3a0000), so it can't collide.
+      enums.unshift({ id: 0xffff, name: 'Bypass', value: slot.bypassed ? 1 : 0, options: [{ value: 0, label: 'Engaged' }, { value: 1, label: 'Bypassed' }] });
     }
     this.#log(`blockParams ${blockName} (pidLow ${pidLow}): ${named.length} knobs, ${enums.length} enums${type ? ` type=${type.name}` : ''}`);
     return { block: blockName, slug: blockName, page: -1, named, enums, type };
@@ -495,8 +513,12 @@ class Am4Driver implements DeviceDriver {
 
   /** Generic driver write (unified PUT /preset/blocks/:addr/params/:paramId): addr = pidLow,
    *  paramId = pidHigh. continuous:true → SET_NORM with `value` as the 0..1 norm; continuous:false →
-   *  discrete/enum ordinal write. Thin dispatch over the hardware-verified wire methods. */
+   *  discrete/enum ordinal write. Thin dispatch over the hardware-verified wire methods.
+   *  `paramId` may be a composite address minted by blockParams() for a foreign sub-block (e.g. the
+   *  amp page's integrated cab): any value > 0xffff carries its own pidLow in the high bits, which wins
+   *  over `addr` so the write lands on the right sub-block. Bare pidHighs (≤ 0x7d2) keep using `addr`. */
   async setParam(pidLow: number, pidHigh: number, value: number, continuous: boolean) {
+    if (pidHigh > 0xffff) { pidLow = pidHigh >>> 16; pidHigh &= 0xffff; }
     return continuous ? this.setParamNorm(pidLow, pidHigh, value) : this.setParamValue(pidLow, pidHigh, value);
   }
 
@@ -505,6 +527,48 @@ class Am4Driver implements DeviceDriver {
     const dev = await this.#openTransport();
     await dev.sendQueued(buildSetBlockBypass(blockPidLow, bypassed));
     return { ok: true };
+  }
+
+  /** Placeable-block catalog (GET /blocks) — powers the "add a block" palette. The AM4 roster is fixed
+   *  (one instance per type; see BLOCK_TYPE_VALUES). `page` is the block's own type code, which the palette
+   *  hands straight back to placeCell → buildSetBlockType. Without this the palette is empty and "add FX"
+   *  silently does nothing. `paramCount`/`typeCount` are derived from KNOWN_PARAMS for a richer palette row. */
+  blocksCatalog(): { slug: string; family: string; instance: number; name: string; page: number; paramCount: number; typeCount: number }[] {
+    const catalog = Object.values(KNOWN_PARAMS) as Param[];
+    return (Object.entries(BLOCK_TYPE_VALUES) as [string, number][])
+      .filter(([slug]) => slug !== 'none')
+      .map(([slug, page]) => {
+        const params = catalog.filter((p) => p.block === slug);
+        const typeParam = params.find((p) => p.name === 'type');
+        return {
+          slug,
+          family: slug, // AM4 has a single instance per block type — family == slug
+          instance: 1,
+          name: am4BlockLabel(slug),
+          page,
+          paramCount: params.length,
+          typeCount: typeParam ? Object.keys(typeParam.enumValues ?? {}).length : 0
+        };
+      });
+  }
+
+  /** Grid edit (unified PUT /preset/grid/cell) on the AM4's 1×4 linear chain: place/change the block in a
+   *  slot, or clear it (blockId 0 — the UI's clearCell). `col` is the 1-indexed slot (1..4, from Axis'
+   *  wire conversion); `row` is always 1 on a linear device and is ignored. `blockId` is the target block's
+   *  own type code (the effectId the grid/slots report), matching buildSetBlockType's blockTypeValue. */
+  async placeCell(row: number, col: number, blockId: number): Promise<{ ok: boolean }> {
+    if (!Number.isInteger(col) || col < 1 || col > 4) {
+      const err = new Error(`AM4 has 4 linear slots; slot must be 1..4, got ${col}`) as Error & { statusCode?: number };
+      err.statusCode = 400; // client error, not a server fault
+      throw err;
+    }
+    const dev = await this.#openTransport();
+    const frame = buildSetBlockType(col as 1 | 2 | 3 | 4, blockId);
+    const res = await dev.request(frame, { timeoutMs: 600, quietMs: 50, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
+    this.#presetCache = null;
+    this.#ctx.emit({ type: 'changed', scope: 'grid' }); // live: other UIs / SSE re-read the chain
+    this.#log(`placeCell: slot ${col} <- ${blockId ? `blockType 0x${blockId.toString(16)}` : 'cleared'}`);
+    return { ok: res.some((f) => isCommandAck(frame, f)) };
   }
 
   /** Switch the active scene (0..3). */

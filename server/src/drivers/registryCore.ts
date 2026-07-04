@@ -337,7 +337,10 @@ export class DeviceRegistry {
         canDeepScan: c.presetDump,
         liveQuery: !!d.presetRef
       },
-      gridRouting: c.gridEdit,
+      // Routing = rewiring the signal path with CABLES, which is a real driver method (d.cable) — NOT the
+      // same as being able to place/clear blocks. The AM4 edits its chain (d.placeCell) but has a fixed
+      // linear route with no cables, so gridRouting is false there while block placement still works.
+      gridRouting: !!d.cable,
       gridCursorSelect: !!d.selectCell,
       shuntBase: grid ? GEN3_SHUNT_BASE : null,
       // both codecs serve full param catalogs server-side (gen-3 tables + AM4 KNOWN_PARAMS) — Axis
@@ -462,7 +465,18 @@ export class DeviceRegistry {
       this.#modelId = modelId;
       this.#detected = true;
       this.#activate(modelId >= 0 ? this.#driverFor(modelId) : null);
-      console.log(`[forgefx] active profile: ${this.#prof.key} (model 0x${this.#prof.model.toString(16)}, ${this.#prof.rows}x${this.#prof.cols}) ${p.model === modelId ? 'adopted' : 'kept default — no profile for 0x' + (modelId >= 0 ? modelId.toString(16) : '?')}`);
+      // Report what actually handles the unit — the ACTIVE DRIVER, not the vestigial gen-3 `#prof`. A
+      // non-gen-3 unit (the AM4) has a real driver (its own codec + capabilities) even though `#prof`
+      // keeps its FM3 default; logging "profile fm3 kept default" for an AM4 reads as a detection failure
+      // when detection in fact succeeded. Only genuinely unhandled models fall through to the profile note.
+      const drv = this.#active;
+      if (drv) {
+        const c = drv.capabilities;
+        const shape = c.slotModel === 'grid' && c.grid ? `${c.grid.rows}x${c.grid.cols} grid` : `${c.slotCount ?? '?'} linear slots`;
+        console.log(`[forgefx] active driver: ${drv.key} (model 0x${modelId.toString(16)}, ${shape}) — ${p.model === modelId ? 'gen-3 profile adopted' : 'own codec (no gen-3 profile, as expected)'}`);
+      } else {
+        console.log(`[forgefx] no driver for 0x${modelId >= 0 ? modelId.toString(16) : '?'} — kept default profile ${this.#prof.key} (0x${this.#prof.model.toString(16)})`);
+      }
       return {
         connected: modelId >= 0,
         modelId,

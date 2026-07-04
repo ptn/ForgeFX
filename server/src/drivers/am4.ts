@@ -7,6 +7,7 @@ import {
   buildReadParam,
   BLOCK_SLOT_PID_LOW,
   BLOCK_NAMES_BY_VALUE,
+  resolveBlockTypeValue,
   BLOCK_TYPE_VALUES,
   buildSetParam,
   buildSetParamNorm,
@@ -43,7 +44,7 @@ import {
 } from 'forgefx-midi/am4';
 // The VERIFIED high-level descriptor reader (hardware-confirmed upstream). We drive it over an adapter
 // that wraps ForgeFX's Transport as the MidiConnection the reader expects (see Am4Conn below).
-import { AM4_DESCRIPTOR } from 'forgefx-midi/devices/am4';
+import { AM4_DESCRIPTOR, readActiveBufferEditedBit, readAllParams } from 'forgefx-midi/devices/am4';
 import type { MidiConnection } from 'forgefx-midi/core/midi';
 import type { DispatchCtx, PresetSnapshot } from 'forgefx-midi/core';
 import type { Transport } from '../transport/types.js';
@@ -72,6 +73,10 @@ const STRUCT_BYTES = 192;
 const STRUCT_SLOT_OFFSETS = [0xb0, 0xb4, 0xb8, 0xbc]; // int32 LE block-type code, slot 1..4
 const STRUCT_NAME_OFFSET = 0x10;
 const STRUCT_SCENE_OFFSET = 0x08;
+// int32 LE @0x00 = the CURRENT stored-preset location (0..103). Verified against a beta log
+// (log (8).txt, 2026-07-03) across 7 presets: every /preset/select round-trip left this field
+// equal to the selected location (Interface=0, Electric=2, AC-20=7, …, Bass NoAmp DI=11).
+const STRUCT_LOCATION_OFFSET = 0x00;
 
 /** The 192-byte structure response: F0 …74 15 01 …[1f 00]… <220 septets> cksum F7. */
 function isStructResponse(r: number[]): boolean {
@@ -182,7 +187,8 @@ class Am4Driver implements DeviceDriver {
     fcLiveRead: false,
     modBind: false, // modifier model is data-only (see modifierModel); the wire binding is not captured
     cabIrs: false,
-    supportsSave: true
+    supportsSave: true,
+    deviceEditWatch: true // AM4 pushes NOTHING on front-panel / AM4-Edit edits (HW-107) → registry polls readDeviceEditState()
   };
 
   #ctx: DriverCtx;
@@ -248,8 +254,16 @@ class Am4Driver implements DeviceDriver {
     });
   }
 
-  /** One atomic fn-0x1F read of the preset structure → the 4 slots' block types + preset name + scene. */
-  async #readStructure(): Promise<{ slots: Am4Slot[]; name: string; scene: number } | null> {
+  // Brief TTL cache of the last structure read: one page load fans out into /preset/grid +
+  // /preset/blocks (+ presetRef polls), each of which needs the same fn-0x1F structure — the beta
+  // log showed every load doing back-to-back identical struct reads. Invalidated on writes.
+  #structCache: { s: { slots: Am4Slot[]; name: string; scene: number; location: number }; at: number } | null = null;
+  static #STRUCT_TTL_MS = 500;
+
+  /** One atomic fn-0x1F read of the preset structure → the 4 slots' block types + preset name +
+   *  scene + current stored location. TTL-cached (see #structCache). */
+  async #readStructure(): Promise<{ slots: Am4Slot[]; name: string; scene: number; location: number } | null> {
+    if (this.#structCache && Date.now() - this.#structCache.at < Am4Driver.#STRUCT_TTL_MS) return this.#structCache.s;
     const dev = await this.#openTransport();
     const read = buildReadParam({ pidLow: BLOCK_SLOT_PID_LOW, pidHigh: 0x0000 }, ATOMIC_READ_TYPE);
     try {
@@ -267,12 +281,105 @@ class Am4Driver implements DeviceDriver {
       }
       const slots: Am4Slot[] = STRUCT_SLOT_OFFSETS.map((off, i) => {
         const code = int32LE(b, off);
-        return { slot: i + 1, blockType: BLOCK_NAMES_BY_VALUE[code] ?? (code ? `0x${code.toString(16)}` : 'none'), pidLow: code };
+        // instance-aware: a second instance of a block type occupies base+1 (e.g. drive 0x76 +
+        // drive 0x77 in the factory "Bass NoAmp DI") — resolve it instead of showing a hex code
+        const name = resolveBlockTypeValue(code)?.name;
+        return { slot: i + 1, blockType: name ?? (code ? `0x${code.toString(16)}` : 'none'), pidLow: code };
       });
-      return { slots, name: asciiAt(b, STRUCT_NAME_OFFSET, 32), scene: int32LE(b, STRUCT_SCENE_OFFSET) };
+      const s = {
+        slots,
+        name: asciiAt(b, STRUCT_NAME_OFFSET, 32),
+        scene: int32LE(b, STRUCT_SCENE_OFFSET),
+        location: int32LE(b, STRUCT_LOCATION_OFFSET)
+      };
+      this.#structCache = { s, at: Date.now() };
+      return s;
     } catch {
       return null;
     }
+  }
+
+  /** Drop both TTL caches after any device write — the next read must reflect the change. */
+  #invalidate() {
+    this.#presetCache = null;
+    this.#structCache = null;
+    // Our own write also flips the device's "edited" bit + moves param values, so tell the device-edit
+    // watcher to silently re-seed its baseline next tick instead of misreading it as a front-panel edit.
+    this.#selfEditPending = true;
+  }
+
+  // ── Device-edit watch: catch front-panel / AM4-Edit edits the unit does NOT push (HW-107) ─────────
+  // The registry supervisor polls readDeviceEditState() (capability deviceEditWatch) while an SSE client
+  // is listening. Two-stage detector:
+  //   1) cheap gate — the device-true "edited" bit (GET_PATCH byte[21]&0x04): set on ANY working-buffer
+  //      edit, cleared on save. It STAYS set across successive edits, so the bit alone can't distinguish
+  //      knob-A from a later knob-B while already dirty.
+  //   2) content fingerprint — when dirty, hash the placed blocks' fn-0x1F param arrays (channel-A
+  //      quarter). A change in the bit OR the hash ⇒ a device-originated edit.
+  // Feedback-loop suppression: every LOCAL write calls #invalidate() → #selfEditPending, so the next tick
+  // adopts the new state as baseline WITHOUT emitting (our writes already emit their own events).
+  //
+  // ASSUMPTION (implement-now, verify-after — needs a hardware capture): two zero-edit fn-0x1F reads
+  // return byte-identical value arrays (the fn-0x1F payload is stable — unlike the ~238-byte GET_PATCH
+  // frame whose bytes 29/30/31/236 free-run, and the preset dump which drifts ~20% on a no-op re-dump).
+  // If a block's array drifts on a no-op re-read, exclude its drifting indices in #hashPlacedParams. A
+  // false positive only costs a redundant reload; it never misses a real edit.
+  #deviceEditBaseline: { edited: boolean; hash: string } | null = null;
+  #selfEditPending = false;
+
+  /** One device-edit watch tick. Returns `{changed:true}` when a DEVICE-originated (front-panel /
+   *  AM4-Edit) edit happened since the last baseline. Silent no-op right after our own writes and on
+   *  read failure (never churns the UI on a transient timeout). Serialized behind #withReader. */
+  async readDeviceEditState(): Promise<{ changed: boolean }> {
+    return this.#withReader(async () => {
+      this.#lastTransport = await this.#openTransport();
+      const conn = new Am4Conn(this.#lastTransport);
+      let edited: boolean;
+      try {
+        edited = await readActiveBufferEditedBit(conn);
+      } catch {
+        return { changed: false }; // device busy / timeout — keep the last baseline, don't reload
+      }
+      const hash = edited ? await this.#hashPlacedParams(conn) : '';
+      const base = this.#deviceEditBaseline;
+      // First run, or our own write just dirtied the buffer → adopt as baseline and emit nothing.
+      if (base === null || this.#selfEditPending) {
+        this.#selfEditPending = false;
+        this.#deviceEditBaseline = { edited, hash };
+        return { changed: false };
+      }
+      const changed = edited !== base.edited || hash !== base.hash;
+      this.#deviceEditBaseline = { edited, hash };
+      return { changed };
+    });
+  }
+
+  /** Fingerprint the placed blocks' current param values via fn-0x1F (channel-A quarter only — stable
+   *  and small; B/C/D would add churn). Plain string join, not a digest — the arrays are short. Runs
+   *  inside #withReader (the caller already holds the lock). */
+  async #hashPlacedParams(conn: Am4Conn): Promise<string> {
+    const s = await this.#readStructure(); // TTL-cached; the poll cadence keeps it warm
+    const placed = (s?.slots ?? []).filter((sl) => sl.pidLow !== 0 && sl.blockType !== 'none');
+    const parts: string[] = [];
+    for (const sl of placed) {
+      try {
+        const r = await readAllParams(conn, sl.pidLow);
+        const stride = r.itemCount >= 4 ? Math.floor(r.itemCount / 4) : r.values.length;
+        parts.push(`${sl.pidLow}:${r.values.slice(0, stride).join(',')}`);
+      } catch {
+        // block not readable this tick — skip it (its absence is itself part of the fingerprint)
+      }
+    }
+    return parts.join('|');
+  }
+
+  /** Live current-preset query (unified GET /preset; capability presets.liveQuery) — feeds the
+   *  Axis top-bar preset display. Number is the stored location decoded from the structure's
+   *  int32 @0x00 (see STRUCT_LOCATION_OFFSET); -1 when the structure read fails (Axis ignores
+   *  refs with a negative number). */
+  async presetRef(): Promise<{ number: number; name: string }> {
+    const s = await this.#readStructure();
+    return { number: s?.location ?? -1, name: s?.name ?? '' };
   }
 
   /** Read the 4 signal-chain slots → which block sits in each (the AM4 equivalent of the grid). */
@@ -283,24 +390,31 @@ class Am4Driver implements DeviceDriver {
   }
 
   /** The 4 slots as a PresetGridDTO (1 row × 4, linear chain) so Axis renders the AM4 on the existing
-   *  Signal Grid — no separate view needed to get it on screen + testable. */
+   *  Signal Grid — no separate view needed to get it on screen + testable.
+   *
+   *  EMPTY slots are OMITTED (no cell), matching gen-3 semantics. They were previously emitted as
+   *  shunt cells to draw the pass-through chain, but a gen-3 shunt is a REMOVABLE routing cell —
+   *  Axis tapped them into clearCell writes, reported every drop target as occupied, and never
+   *  rendered the empty-cell "add a block" button (the whole add/drag/drop path was dead on AM4). */
   async grid(): Promise<PresetGridDTO> {
     const s = await this.#readStructure();
     const slots = s?.slots ?? this.#emptySlots();
     this.#log(`grid: "${s?.name ?? ''}" — ${slots.map((x) => x.blockType).join(', ')}`);
-    const cells = slots.map((sl, i) => ({
-      row: 0,
-      col: i,
-      effectId: sl.pidLow,
-      name: sl.blockType === 'none' ? '' : sl.blockType,
-      isShunt: sl.blockType === 'none',
-      routeFlag: 0,
-      fromRows: i > 0 ? [0] : [], // linear: each slot feeds from the previous
-      // ADDITIVE (Phase 6): the AM4 block dictionary is already slug-shaped ('amp', 'drive', …) —
-      // surface it so Axis can key params/help/icons without its `!c.pack` gates. Omitted for
-      // empty/unknown cells (nothing derivable there).
-      ...(sl.pidLow && BLOCK_NAMES_BY_VALUE[sl.pidLow] ? { slug: BLOCK_NAMES_BY_VALUE[sl.pidLow] } : {})
-    }));
+    const cells = slots
+      .filter((sl) => sl.pidLow !== 0 && sl.blockType !== 'none')
+      .map((sl) => ({
+        row: 0,
+        col: sl.slot - 1,
+        effectId: sl.pidLow,
+        name: sl.blockType,
+        isShunt: false,
+        routeFlag: 0,
+        fromRows: sl.slot - 1 > 0 ? [0] : [], // linear: each slot feeds from the previous
+        // ADDITIVE (Phase 6): the AM4 block dictionary is already slug-shaped ('amp', 'drive', …) —
+        // surface it so Axis can key params/help/icons without its `!c.pack` gates. Omitted for
+        // unknown cells (nothing derivable there).
+        ...(resolveBlockTypeValue(sl.pidLow) ? { slug: resolveBlockTypeValue(sl.pidLow)!.name } : {})
+      }));
     return { model: 'am4', name: s?.name ?? '', crcValid: true, rows: 1, cols: 4, scenes: [], cells, source: 'dump' };
   }
 
@@ -313,8 +427,10 @@ class Am4Driver implements DeviceDriver {
     const slots = (s?.slots ?? this.#emptySlots()).filter((sl) => sl.pidLow !== 0 && sl.blockType !== 'none');
     const snap = slots.length ? await this.readPreset() : null;
     return slots.map((sl) => {
-      const slug = BLOCK_NAMES_BY_VALUE[sl.pidLow] ?? sl.blockType;
-      const byp = snap?.slots.find((x) => x.block_type === slug)?.bypassed;
+      const slug = resolveBlockTypeValue(sl.pidLow)?.name ?? sl.blockType;
+      // match the reader slot by POSITION, not block name — a preset can hold two instances of the
+      // same block type (drive 0x76 + drive 0x77), and a name match would return the wrong one
+      const byp = (snap?.slots.find((x) => x.slot === sl.slot) ?? snap?.slots.find((x) => x.block_type === slug))?.bypassed;
       return { slug, name: sl.blockType, effectId: sl.pidLow, row: 1, col: sl.slot, fromRows: [], bypassed: byp ?? null, channel: null };
     });
   }
@@ -338,15 +454,23 @@ class Am4Driver implements DeviceDriver {
    *  `named` carries the continuous knobs, `enums` the discrete selectors, and the block's own `type`
    *  selector is surfaced separately — exactly as gen-3 splits them, so Axis renders both the same way. */
   async blockParams(pidLow: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null }> {
-    const blockName = BLOCK_NAMES_BY_VALUE[pidLow];
+    // instance-aware: pidLow may be an instance code (base+N, e.g. drive #2 = 0x77) — the catalog
+    // is keyed by the BASE pidLow, the wire address stays the instance code (see encId/setParam)
+    const resolved = resolveBlockTypeValue(pidLow);
+    const blockName = resolved?.name;
     if (!blockName || blockName === 'none') {
       this.#log(`blockParams: unknown pidLow ${pidLow}`);
       return { block: blockName ?? `0x${pidLow.toString(16)}`, slug: blockName ?? '', page: -1, named: [], enums: [], type: null };
     }
+    const basePidLow = resolved.base;
     const snap = await this.readPreset();
-    // Find the placed slot whose block_type is this block, then its DECODED param dict (flat, or the one
+    // Find the placed slot for THIS pidLow, then its DECODED param dict (flat, or the one
     // active-channel dict for channel-bearing blocks — getPreset nests exactly one channel per slot).
-    const slot = snap?.slots.find((s) => s.block_type === blockName);
+    // Match by POSITION via the structure (a preset can hold two instances of the same block type);
+    // fall back to the name match when the structure read is unavailable.
+    const chainSlot = (await this.#readStructure())?.slots.find((sl) => sl.pidLow === pidLow)?.slot;
+    const slot = (chainSlot !== undefined ? snap?.slots.find((s) => s.slot === chainSlot) : undefined)
+      ?? snap?.slots.find((s) => s.block_type === blockName);
     const decoded = this.#slotParamValues(slot);
     // The reader's decoded keys should match KNOWN_PARAMS names verbatim, but casing/space/underscore
     // drift between the catalog and the descriptor reader would silently drop every param (display
@@ -367,7 +491,7 @@ class Am4Driver implements DeviceDriver {
     // as the FULL address for foreign params — (pidLow<<16)|pidHigh — and keep the bare pidHigh for the
     // block's own params (compact + back-compatible). setParam() below reverses this. pidLow ≤ 0xce and
     // pidHigh ≤ 0x7d2, so the two never overlap: a bare pidHigh is always < 0x10000, a composite ≥ 0x3a0000.
-    const encId = (p: Param) => (p.pidLow === pidLow ? p.pidHigh : (p.pidLow << 16) | p.pidHigh);
+    const encId = (p: Param) => (p.pidLow === basePidLow ? p.pidHigh : (p.pidLow << 16) | p.pidHigh);
     for (const p of params) {
       const display = lookup(p.name);
       if (display === undefined) continue; // param not in the dump (channel-gated / not placed)
@@ -391,15 +515,24 @@ class Am4Driver implements DeviceDriver {
         });
       }
     }
+    // Defensive: never ship two params with the same id — Axis keys its widget {#each} on it, and a
+    // duplicate key hard-crashes the Svelte editor (seen live when the catalog briefly carried
+    // renamed entries alongside their old keys at the same wire address). First occurrence wins.
+    const dedupeById = <T extends { id: number }>(list: T[]): T[] => {
+      const seen = new Set<number>();
+      return list.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
+    };
+    const namedOut = dedupeById(named);
+    const enumsOut = dedupeById(enums);
     // bypass state — the reader already read it into slot.bypassed as part of the same atomic dump, so we
     // surface it as a leading virtual enum (gen-3 exposes bypass via the grid) with no extra round-trip.
     if (slot && slot.bypassed !== undefined) {
       // 0xffff is a virtual id (bypass has its own route /preset/blocks/:eid/bypass, never setParam):
       // above every bare pidHigh (≤ 0x7d2) and below every composite (≥ 0x3a0000), so it can't collide.
-      enums.unshift({ id: 0xffff, name: 'Bypass', value: slot.bypassed ? 1 : 0, options: [{ value: 0, label: 'Engaged' }, { value: 1, label: 'Bypassed' }] });
+      enumsOut.unshift({ id: 0xffff, name: 'Bypass', value: slot.bypassed ? 1 : 0, options: [{ value: 0, label: 'Engaged' }, { value: 1, label: 'Bypassed' }] });
     }
-    this.#log(`blockParams ${blockName} (pidLow ${pidLow}): ${named.length} knobs, ${enums.length} enums${type ? ` type=${type.name}` : ''}`);
-    return { block: blockName, slug: blockName, page: -1, named, enums, type };
+    this.#log(`blockParams ${blockName} (pidLow ${pidLow}): ${namedOut.length} knobs, ${enumsOut.length} enums${type ? ` type=${type.name}` : ''}`);
+    return { block: blockName, slug: blockName, page: -1, named: namedOut, enums: enumsOut, type };
   }
 
   /** The decoded (display-value) param dict for a placed slot: `params` on non-channel blocks, else the
@@ -498,7 +631,7 @@ class Am4Driver implements DeviceDriver {
     const n = Math.max(0, Math.min(1, norm));
     const frame = buildSetParamNorm({ pidLow, pidHigh }, n);
     const res = await dev.request(frame, { timeoutMs: 600, quietMs: 50, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
-    this.#presetCache = null;
+    this.#invalidate();
     return { ok: res.some((f) => isCommandAck(frame, f)) };
   }
 
@@ -507,7 +640,7 @@ class Am4Driver implements DeviceDriver {
     const dev = await this.#openTransport();
     const frame = buildSetFloatParam({ pidLow, pidHigh }, value);
     const res = await dev.request(frame, { timeoutMs: 600, quietMs: 50, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
-    this.#presetCache = null;
+    this.#invalidate();
     return { ok: res.some((f) => isCommandAck(frame, f)) };
   }
 
@@ -526,6 +659,7 @@ class Am4Driver implements DeviceDriver {
   async setBypass(blockPidLow: number, bypassed: boolean) {
     const dev = await this.#openTransport();
     await dev.sendQueued(buildSetBlockBypass(blockPidLow, bypassed));
+    this.#invalidate();
     return { ok: true };
   }
 
@@ -565,7 +699,7 @@ class Am4Driver implements DeviceDriver {
     const dev = await this.#openTransport();
     const frame = buildSetBlockType(col as 1 | 2 | 3 | 4, blockId);
     const res = await dev.request(frame, { timeoutMs: 600, quietMs: 50, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
-    this.#presetCache = null;
+    this.#invalidate();
     this.#ctx.emit({ type: 'changed', scope: 'grid' }); // live: other UIs / SSE re-read the chain
     this.#log(`placeCell: slot ${col} <- ${blockId ? `blockType 0x${blockId.toString(16)}` : 'cleared'}`);
     return { ok: res.some((f) => isCommandAck(frame, f)) };
@@ -575,6 +709,7 @@ class Am4Driver implements DeviceDriver {
   async switchScene(index: number) {
     const dev = await this.#openTransport();
     await dev.sendQueued(buildSwitchScene(index));
+    this.#invalidate();
     return { ok: true, scene: index };
   }
 
@@ -593,6 +728,7 @@ class Am4Driver implements DeviceDriver {
   async switchPreset(location: number) {
     const dev = await this.#openTransport();
     await dev.sendQueued(buildSwitchPreset(location));
+    this.#invalidate();
     return { ok: true, location };
   }
 
@@ -644,6 +780,7 @@ class Am4Driver implements DeviceDriver {
     const loc = am4DumpLocation(dump);
     const dev = await this.#openTransport();
     for (const msg of splitSysex([...dump.raw])) await dev.sendQueued(msg);
+    this.#invalidate();
     this.#log(`restore -> ${loc.code ?? '(active)'} (${dump.raw.length}B, 6 msgs)`);
     return { ok: true, location: loc.active ? null : (loc.index ?? null), code: loc.code ?? null };
   }

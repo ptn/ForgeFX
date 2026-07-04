@@ -131,7 +131,9 @@ async function am4(): Promise<void> {
     assertEqual(caps.presets.canRename, false, 'AM4 presets.canRename');
     assertEqual(caps.presets.canScanNames, true, 'AM4 presets.canScanNames');
     assertEqual(caps.presets.canDeepScan, false, 'AM4 presets.canDeepScan');
-    assertEqual(caps.presets.liveQuery, false, 'AM4 presets.liveQuery');
+    // presetRef() decodes the current location from the fn-0x1F structure (int32 @0x00) → the
+    // unified GET /preset works on the AM4 and Axis shows the preset in the top bar.
+    assertEqual(caps.presets.liveQuery, true, 'AM4 presets.liveQuery');
     assertEqual(caps.gridRouting, false, 'AM4 gridRouting');
     assertEqual(caps.gridCursorSelect, false, 'AM4 gridCursorSelect');
     assertEqual(caps.shuntBase, null, 'AM4 shuntBase');

@@ -336,6 +336,27 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
       return await d.liveMonitors(Number.isFinite(eid as number) ? eid : undefined);
     } catch (e) { reply.code(503); return { error: (e as Error).message }; }
   });
+  // Looper page telemetry (waveform envelope + playhead position + level). Empty for non-looper blocks.
+  app.get('/preset/looper', async (req, reply) => {
+    const q = (req.query as { eid?: string }).eid;
+    const eid = q != null && q !== '' ? Number(q) : NaN;
+    try {
+      const d = await driver();
+      if (!d.looperTelemetry) return unsupported(reply, 'looperTelemetry');
+      if (!Number.isFinite(eid)) { reply.code(400); return { error: 'eid required' }; }
+      return await d.looperTelemetry(eid);
+    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+  });
+  // Toggle a looper transport control (record/play/stop/overdub/undo/once/reverse/half).
+  app.post<{ Body: { eid?: number; action?: string; on?: boolean } }>('/preset/looper/control', async (req, reply) => {
+    const { eid, action, on } = req.body ?? {};
+    try {
+      const d = await driver();
+      if (!d.looperControl) return unsupported(reply, 'looperControl');
+      if (!Number.isFinite(eid as number) || !action) { reply.code(400); return { error: 'eid + action required' }; }
+      return await d.looperControl(eid as number, action, on !== false);
+    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+  });
   // FC current switch state via the sub-0x01 structured config-selector read (the read FM3-Edit uses on
   // FC-page entry). Returns the decoded current state (category/function/display/color + labels) for one
   // (layout,view,switch), read via the sub-0x1b value channel that tracks param edits (fcReadState).

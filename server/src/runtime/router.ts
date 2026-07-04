@@ -338,6 +338,25 @@ export function createRouter(deps: RuntimeDeps): {
       return await d.liveMonitors(Number.isFinite(eid as number) ? eid : undefined);
     } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
   });
+  on('GET', '/preset/looper', async (c) => {
+    const q = c.query.get('eid') ?? undefined;
+    const eid = q != null && q !== '' ? Number(q) : NaN;
+    try {
+      const d = await driver();
+      if (!d.looperTelemetry) return unsupported(c.reply, 'looperTelemetry');
+      if (!Number.isFinite(eid)) { c.reply.code(400); return { error: 'eid required' }; }
+      return await d.looperTelemetry(eid);
+    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
+  });
+  on('POST', '/preset/looper/control', async (c) => {
+    const { eid, action, on: onv } = (c.body ?? {}) as { eid?: number; action?: string; on?: boolean };
+    try {
+      const d = await driver();
+      if (!d.looperControl) return unsupported(c.reply, 'looperControl');
+      if (!Number.isFinite(eid as number) || !action) { c.reply.code(400); return { error: 'eid + action required' }; }
+      return await d.looperControl(eid as number, action, onv !== false);
+    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
+  });
   // FC current switch state via the sub-0x01 structured config-selector read (see app.ts).
   on('GET', '/fc/state', async (c) => {
     const layout = Number(c.query.get('layout') ?? 0);

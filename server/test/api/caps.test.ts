@@ -128,7 +128,7 @@ async function am4(): Promise<void> {
     assertEqual(caps.slotModel, 'linear', 'AM4 slotModel (curated key intact)');
     assertEqual(caps.presets.count, 104, 'AM4 presets.count');
     assertEqual(caps.presets.addressing, 'bankLetter', 'AM4 presets.addressing');
-    assertEqual(caps.presets.canRename, false, 'AM4 presets.canRename');
+    assertEqual(caps.presets.canRename, true, 'AM4 presets.canRename (buildSetPresetName wired)');
     assertEqual(caps.presets.canScanNames, true, 'AM4 presets.canScanNames');
     assertEqual(caps.presets.canDeepScan, false, 'AM4 presets.canDeepScan');
     // presetRef() decodes the current location from the fn-0x1F structure (int32 @0x00) → the
@@ -144,7 +144,7 @@ async function am4(): Promise<void> {
     assertEqual(caps.meters.liveMonitors, false, 'AM4 meters.liveMonitors');
     assertEqual(caps.meters.outputLevels, false, 'AM4 meters.outputLevels');
     assertEqual(caps.meters.cpu, false, 'AM4 meters.cpu');
-    assertEqual(caps.sceneNamesWritable, false, 'AM4 sceneNamesWritable');
+    assertEqual(caps.sceneNamesWritable, true, 'AM4 sceneNamesWritable (buildSetSceneName wired)');
     assertEqual(caps.fc.model, false, 'AM4 fc.model');
     assertEqual(caps.fc.liveState, false, 'AM4 fc.liveState');
     assertEqual(caps.modifiers.model, true, 'AM4 modifiers.model (data-only model exists)');

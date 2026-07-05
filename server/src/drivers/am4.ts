@@ -14,6 +14,8 @@ import {
   buildSetFloatParam,
   buildSetBlockType,
   buildSetBlockBypass,
+  buildSetPresetName,
+  buildSetSceneName,
   buildSwitchScene,
   buildSwitchPreset,
   buildGetPresetName,
@@ -49,6 +51,7 @@ import type { MidiConnection } from 'forgefx-midi/core/midi';
 import type { DispatchCtx, PresetSnapshot } from 'forgefx-midi/core';
 import type { Transport } from '../transport/types.js';
 import type { DeviceDriver, DriverCapabilities, DriverCtx, PresetGridDTO, PresetBlockDTO, NamedParam, EnumParam, Am4Slot } from './types.js';
+import type { TypeModel } from '../devices.js';
 
 /** Split a raw byte stream into its complete F0..F7 SysEx messages. */
 function splitSysex(bytes: number[]): number[][] {
@@ -663,6 +666,52 @@ class Am4Driver implements DeviceDriver {
     return { ok: true };
   }
 
+  /** Rename the current preset (POST /preset/name; capability presets.canRename). AM4's rename command
+   *  (`buildSetPresetName`, capture-verified) targets a STORED location, so we rename the location the
+   *  edit buffer was loaded from (struct int32 @0x00). This persists immediately — no separate store is
+   *  needed, unlike gen-3's edit-buffer rename. Returns {ok:false} (not 501) when the location can't be
+   *  read or is out of range. Enables the top-bar rename button + the library rename-and-save flow. */
+  async setPresetName(name: string): Promise<{ ok: boolean }> {
+    const loc = (await this.#readStructure())?.location ?? -1;
+    if (!Number.isInteger(loc) || loc < 0 || loc > 103) return { ok: false };
+    const clean = (name ?? '').replace(/[^\x20-\x7e]/g, '').slice(0, 32); // printable ASCII, ≤32 (codec throws otherwise)
+    const dev = await this.#openTransport();
+    const frame = buildSetPresetName(loc, clean);
+    const res = await dev.request(frame, { timeoutMs: 600, quietMs: 50, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
+    this.#invalidate();
+    this.#ctx.emit({ type: 'changed', scope: 'preset' });
+    return { ok: res.some((f) => isCommandAck(frame, f)) };
+  }
+
+  /** Rename a scene (POST /scene/name; capability sceneNamesWritable). `index` is 0-based (UI passes
+   *  scene-1). AM4's `buildSetSceneName` (capture-verified) writes to the WORKING BUFFER only — the name
+   *  shows live but persists to the preset only on the next store (same as gen-3). */
+  async setSceneName(index: number, name: string): Promise<{ ok: boolean }> {
+    if (!Number.isInteger(index) || index < 0 || index > 3) return { ok: false };
+    const clean = (name ?? '').replace(/[^\x20-\x7e]/g, '').slice(0, 32);
+    const dev = await this.#openTransport();
+    const frame = buildSetSceneName(index, clean);
+    const res = await dev.request(frame, { timeoutMs: 600, quietMs: 50, match: (fs) => fs.some((f) => isCommandAck(frame, f)) });
+    this.#invalidate();
+    this.#ctx.emit({ type: 'changed', scope: 'preset' });
+    return { ok: res.some((f) => isCommandAck(frame, f)) };
+  }
+
+  /** Change a placed block's model/type (POST /preset/blocks/:eid/type). AM4 addresses blocks by pidLow
+   *  (= the eid the grid reports); the model selector is the block's `type` enum param, written by its
+   *  wire ordinal (the same discrete-SET path plain enums use). Mirrors gen-3's setType so the type
+   *  picker's selection actually applies — without it the route answered 501 and retype was rejected. */
+  async setType(pidLow: number, value: number): Promise<{ ok: boolean }> {
+    const blockName = resolveBlockTypeValue(pidLow)?.name;
+    const typeParam = blockName
+      ? (Object.values(KNOWN_PARAMS) as Param[]).find((p) => p.block === blockName && p.name === 'type')
+      : undefined;
+    if (!typeParam) return { ok: false };
+    const res = await this.setParamValue(pidLow, typeParam.pidHigh, value);
+    this.#ctx.emit({ type: 'changed', scope: 'grid' });
+    return res;
+  }
+
   /** Placeable-block catalog (GET /blocks) — powers the "add a block" palette. The AM4 roster is fixed
    *  (one instance per type; see BLOCK_TYPE_VALUES). `page` is the block's own type code, which the palette
    *  hands straight back to placeCell → buildSetBlockType. Without this the palette is empty and "add FX"
@@ -684,6 +733,19 @@ class Am4Driver implements DeviceDriver {
           typeCount: typeParam ? Object.keys(typeParam.enumValues ?? {}).length : 0
         };
       });
+  }
+
+  /** Block "type" roster (GET /blocks/:slug/types) — the amp/drive/delay/… model list the type picker
+   *  shows. AM4 stores it as the block's `type` enum param (surfaced separately from plain enums in
+   *  blockParams); without this the route answered 501 and the picker rendered empty, so "select type of
+   *  block" silently did nothing. Mirrors gen-3's rosterFor DTO — manufacturer/basedOn are gen-3-only
+   *  catalog fields the AM4 tables don't carry, hence null. Returns [] for a slug with no type selector. */
+  blockTypes(slug: string): TypeModel[] {
+    const typeParam = (Object.values(KNOWN_PARAMS) as Param[]).find((p) => p.block === slug && p.name === 'type');
+    if (!typeParam?.enumValues) return [];
+    return Object.entries(typeParam.enumValues)
+      .map(([v, name]) => ({ value: Number(v), name, manufacturer: null, basedOn: null }))
+      .sort((a, b) => a.value - b.value);
   }
 
   /** Grid edit (unified PUT /preset/grid/cell) on the AM4's 1×4 linear chain: place/change the block in a

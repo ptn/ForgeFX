@@ -13,6 +13,10 @@ export { createCloud } from './runtime/cloud.js';
 
 const URL = process.env.SUPABASE_URL ?? '';
 const KEY = process.env.SUPABASE_ANON_KEY ?? '';
+// Confirmation link always lands on the public web domain (stable), never localhost / the desktop's
+// random port. Override per environment via AXIS_AUTH_CONFIRM_URL (e.g. http://localhost:5173/... in dev);
+// the target must be on the Supabase redirect allow-list (see supabase/config.toml additional_redirect_urls).
+const CONFIRM_REDIRECT = process.env.AXIS_AUTH_CONFIRM_URL ?? 'https://axisapp.live/auth/confirmed';
 export const cloudEnabled = () => process.env.AXIS_CLOUD === '1' && !!URL && !!KEY;
 
-export const cloud = createCloud({ url: URL, anonKey: KEY, enabled: () => process.env.AXIS_CLOUD === '1' }, defaultStore);
+export const cloud = createCloud({ url: URL, anonKey: KEY, confirmRedirectUrl: CONFIRM_REDIRECT, enabled: () => process.env.AXIS_CLOUD === '1' }, defaultStore);

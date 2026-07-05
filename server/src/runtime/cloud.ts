@@ -16,6 +16,13 @@ export interface CloudConfig {
   url: string;
   anonKey: string;
   enabled?: () => boolean;
+  // Where the email-confirmation link lands after Supabase verifies the token. Auth is headless
+  // (email/password, detectSessionInUrl:false) so this carries NO session — it only needs to be a
+  // stable, friendly page. Always the public web domain, never localhost / the desktop's random port,
+  // so ONE value works for every build (desktop, portable, cloud, mobile, browser-direct). MUST be on
+  // the project's redirect allow-list or Supabase silently falls back to the Site URL. Unset → Supabase
+  // uses the Site URL.
+  confirmRedirectUrl?: string;
 }
 
 /** Reject if a promise doesn't settle in time. storage-js runs its own fetch (no client timeout), so a
@@ -65,7 +72,10 @@ export class Cloud {
     return this.#client;
   }
   async register(email: string, password: string) {
-    const { data, error } = await this.#c().auth.signUp({ email, password });
+    const { data, error } = await this.#c().auth.signUp({
+      email, password,
+      ...(this.#cfg.confirmRedirectUrl ? { options: { emailRedirectTo: this.#cfg.confirmRedirectUrl } } : {})
+    });
     if (error) throw new Error(error.message);
     return { user: data.user ? { id: data.user.id, email: data.user.email } : null, needsConfirmation: !data.session };
   }

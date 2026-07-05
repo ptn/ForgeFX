@@ -250,8 +250,18 @@ function fm9EnumLabels(family: string, paramId: number): string[] | undefined {
 const fm3Rosters = FM3_ROSTERS as unknown as Record<string, Fm3TypeModel[]>;
 const fm3Enums = FM3_ENUM_OVERRIDES as unknown as Record<string, Record<string, string[]>>;
 const fm3CabIrs = FM3_CAB_IRS as unknown as Record<string, string[]>;
+const fm3Params = FM3_PARAMS_BY_FAMILY as unknown as ParamsByFamily;
 function fm3RosterFor(slug: string): TypeModel[] {
-  return (fm3Rosters[slug.toLowerCase()] as TypeModel[] | undefined) ?? [];
+  const explicit = fm3Rosters[slug.toLowerCase()] as TypeModel[] | undefined;
+  if (explicit?.length) return explicit;
+  // Fallback (mirrors fm9RosterFor/axe3RosterFor): families without a pre-baked roster still ship their
+  // sub-model list as the enum-override on the <FAMILY>_TYPE param (chorus/phaser/tremolo/filter/flanger…).
+  // FM3 has this data in FM3_ENUM_OVERRIDES; it just wasn't surfaced as a roster.
+  const fam = SLUG_FAMILY[slug.toLowerCase()];
+  if (!fam) return [];
+  const typePid = fm3Params[fam]?.find((p) => p.name === `${fam}_TYPE` && p.unit === 'enum')?.paramId;
+  const labels = typePid != null ? fm3Enums[fam]?.[String(typePid)] : undefined;
+  return labels ? labels.map((name, value) => ({ value, name, manufacturer: null, basedOn: null })) : [];
 }
 function fm3EnumLabels(family: string, paramId: number): string[] | undefined {
   return fm3Enums[family]?.[String(paramId)];

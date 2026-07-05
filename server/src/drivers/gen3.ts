@@ -504,14 +504,18 @@ class Gen3Driver implements DeviceDriver {
     {
       const dev = await this.#conn();
       try {
-        const activeCh = 0; // channel A (skip the per-open status dump — one fewer serial round-trip)
+        // Read the block's CURRENT channel (A-D) so a channel switch actually reloads that channel's
+        // params/type: the fn-0x1F body is channel-blocked and holds ALL channels, so we must slice the
+        // active one, not always channel A. Costs one status round-trip per open — worth it for correctness.
+        const activeCh = (await this.#statusByEffectId()).get(eid)?.channel ?? 0;
+        this.#watchedChannel = activeCh; // keep the device-edit-burst diff on the same channel (see decodeEditBurst)
         const frames = await dev.request(this.#codec.buildBlockBulkReadPoll(eid), { timeoutMs: dev.slow ? 8000 : 2500, quietMs: dev.slow ? 600 : 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
         const bulk = this.#codec.assembleGen3BlockBulkRead(frames);
         const stride = Math.max(1, ...defs.map((p) => p.paramId)) + 1;
         const channelCount = Math.max(1, Math.floor(bulk.values.length / stride));
         const base = Math.min(activeCh, channelCount - 1) * stride;
-        // Prime the device-edit-push baseline: with the open block's channel-A values known, a later
-        // front-panel edit's burst diffs cleanly to the moved param (no first-sight reload — see decodeEditBurst).
+        // Prime the device-edit-push baseline with the OPEN channel's values so a later front-panel
+        // edit's burst diffs cleanly to the moved param (no first-sight reload — see decodeEditBurst).
         this.#editSnapshot.set(eid, bulk.values.slice(base, base + stride));
         for (const p of knobs) {
           const raw = bulk.values[base + p.paramId] ?? 0;
@@ -1007,8 +1011,9 @@ class Gen3Driver implements DeviceDriver {
   // broadcasts unsolicited (0x74/0x75/0x76). The registry's persistent RX listener hands us the
   // reassembled burst; we diff it against the last-known channel-A values so a whole-block packet
   // yields only the moved param(s). blockParams() primes the baseline when a block is opened. ──
-  #editSnapshot = new Map<number, number[]>(); // effectId → last-known channel-A wire values
+  #editSnapshot = new Map<number, number[]>(); // effectId → last-known active-channel wire values
   #watchedEid: number | null = null; // FM3 poll target: the block Axis last opened (set in blockParams)
+  #watchedChannel = 0; // active channel (0-3) of the watched block — the burst slice the poll diffs against
   #lastLocalEditAt = 0; // ms of the last local param write — the FM3 poll pauses briefly after (no self-echo)
 
   /** FM3 device-edit POLL (capability deviceEditWatch — FM3 doesn't push, unlike FM9/III). The registry
@@ -1040,9 +1045,13 @@ class Gen3Driver implements DeviceDriver {
     const defs = family ? (this.#prof.params[family] ?? []) : [];
     if (!family || defs.length === 0) return { events: [], reload: false }; // no param family mapped
     const stride = Math.max(1, ...defs.map((p) => p.paramId)) + 1;
-    const chA = bulk.values.slice(0, stride); // channel A — the default channel blockParams/setParam surface
+    // Slice the block's ACTIVE channel (the one blockParams surfaced) — the body is channel-blocked, so
+    // diffing against channel A while the user has B-D open would flag every A/B-different param as "moved".
+    const chCount = Math.max(1, Math.floor(bulk.values.length / stride));
+    const ch = eid === this.#watchedEid ? Math.min(this.#watchedChannel, chCount - 1) : 0;
+    const cur = bulk.values.slice(ch * stride, ch * stride + stride);
     const prev = this.#editSnapshot.get(eid);
-    this.#editSnapshot.set(eid, chA);
+    this.#editSnapshot.set(eid, cur);
     // First sight of this block (never opened) → we can't diff. Ask the registry for a full reload so the
     // edit isn't lost; subsequent edits on this block then diff per-param.
     if (!prev) return { events: [], reload: true };
@@ -1050,9 +1059,9 @@ class Gen3Driver implements DeviceDriver {
     for (const p of defs) {
       const id = p.paramId;
       if (id >= stride) continue;
-      if (chA[id] === undefined || chA[id] === prev[id]) continue; // unchanged / truncated → skip
+      if (cur[id] === undefined || cur[id] === prev[id]) continue; // unchanged / truncated → skip
       if (!this.#prof.ranges[family]?.[id]) continue; // only real controls (skip internal/bypass churn)
-      events.push({ effectId: eid, paramId: id, norm: clamp01((chA[id] ?? 0) / 65534) });
+      events.push({ effectId: eid, paramId: id, norm: clamp01((cur[id] ?? 0) / 65534) });
     }
     return { events, reload: false };
   }

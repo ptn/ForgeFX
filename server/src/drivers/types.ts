@@ -210,6 +210,14 @@ export interface DeviceDriver {
   tapTempo?(): Promise<{ ok: boolean }>;
   getScene?(): Promise<{ index: number }>;
   setScene?(index: number): Promise<{ ok: boolean }>;
+  /** Live active-channel per placed block (effectId → channel 0-3). Drives the registry's
+   *  front-panel channel-change watch so a device-side A–D switch re-reads the per-channel
+   *  block type. Gen-3 only (blocks with A–D channels); undefined on devices without channels. */
+  getActiveChannels?(): Promise<Map<number, number>>;
+  /** One live tuner reading (already resolved to display fields). Devices whose tuner is NOT a
+   *  gen-3 tuner-page poll (AM4 polls block 0x0023) implement this; the registry supervisor calls
+   *  it on the tuner cadence and emits the `tuner` event. Gen-3 uses the built-in poll instead. */
+  readTuner?(): Promise<{ freq: number; note: string; octave: number; cents: number } | null>;
 
   // ── Phase 6 unified surface (capability-gated; today AM4-only unless noted) ──
   /** Stored preset name lookup (GET /presets/:n). Devices without it get the {number, name:''} stub. */

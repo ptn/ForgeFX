@@ -229,6 +229,9 @@ export class DeviceRegistry {
     this.#emit({ type: 'config', id, data, origin });
   }
   #emit(e: DeviceEvent) {
+    // Keep the scene-watch baseline in sync with EVERY scene event (app writes via
+    // setScene included), so the poll never re-emits a scene change a client already saw.
+    if (e.type === 'scene') this.#lastSceneIdx = e.index;
     for (const fn of this.#subscribers) {
       try {
         fn(e);
@@ -540,6 +543,8 @@ export class DeviceRegistry {
   // so we run an asymmetric envelope follower (fast attack / slow release) for a natural meter feel.
   #mDb = [-40, -40, -40, -40]; // [out1L, out1R, out2L, out2R]
   #meterStep = 0; // round-robin index over the 4 meters (+ a CPU read) — one small read per tick
+  #lastSceneIdx: number | null = null; // last device-reported scene — front-panel scene-change watch
+  #lastChannels: Map<number, number> | null = null; // last device-reported active channel per eid — channel-change watch
   static METER_FLOOR = -40; // display floor (matches FM3-Edit's Preset Leveling page)
   static METER_CEIL = 6; // meters run above 0 dB into clip (live-verified peaks to +5.8 dB)
   static METER_ATTACK = 0.7; // fraction of the gap closed when the level rises (snappy)
@@ -551,39 +556,49 @@ export class DeviceRegistry {
   async #pollTuner() {
     if (!this.#tunerTimer) return;
     const d = this.#tunerDriver;
-    if (!d || !d.capabilities.telemetry.tuner) { clearTimeout(this.#tunerTimer); this.#tunerTimer = null; return; } // no gen-3 tuner on this device
+    if (!d || !d.capabilities.telemetry.tuner) { clearTimeout(this.#tunerTimer); this.#tunerTimer = null; return; } // no tuner on this device
+    // Drivers whose tuner isn't a gen-3 tuner-page poll (AM4 polls block 0x0023) resolve a full
+    // reading themselves via readTuner(); everyone else uses the built-in gen-3 fn 0x01 poll.
     try {
-      const dev = await this.transport();
-      const frames = await dev.request(buildTunerPoll(d.modelId), {
-        timeoutMs: 300,
-        quietMs: 35,
-        match: (fs) => fs.some((f) => isTunerResponse(f))
-      });
-      const f = frames.find((x) => isTunerResponse(x));
-      if (f) {
-        const freq = parseTunerFreqHz(f);
-        this.#emit({ type: 'tuner', freq: Math.round(freq * 100) / 100, ...(freqToNote(freq) ?? {}) });
+      if (d.readTuner) {
+        const r = await d.readTuner();
+        if (r) this.#emit({ type: 'tuner', freq: Math.round(r.freq * 100) / 100, note: r.note, octave: r.octave, cents: r.cents });
+      } else {
+        const dev = await this.transport();
+        const frames = await dev.request(buildTunerPoll(d.modelId), {
+          timeoutMs: 300,
+          quietMs: 35,
+          match: (fs) => fs.some((f) => isTunerResponse(f))
+        });
+        const f = frames.find((x) => isTunerResponse(x));
+        if (f) {
+          const freq = parseTunerFreqHz(f);
+          this.#emit({ type: 'tuner', freq: Math.round(freq * 100) / 100, ...(freqToNote(freq) ?? {}) });
+        }
       }
     } catch {
       /* transient — keep polling */
     }
-    if (this.#tunerTimer) this.#tunerTimer = setTimeout(() => this.#pollTuner(), 55);
+    // Four short reads per AM4 update → a touch slower than the single gen-3 read (55 ms).
+    if (this.#tunerTimer) this.#tunerTimer = setTimeout(() => this.#pollTuner(), d.readTuner ? 100 : 55);
   }
 
   async setTuner(on: boolean) {
     const d = await this.driver();
-    if (!d.capabilities.telemetry.tuner) return { ok: false }; // no gen-3 tuner on this device (AM4)
+    if (!d.capabilities.telemetry.tuner) return { ok: false }; // no tuner on this device
     const dev = await this.transport();
     if (on) {
       this.#tunerDriver = d;
-      await dev.sendQueued(buildTunerPageOpen(d.modelId)); // open the tuner page
+      // Gen-3 opens/closes a device tuner PAGE; AM4's tuner block (0x0023) is always live, so a
+      // readTuner driver skips the page open/close and just runs the poll timer.
+      if (!d.readTuner) await dev.sendQueued(buildTunerPageOpen(d.modelId)); // open the tuner page
       if (!this.#tunerTimer) this.#tunerTimer = setTimeout(() => this.#pollTuner(), 30);
     } else {
       if (this.#tunerTimer) {
         clearTimeout(this.#tunerTimer);
         this.#tunerTimer = null;
       }
-      await dev.sendQueued(buildTunerPageClose(d.modelId)); // leave tuner page (back to layout)
+      if (!d.readTuner) await dev.sendQueued(buildTunerPageClose(d.modelId)); // leave tuner page (back to layout)
     }
     return { ok: true };
   }
@@ -641,10 +656,41 @@ export class DeviceRegistry {
         }
         this.#emit({ type: 'meters', out1L: this.#mDb[0]!, out1R: this.#mDb[1]!, out2L: this.#mDb[2]!, out2R: this.#mDb[3]! });
         // CPU is a heavy 590-byte read → poll it only occasionally (every ~8th tick), off the meter path.
-        if (this.#meterStep++ % 8 === 0) {
+        if (this.#meterStep % 8 === 0) {
           const frames = await dev.request(buildCpuPoll(d.modelId), { timeoutMs: 400, quietMs: 25, match: (fs) => fs.some((f) => isCpuResponse(f)) });
           const f = frames.find((x) => isCpuResponse(x));
           if (f) this.#emit({ type: 'cpu', percent: cpuPercentFromRaw(parseCpuRawLoad(f)) });
+        }
+        // Front-panel CHANNEL-change watch: a device-side amp/block A–D switch emits no unsolicited
+        // frame and moves no param value (only the active-channel pointer), so the edit-burst diff
+        // can't see it — the amp TYPE NAME is per-channel, so Axis showed the old channel's model.
+        // Poll the tiny fn 0x13 status dump on the meter round-robin (offset 2) and emit `changed`
+        // on any block's active-channel delta → Axis re-reads the per-channel block type. First read
+        // only primes the baseline (no event).
+        if (this.#meterStep % 8 === 2 && d.getActiveChannels) {
+          const chans = await d.getActiveChannels();
+          if (chans.size > 0) {
+            let moved = false;
+            if (this.#lastChannels) {
+              for (const [eid, ch] of chans) {
+                if (this.#lastChannels.get(eid) !== ch) { moved = true; break; }
+              }
+            }
+            if (moved) this.#emit({ type: 'changed', scope: 'grid' });
+            this.#lastChannels = chans;
+          }
+        }
+        // Front-panel SCENE-change watch: gen-3 devices emit NO unsolicited frame on a scene switch
+        // (FM3 field report 2026-07-06 — the panel changed, Axis didn't follow), so poll the tiny
+        // fn 0x0C scene GET on the CPU cadence, offset half a cycle so the two heavier reads never
+        // share a tick. Emits the SAME `scene` event the setScene write path emits, so clients need
+        // no new wiring. First read only primes the baseline (no event).
+        if (this.#meterStep++ % 8 === 4 && d.getScene) {
+          const { index } = await d.getScene();
+          if (Number.isInteger(index) && index >= 0) {
+            if (this.#lastSceneIdx !== null && index !== this.#lastSceneIdx) this.#emit({ type: 'scene', index });
+            this.#lastSceneIdx = index;
+          }
         }
       }
     } catch {

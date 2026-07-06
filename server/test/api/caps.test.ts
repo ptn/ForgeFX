@@ -102,7 +102,7 @@ async function fm9(): Promise<void> {
     assertEqual(device.apiVersion, 2, 'FM9 /device apiVersion');
     checkGen3Common(caps, 'FM9');
     assertEqual(caps.fc.liveState, false, 'FM9 fc.liveState false (address model only)');
-    assertEqual(caps.cabIrs, false, 'FM9 cabIrs (not bundled)');
+    assertEqual(caps.cabIrs, true, 'FM9 cabIrs (factory banks bundled from the FM9-Edit cache, 2026-07-06)');
   } finally {
     await app.close();
   }
@@ -114,7 +114,7 @@ async function axe3(): Promise<void> {
     assertEqual(device.apiVersion, 2, 'III /device apiVersion');
     checkGen3Common(caps, 'III');
     assertEqual(caps.fc.liveState, false, 'III fc.liveState false');
-    assertEqual(caps.cabIrs, false, 'III cabIrs (read live, not bundled)');
+    assertEqual(caps.cabIrs, true, 'III cabIrs (factory banks bundled from the III editor cache, 2026-07-06)');
   } finally {
     await app.close();
   }
@@ -139,7 +139,7 @@ async function am4(): Promise<void> {
     assertEqual(caps.shuntBase, null, 'AM4 shuntBase');
     assertEqual(caps.paramsWithoutPack, true, 'AM4 paramsWithoutPack (KNOWN_PARAMS is server-side)');
     assertEqual(caps.tempo, false, 'AM4 tempo');
-    assertEqual(caps.tuner, false, 'AM4 tuner');
+    assertEqual(caps.tuner, true, 'AM4 tuner (block-0x0023 live-poll via readTuner, 2026-07-07)');
     assertEqual(caps.meters.blockMeters, false, 'AM4 meters.blockMeters');
     assertEqual(caps.meters.liveMonitors, false, 'AM4 meters.liveMonitors');
     assertEqual(caps.meters.outputLevels, false, 'AM4 meters.outputLevels');

@@ -20,6 +20,14 @@ import {
   buildSwitchPreset,
   buildGetPresetName,
   parseGetPresetNameResponse,
+  // Tuner readout (block 0x0023) — live-poll reads decoded upstream (BigCapture 2026-07-05).
+  // (buildReadParam already imported above for the atomic structure read.)
+  READ_TYPE_LIVE_POLL,
+  parseReadResponse,
+  isPollResponse,
+  AM4_TUNER_PID_LOW,
+  AM4_TUNER_CHANNEL,
+  decodeAm4Tuner,
   isCommandAck,
   buildSaveToLocation,
   buildRequestActiveBufferDump,
@@ -185,7 +193,7 @@ class Am4Driver implements DeviceDriver {
     channels: false,
     presetDump: false, // AM4 backups run their own verbatim dump path (/am4/preset/backup), not the gen-3 one
     blockParamDecode: false,
-    telemetry: { tuner: false, outputMeters: false, cpu: false }, // no gen-3 telemetry frames on AM4
+    telemetry: { tuner: true, outputMeters: false, cpu: false }, // tuner via block-0x0023 live-poll (readTuner); no gen-3 meter/CPU frames
     fcModel: false,
     fcLiveRead: false,
     modBind: false, // modifier model is data-only (see modifierModel); the wire binding is not captured
@@ -327,7 +335,7 @@ class Am4Driver implements DeviceDriver {
   // frame whose bytes 29/30/31/236 free-run, and the preset dump which drifts ~20% on a no-op re-dump).
   // If a block's array drifts on a no-op re-read, exclude its drifting indices in #hashPlacedParams. A
   // false positive only costs a redundant reload; it never misses a real edit.
-  #deviceEditBaseline: { edited: boolean; hash: string } | null = null;
+  #deviceEditBaseline: { edited: boolean; hash: string; scene: number } | null = null;
   #selfEditPending = false;
 
   /** One device-edit watch tick. Returns `{changed:true}` when a DEVICE-originated (front-panel /
@@ -344,15 +352,23 @@ class Am4Driver implements DeviceDriver {
         return { changed: false }; // device busy / timeout — keep the last baseline, don't reload
       }
       const hash = edited ? await this.#hashPlacedParams(conn) : '';
+      // Scene index is read UNCONDITIONALLY (a footswitch scene change does NOT set the edited bit —
+      // it's not a working-buffer edit), so the edited-gate above would miss it. Cheap: the structure
+      // is TTL-cached and #hashPlacedParams already warmed it when dirty. (#STRUCT_TTL 500ms <
+      // edit-watch cadence 1500ms, so each tick re-reads fresh.)
+      const scene = (await this.#readStructure())?.scene ?? 0;
       const base = this.#deviceEditBaseline;
       // First run, or our own write just dirtied the buffer → adopt as baseline and emit nothing.
       if (base === null || this.#selfEditPending) {
         this.#selfEditPending = false;
-        this.#deviceEditBaseline = { edited, hash };
+        this.#deviceEditBaseline = { edited, hash, scene };
         return { changed: false };
       }
+      // Front-panel scene change (footswitch): emit a `scene` event (same shape gen-3 emits) so Axis
+      // moves the badge AND reloads the per-scene grid/params. Separate from the edit `changed` signal.
+      if (scene !== base.scene) this.#ctx.emit({ type: 'scene', index: scene });
       const changed = edited !== base.edited || hash !== base.hash;
-      this.#deviceEditBaseline = { edited, hash };
+      this.#deviceEditBaseline = { edited, hash, scene };
       return { changed };
     });
   }
@@ -779,6 +795,39 @@ class Am4Driver implements DeviceDriver {
   async getScene(): Promise<{ index: number }> {
     const s = await this.#readStructure();
     return { index: s?.scene ?? 0 };
+  }
+
+  /** Live tuner reading via block-0x0023 live-poll (4 channels: note-index / freq / cents / string).
+   *  Values are absolute float32 (decoded upstream). The registry supervisor calls this on the tuner
+   *  cadence while the tuner view is active; it emits the same `{type:'tuner', freq, note, octave,
+   *  cents}` event gen-3 uses (Axis renders both identically). Returns null on any incomplete read so
+   *  the supervisor keeps polling without churning the overlay. Serialized behind #withReader. */
+  async readTuner(): Promise<{ freq: number; note: string; octave: number; cents: number } | null> {
+    return this.#withReader(async () => {
+      const dev = await this.#openTransport();
+      const readCh = async (ch: number): Promise<number | null> => {
+        const req = buildReadParam({ pidLow: AM4_TUNER_PID_LOW, pidHigh: ch }, READ_TYPE_LIVE_POLL);
+        const hit = (f: number[]) => isPollResponse(f) && f[6] === AM4_TUNER_PID_LOW && f[8] === ch;
+        try {
+          const frames = await dev.request(req, { timeoutMs: dev.slow ? 400 : 250, quietMs: dev.slow ? 60 : 30, match: (fs) => fs.some(hit) });
+          const f = frames.find(hit);
+          return f ? parseReadResponse(f).asFloat32() : null;
+        } catch {
+          return null;
+        }
+      };
+      const noteIndex = await readCh(AM4_TUNER_CHANNEL.NOTE_INDEX);
+      const freqHz = await readCh(AM4_TUNER_CHANNEL.FREQ_HZ);
+      const cents = await readCh(AM4_TUNER_CHANNEL.CENTS);
+      const stringBand = await readCh(AM4_TUNER_CHANNEL.STRING_BAND);
+      if (noteIndex === null || freqHz === null || cents === null) return null; // incomplete → skip this tick
+      const r = decodeAm4Tuner({ noteIndex, freqHz, cents, stringBand: stringBand ?? 0 });
+      // Split the device-true note into gen-3's {note, octave} (NOTE_NAMES indexed by MIDI%12, C=0).
+      const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      const note = NOTE_NAMES[((r.midiNote % 12) + 12) % 12]!;
+      const octave = Math.floor(r.midiNote / 12) - 1;
+      return { freq: r.freqHz, note, octave, cents: r.cents };
+    });
   }
 
   /** Generic driver scene switch (unified POST /scene). */

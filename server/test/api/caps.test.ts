@@ -102,7 +102,7 @@ async function fm9(): Promise<void> {
     assertEqual(device.apiVersion, 2, 'FM9 /device apiVersion');
     checkGen3Common(caps, 'FM9');
     assertEqual(caps.fc.liveState, false, 'FM9 fc.liveState false (address model only)');
-    assertEqual(caps.cabIrs, false, 'FM9 cabIrs (not bundled)');
+    assertEqual(caps.cabIrs, true, 'FM9 cabIrs (factory banks bundled from the FM9-Edit cache, 2026-07-06)');
   } finally {
     await app.close();
   }
@@ -114,7 +114,7 @@ async function axe3(): Promise<void> {
     assertEqual(device.apiVersion, 2, 'III /device apiVersion');
     checkGen3Common(caps, 'III');
     assertEqual(caps.fc.liveState, false, 'III fc.liveState false');
-    assertEqual(caps.cabIrs, false, 'III cabIrs (read live, not bundled)');
+    assertEqual(caps.cabIrs, true, 'III cabIrs (factory banks bundled from the III editor cache, 2026-07-06)');
   } finally {
     await app.close();
   }

@@ -229,6 +229,9 @@ export class DeviceRegistry {
     this.#emit({ type: 'config', id, data, origin });
   }
   #emit(e: DeviceEvent) {
+    // Keep the scene-watch baseline in sync with EVERY scene event (app writes via
+    // setScene included), so the poll never re-emits a scene change a client already saw.
+    if (e.type === 'scene') this.#lastSceneIdx = e.index;
     for (const fn of this.#subscribers) {
       try {
         fn(e);
@@ -540,6 +543,7 @@ export class DeviceRegistry {
   // so we run an asymmetric envelope follower (fast attack / slow release) for a natural meter feel.
   #mDb = [-40, -40, -40, -40]; // [out1L, out1R, out2L, out2R]
   #meterStep = 0; // round-robin index over the 4 meters (+ a CPU read) — one small read per tick
+  #lastSceneIdx: number | null = null; // last device-reported scene — front-panel scene-change watch
   static METER_FLOOR = -40; // display floor (matches FM3-Edit's Preset Leveling page)
   static METER_CEIL = 6; // meters run above 0 dB into clip (live-verified peaks to +5.8 dB)
   static METER_ATTACK = 0.7; // fraction of the gap closed when the level rises (snappy)
@@ -641,10 +645,22 @@ export class DeviceRegistry {
         }
         this.#emit({ type: 'meters', out1L: this.#mDb[0]!, out1R: this.#mDb[1]!, out2L: this.#mDb[2]!, out2R: this.#mDb[3]! });
         // CPU is a heavy 590-byte read → poll it only occasionally (every ~8th tick), off the meter path.
-        if (this.#meterStep++ % 8 === 0) {
+        if (this.#meterStep % 8 === 0) {
           const frames = await dev.request(buildCpuPoll(d.modelId), { timeoutMs: 400, quietMs: 25, match: (fs) => fs.some((f) => isCpuResponse(f)) });
           const f = frames.find((x) => isCpuResponse(x));
           if (f) this.#emit({ type: 'cpu', percent: cpuPercentFromRaw(parseCpuRawLoad(f)) });
+        }
+        // Front-panel SCENE-change watch: gen-3 devices emit NO unsolicited frame on a scene switch
+        // (FM3 field report 2026-07-06 — the panel changed, Axis didn't follow), so poll the tiny
+        // fn 0x0C scene GET on the CPU cadence, offset half a cycle so the two heavier reads never
+        // share a tick. Emits the SAME `scene` event the setScene write path emits, so clients need
+        // no new wiring. First read only primes the baseline (no event).
+        if (this.#meterStep++ % 8 === 4 && d.getScene) {
+          const { index } = await d.getScene();
+          if (Number.isInteger(index) && index >= 0) {
+            if (this.#lastSceneIdx !== null && index !== this.#lastSceneIdx) this.#emit({ type: 'scene', index });
+            this.#lastSceneIdx = index;
+          }
         }
       }
     } catch {

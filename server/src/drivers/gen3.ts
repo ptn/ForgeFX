@@ -1000,10 +1000,23 @@ class Gen3Driver implements DeviceDriver {
     return { value: Math.round(norm * 1000) / 100, norm }; // 0..10 fallback
   }
 
-  /** Resolve a param name (display label) → device-true paramId. 'Type' → the model-selector enum. */
+  /** Resolve a param name (display label) → device-true paramId. 'Type' → the model-selector,
+   *  in strict preference order:
+   *    1. `<FAM>_MODEL` — DELAY: its `DELAY_TYPE` is the 8-value MONO/STEREO routing enum, the
+   *       real model list lives on `DELAY_MODEL` (cache-confirmed FM3/FM9/III 2026-07-06);
+   *    2. the EXACT `<FAM>_TYPE` name regardless of unit — the FM3/FM9 device-true catalogs tag
+   *       it `unverified`, and the old `unit==='enum' && /TYPE$/` heuristic then matched a
+   *       DIFFERENT selector entirely (FUZZ → FUZZ_CLIPTYPE pid 10, PITCH → PITCH_XFADETYPE
+   *       pid 46; III DYNDIST → DYNDIST_BQTYPE) — so the Drive block's "type" read AND wrote
+   *       the clipping-diode param (the field-reported drive-type bug);
+   *    3. the enum-unit /TYPE$/ heuristic, as the last resort for families with neither. */
   #paramId(family: string, name: string): number | undefined {
     const defs = this.#prof.params[family] ?? [];
-    if (name.toLowerCase() === 'type') return defs.find((p) => p.unit === 'enum' && /TYPE$/i.test(p.name))?.paramId;
+    if (name.toLowerCase() === 'type') {
+      return (defs.find((p) => p.name === `${family}_MODEL`)
+        ?? defs.find((p) => p.name === `${family}_TYPE`)
+        ?? defs.find((p) => p.unit === 'enum' && /TYPE$/i.test(p.name)))?.paramId;
+    }
     return defs.find((p) => p.displayLabel === name || p.name === name)?.paramId;
   }
 

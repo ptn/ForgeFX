@@ -35,9 +35,11 @@ import {
   FM9_FC_EFFECT_ID, FM9_FC_CONFIGS, FM9_FC_PARAMS_WIDTH, FM9_FC_FIELDS, FM9_FC_CATEGORIES, FM9_FC_LABEL_MODES,
   FM9_FC_LAYOUTS, FM9_FC_CONFIGS_PER_LAYOUT, FM9_FC_SWITCH_SLOTS_PER_LAYOUT,
   FM9_MOD_EFFECT_ID, FM9_MOD_SLOT_COUNT, FM9_MOD_FIELDS,
+  FM9_CAB_IRS,
 } from 'forgefx-midi/gen3/fm9';
 import {
   PARAMS_BY_FAMILY as AXE3_PARAMS, resolveEnumValues as axe3Enum, GEN3_READ_ROSTERS, AXE3_LAYOUTS,
+  AXE3_ENUM_OVERRIDES, AXE3_RANGES as AXE3_DEVICE_RANGES, AXE3_CAB_IRS,
   AXE3_MONITOR_PARAMS,
   AXE3_FC_EFFECT_ID, AXE3_FC_CONFIGS, AXE3_FC_PARAMS_WIDTH, AXE3_FC_FIELDS,
   AXE3_MOD_EFFECT_ID, AXE3_MOD_SLOT_COUNT, AXE3_MOD_FIELDS, AXE3_MOD_SOURCES_STATUS,
@@ -220,9 +222,9 @@ export interface DeviceProfile {
   monitorParams?: MonitorParams;
 }
 
-// FM9 enum data ships as FM9_ENUM_OVERRIDES, keyed by the param's NAME → { ordinal: label }.
-const fm9Over = FM9_ENUM_OVERRIDES as unknown as Record<string, Record<number, string>>;
-const fm9Params = FM9_PARAMS_BY_FAMILY as unknown as ParamsByFamily;
+// Every gen-3 device now ships its enum vocabulary FAMILY-shaped in forgefx-midi
+// (family → paramId → labels[], mined complete from each editor's own
+// effectDefinitions cache) — FM9/III are uniform with FM3. Shared helpers:
 const recToRoster = (r: Record<number, string>): TypeModel[] => {
   const out: TypeModel[] = [];
   for (const [k, name] of Object.entries(r)) out[Number(k)] = { value: Number(k), name, manufacturer: null, basedOn: null };
@@ -233,16 +235,30 @@ const recToLabels = (r: Record<number, string>): string[] => {
   for (const [k, name] of Object.entries(r)) out[Number(k)] = name;
   return out;
 };
-function fm9RosterFor(slug: string): TypeModel[] {
-  const fam = SLUG_FAMILY[slug.toLowerCase()];
-  const r = fam && fm9Over[`${fam}_TYPE`];
-  return r ? recToRoster(r) : [];
-}
-function fm9EnumLabels(family: string, paramId: number): string[] | undefined {
-  const p = fm9Params[family]?.find((x) => x.paramId === paramId);
-  const r = p && fm9Over[p.name];
-  return r ? recToLabels(r) : undefined;
-}
+/** The family's user-facing model selector: `<FAM>_MODEL` where it exists
+ *  (DELAY — `DELAY_TYPE` is the 8-value MONO/STEREO routing enum, the real
+ *  model list lives on `DELAY_MODEL`; cache-confirmed FM3/FM9/III), else the
+ *  `<FAM>_TYPE` param. */
+const modelSelectorPid = (params: ParamsByFamily, fam: string): number | undefined => {
+  const defs = params[fam] ?? [];
+  return (defs.find((p) => p.name === `${fam}_MODEL`) ?? defs.find((p) => p.name === `${fam}_TYPE`))?.paramId;
+};
+/** FM3-style roster/labels over a family-shaped enum-override table. */
+const familyShapedRosterFor = (params: ParamsByFamily, enums: Record<string, Record<string, string[]>>) =>
+  (slug: string): TypeModel[] => {
+    const fam = SLUG_FAMILY[slug.toLowerCase()];
+    if (!fam) return [];
+    const pid = modelSelectorPid(params, fam);
+    const labels = pid != null ? enums[fam]?.[String(pid)] : undefined;
+    return labels ? labels.map((name, value) => ({ value, name, manufacturer: null, basedOn: null })) : [];
+  };
+const familyShapedEnumLabels = (enums: Record<string, Record<string, string[]>>) =>
+  (family: string, paramId: number): string[] | undefined => enums[family]?.[String(paramId)];
+
+const fm9Params = FM9_PARAMS_BY_FAMILY as unknown as ParamsByFamily;
+const fm9Enums = FM9_ENUM_OVERRIDES as unknown as Record<string, Record<string, string[]>>;
+const fm9RosterFor = familyShapedRosterFor(fm9Params, fm9Enums);
+const fm9EnumLabels = familyShapedEnumLabels(fm9Enums);
 
 // FM3 ships its device-true data IN fractal-midi (uniform with FM9/III): FM3_ROSTERS = slug → model
 // list (already the {value,name,manufacturer,basedOn} shape, so no synthesis), FM3_ENUM_OVERRIDES =
@@ -251,26 +267,26 @@ const fm3Rosters = FM3_ROSTERS as unknown as Record<string, Fm3TypeModel[]>;
 const fm3Enums = FM3_ENUM_OVERRIDES as unknown as Record<string, Record<string, string[]>>;
 const fm3CabIrs = FM3_CAB_IRS as unknown as Record<string, string[]>;
 const fm3Params = FM3_PARAMS_BY_FAMILY as unknown as ParamsByFamily;
+const fm3EnumRosterFor = familyShapedRosterFor(fm3Params, fm3Enums);
 function fm3RosterFor(slug: string): TypeModel[] {
   const explicit = fm3Rosters[slug.toLowerCase()] as TypeModel[] | undefined;
   if (explicit?.length) return explicit;
   // Fallback (mirrors fm9RosterFor/axe3RosterFor): families without a pre-baked roster still ship their
-  // sub-model list as the enum-override on the <FAMILY>_TYPE param (chorus/phaser/tremolo/filter/flanger…).
-  // FM3 has this data in FM3_ENUM_OVERRIDES; it just wasn't surfaced as a roster.
-  const fam = SLUG_FAMILY[slug.toLowerCase()];
-  if (!fam) return [];
-  const typePid = fm3Params[fam]?.find((p) => p.name === `${fam}_TYPE` && p.unit === 'enum')?.paramId;
-  const labels = typePid != null ? fm3Enums[fam]?.[String(typePid)] : undefined;
-  return labels ? labels.map((name, value) => ({ value, name, manufacturer: null, basedOn: null })) : [];
+  // sub-model list as the enum-override on the model-selector param (<FAM>_MODEL where it exists, else
+  // <FAM>_TYPE) — chorus/phaser/tremolo/filter/flanger…
+  return fm3EnumRosterFor(slug);
 }
 function fm3EnumLabels(family: string, paramId: number): string[] | undefined {
   return fm3Enums[family]?.[String(paramId)];
 }
 
-// Axe-Fx III carries ranges inline on its params (no separate *_RANGES); synthesize a ranges table.
-// (no typecode → linear taper; a few freq cuts that should be log will read linearly — minor.)
+// Axe-Fx III ranges: device-true AXE3_RANGES (mined from the III editor cache, fw 32.6 era) merged
+// over the param table's inline displayMin/Max. Cache placeholder rows (all-zero float rows kept 1:1
+// for wire-stride math) carry no display info — inline bounds win there; informative cache rows win
+// everywhere else (they're the newer authority).
 const CONT_UNITS = new Set(['numeric', 'knob_0_10', 'knob_0_20', 'db', 'hz', 'ms', 'seconds', 'percent', 'bipolar_percent', 'ratio', 'semitones', 'degrees']);
 const axe3Params = AXE3_PARAMS as unknown as Record<string, (ParamDef & { displayMin?: number; displayMax?: number })[]>;
+const axe3DeviceRanges = AXE3_DEVICE_RANGES as unknown as Ranges;
 const AXE3_RANGES: Ranges = (() => {
   const out: Ranges = {};
   for (const [fam, list] of Object.entries(axe3Params)) {
@@ -280,15 +296,26 @@ const AXE3_RANGES: Ranges = (() => {
       out[fam][p.paramId] = { kind: CONT_UNITS.has(p.unit ?? '') ? 'float' : 'enum', displayMin: p.displayMin, displayMax: p.displayMax, typecode: 0 };
     }
   }
+  for (const [fam, rows] of Object.entries(axe3DeviceRanges)) {
+    out[fam] ??= {};
+    for (const [pid, r] of Object.entries(rows)) {
+      if (r.kind === 'float' && r.displayMin === r.displayMax) continue; // placeholder row
+      out[fam][Number(pid)] = r;
+    }
+  }
   return out;
 })();
-// III type ROSTERS + enum labels. Both fractal-midi sources here are `Record<number,string>` (ordinal →
-// name), NOT arrays — so normalize via recToRoster/recToLabels (same shape as the FM9 path), never `.map`.
-// Roster source order: GEN3_READ_ROSTERS carries the full model lists (e.g. DISTORT_TYPE = 284 amps);
-// families without a read-roster fall back to the effect-type enum overlay. Some (e.g. CABINET_TYPE) have
-// neither bundled — those correctly degrade to [] (III IR/cab names are read live) and render as ordinals.
+// III type ROSTERS + enum labels. Device-true AXE3_ENUM_OVERRIDES first (complete, fw-current, incl.
+// the 10 families GEN3_READ_ROSTERS never had and the DELAY_MODEL list); then the legacy read rosters
+// (`Record<number,string>`, normalize via recToRoster — never `.map`); then the effect-type overlay.
+// Some (e.g. CABINET) have none anywhere — those degrade to [] (III IR/cab names are read live).
+const axe3Enums = AXE3_ENUM_OVERRIDES as unknown as Record<string, Record<string, string[]>>;
 const axe3ReadRosters = GEN3_READ_ROSTERS as unknown as Record<string, Record<number, string>>;
+const axe3DeviceRosterFor = familyShapedRosterFor(axe3Params as unknown as ParamsByFamily, axe3Enums);
+const axe3DeviceEnumLabels = familyShapedEnumLabels(axe3Enums);
 function axe3RosterFor(slug: string): TypeModel[] {
+  const device = axe3DeviceRosterFor(slug);
+  if (device.length) return device;
   const fam = SLUG_FAMILY[slug.toLowerCase()];
   if (!fam) return [];
   const read = axe3ReadRosters[`${fam}_TYPE`];
@@ -297,6 +324,8 @@ function axe3RosterFor(slug: string): TypeModel[] {
   return ov ? recToRoster(ov) : [];
 }
 function axe3EnumLabels(family: string, paramId: number): string[] | undefined {
+  const device = axe3DeviceEnumLabels(family, paramId);
+  if (device) return device;
   const p = axe3Params[family]?.find((x) => x.paramId === paramId);
   const ov = p ? (axe3Enum(p.name)?.values as Record<number, string> | undefined) : undefined;
   if (!ov) return undefined;
@@ -313,7 +342,7 @@ export const PROFILES: Record<number, DeviceProfile> = {
     ranges: AXE3_RANGES,
     rosterFor: axe3RosterFor,
     enumLabelsFor: axe3EnumLabels,
-    cabIrs: () => ({}), // III IR names are read live from the unit, not bundled
+    cabIrs: () => AXE3_CAB_IRS as unknown as Record<string, string[]>, // factory banks bundled (III editor cache, fw 32.6 era); USER banks read live
     familyForEffectId: eidFamily(), // III ships no effectId table → shared gen-3 virtual eids only
     layoutFor: layoutOf(AXE3_LAYOUTS as unknown as LayoutMap),
     fcModel: AXE3_FC_MODEL,
@@ -344,7 +373,7 @@ export const PROFILES: Record<number, DeviceProfile> = {
     ranges: FM9_RANGES as unknown as Ranges,
     rosterFor: fm9RosterFor,
     enumLabelsFor: fm9EnumLabels,
-    cabIrs: () => ({}), // FM9 IR names not yet bundled
+    cabIrs: () => FM9_CAB_IRS as unknown as Record<string, string[]>, // factory banks bundled (FM9-Edit cache 76p0); USER banks read live
     familyForEffectId: eidFamily(FM9_FAMILY_BY_EFFECT_ID as Record<number, string>),
     layoutFor: layoutOf(FM9_LAYOUTS as unknown as LayoutMap),
     fcModel: FM9_FC_MODEL,

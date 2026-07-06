@@ -405,6 +405,15 @@ class Gen3Driver implements DeviceDriver {
     return map;
   }
 
+  /** Live active-channel per placed block (effectId → channel 0-3), from the fn 0x13 status dump.
+   *  Feeds the registry's front-panel channel-change watch. One small round-trip. */
+  async getActiveChannels(): Promise<Map<number, number>> {
+    const status = await this.#statusByEffectId();
+    const out = new Map<number, number>();
+    for (const [eid, st] of status) out.set(eid, st.channel);
+    return out;
+  }
+
   /** Placed blocks: position + routing + live bypass/channel. */
   async placedBlocks(): Promise<PresetBlockDTO[]> {
     const g = await this.grid();

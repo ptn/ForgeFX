@@ -139,7 +139,7 @@ async function am4(): Promise<void> {
     assertEqual(caps.shuntBase, null, 'AM4 shuntBase');
     assertEqual(caps.paramsWithoutPack, true, 'AM4 paramsWithoutPack (KNOWN_PARAMS is server-side)');
     assertEqual(caps.tempo, false, 'AM4 tempo');
-    assertEqual(caps.tuner, false, 'AM4 tuner');
+    assertEqual(caps.tuner, true, 'AM4 tuner (block-0x0023 live-poll via readTuner, 2026-07-07)');
     assertEqual(caps.meters.blockMeters, false, 'AM4 meters.blockMeters');
     assertEqual(caps.meters.liveMonitors, false, 'AM4 meters.liveMonitors');
     assertEqual(caps.meters.outputLevels, false, 'AM4 meters.outputLevels');

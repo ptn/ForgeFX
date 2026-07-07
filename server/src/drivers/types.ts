@@ -70,6 +70,7 @@ export type DeviceEvent =
   // `param` carries the new normalized value (cheap knob update); `changed` = structural (grid/preset)
   // change → reload. Emitted by the mutating driver methods; streamed via SSE + the remote relay channel.
   | { type: 'param'; effectId: number; paramId: number; norm: number }
+  | { type: 'blockState'; effectId?: number }
   | { type: 'changed'; scope: 'grid' | 'preset' }
   /** Live output level meters in dB (−40…0, floor-clamped), from the Preset Leveling poll (fn 0x19).
    *  Output 1 & 2, each L/R. Decoded from a 5-septet float (RMS) → 10·log10 → dB; smoothed. */

@@ -28,6 +28,7 @@ import {
   FM3_MOD_SOURCES,
   FM3_MOD_FIELDS,
   FM3_MONITOR_PARAMS,
+  FM3_RANGE_SECTIONS,
 } from 'forgefx-midi/gen3/fm3';
 import {
   FM9_RANGES, FM9_PARAMS_BY_FAMILY, FM9_ENUM_OVERRIDES, FM9_FAMILY_BY_EFFECT_ID, FM9_LAYOUTS,
@@ -36,6 +37,7 @@ import {
   FM9_FC_LAYOUTS, FM9_FC_CONFIGS_PER_LAYOUT, FM9_FC_SWITCH_SLOTS_PER_LAYOUT,
   FM9_MOD_EFFECT_ID, FM9_MOD_SLOT_COUNT, FM9_MOD_FIELDS,
   FM9_CAB_IRS,
+  FM9_RANGE_SECTIONS,
 } from 'forgefx-midi/gen3/fm9';
 import {
   PARAMS_BY_FAMILY as AXE3_PARAMS, resolveEnumValues as axe3Enum, GEN3_READ_ROSTERS, AXE3_LAYOUTS,
@@ -43,6 +45,7 @@ import {
   AXE3_MONITOR_PARAMS,
   AXE3_FC_EFFECT_ID, AXE3_FC_CONFIGS, AXE3_FC_PARAMS_WIDTH, AXE3_FC_FIELDS,
   AXE3_MOD_EFFECT_ID, AXE3_MOD_SLOT_COUNT, AXE3_MOD_FIELDS, AXE3_MOD_SOURCES_STATUS,
+  AXE3_RANGE_SECTIONS,
 } from 'forgefx-midi/gen3/axe-fx-iii';
 
 // Editor-authentic UI layout (pages → controls), per family, from fractal-midi (*_LAYOUTS).
@@ -189,6 +192,7 @@ type ParamDef = { paramId: number; name: string; displayLabel?: string; unit?: s
 type RangeDef = { kind: string; displayMin: number; displayMax: number; typecode: number; scale?: number; step?: number };
 type ParamsByFamily = Record<string, ParamDef[]>;
 type Ranges = Record<string, Record<number, RangeDef>>;
+type RangeSections = Record<string, { stride: number; recordCount: number }>;
 
 export interface DeviceProfile {
   model: number; // SysEx model byte (f[4])
@@ -206,6 +210,8 @@ export interface DeviceProfile {
   instanceLimits: Record<string, number>; // slug → device-true instance count (≥2 only; rest = 1)
   params: ParamsByFamily;
   ranges: Ranges;
+  /** Device-true fn=0x1F channel-block wire stride by family. Do not derive this from max(paramId); tables include special high ids. */
+  rangeSections: RangeSections;
   rosterFor(slug: string): TypeModel[];
   enumLabelsFor(family: string, paramId: number): string[] | undefined;
   /** Cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — for the cab IR picker. {} if the device has none. */
@@ -220,6 +226,8 @@ export interface DeviceProfile {
   modModel?: ModModel;
   /** Per-block monitor (meter) param table (paramName → {pid, role, dB range}); undefined if none. */
   monitorParams?: MonitorParams;
+  /** Scene/channel write wire shape. FM3-Edit uses fn=0x01 raw-value frames; other Gen3 units stay on spec frames until capture-confirmed. */
+  sceneChannelWriteMode?: 'spec' | 'fm3-edit-fn01';
 }
 
 // Every gen-3 device now ships its enum vocabulary FAMILY-shaped in forgefx-midi
@@ -340,6 +348,7 @@ export const PROFILES: Record<number, DeviceProfile> = {
     instanceLimits: { amp: 2, cab: 2, drive: 4, comp: 4, multicomp: 2, geq: 4, peq: 4, filter: 4, volume: 4, gate: 4, mixer: 4, multiplexer: 2, input: 5, output: 4, chorus: 2, flanger: 2, phaser: 2, rotary: 2, tremolo: 2, wah: 2, formant: 2, enhancer: 2, resonator: 2, reverb: 2, delay: 4, multitap: 2, megatap: 2, tentap: 2, plex: 2, pitch: 2, synth: 2, send: 2, return: 2 },
     params: axe3Params as unknown as ParamsByFamily,
     ranges: AXE3_RANGES,
+    rangeSections: AXE3_RANGE_SECTIONS as unknown as RangeSections,
     rosterFor: axe3RosterFor,
     enumLabelsFor: axe3EnumLabels,
     cabIrs: () => AXE3_CAB_IRS as unknown as Record<string, string[]>, // factory banks bundled (III editor cache, fw 32.6 era); USER banks read live
@@ -356,6 +365,7 @@ export const PROFILES: Record<number, DeviceProfile> = {
     instanceLimits: { input: 2, output: 2, drive: 2, comp: 2, geq: 2, peq: 2, filter: 4, volume: 2, gate: 2, mixer: 4, multiplexer: 2, chorus: 2, flanger: 2, phaser: 2, rotary: 2, tremolo: 2, wah: 2, formant: 2, enhancer: 2, resonator: 2, delay: 2, multitap: 2, send: 2, return: 2 },
     params: FM3_PARAMS_BY_FAMILY as unknown as ParamsByFamily,
     ranges: FM3_RANGES as unknown as Ranges,
+    rangeSections: FM3_RANGE_SECTIONS as unknown as RangeSections,
     rosterFor: fm3RosterFor, // device-true names + manufacturer + basedOn (from fractal-midi FM3_ROSTERS)
     enumLabelsFor: fm3EnumLabels,
     cabIrs: () => fm3CabIrs, // device-true IR names per bank (fractal-midi FM3_CAB_IRS)
@@ -363,7 +373,8 @@ export const PROFILES: Record<number, DeviceProfile> = {
     layoutFor: layoutOf(FM3_LAYOUTS as unknown as LayoutMap),
     fcModel: FM3_FC_MODEL,
     modModel: FM3_MOD_MODEL,
-    monitorParams: FM3_MONITOR_PARAMS
+    monitorParams: FM3_MONITOR_PARAMS,
+    sceneChannelWriteMode: 'fm3-edit-fn01'
   },
   0x12: {
     model: 0x12, key: 'fm9', name: 'FM9', rows: 6, cols: 14,
@@ -371,6 +382,7 @@ export const PROFILES: Record<number, DeviceProfile> = {
     instanceLimits: { amp: 2, cab: 2, drive: 3, comp: 2, multicomp: 2, geq: 4, peq: 4, filter: 4, volume: 4, gate: 4, mixer: 4, multiplexer: 2, input: 4, output: 3, chorus: 2, flanger: 2, phaser: 2, rotary: 2, tremolo: 2, wah: 2, formant: 2, enhancer: 2, resonator: 2, reverb: 2, delay: 2, multitap: 2, megatap: 2, tentap: 2, send: 2, return: 2 },
     params: fm9Params,
     ranges: FM9_RANGES as unknown as Ranges,
+    rangeSections: FM9_RANGE_SECTIONS as unknown as RangeSections,
     rosterFor: fm9RosterFor,
     enumLabelsFor: fm9EnumLabels,
     cabIrs: () => FM9_CAB_IRS as unknown as Record<string, string[]>, // factory banks bundled (FM9-Edit cache 76p0); USER banks read live

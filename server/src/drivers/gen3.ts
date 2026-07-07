@@ -202,6 +202,20 @@ class Gen3Driver implements DeviceDriver {
   #conn() { return this.#ctx.transport(); }
   #emit: DriverCtx['emit'] = (e) => this.#ctx.emit(e);
 
+  #channelSlice(
+    family: string | undefined,
+    bulk: { itemCount: number; values: readonly number[] },
+    activeChannel: number,
+  ): { stride: number; channelCount: number; base: number } {
+    const tableStride = family ? this.#prof.rangeSections[family]?.stride : undefined;
+    const stride = tableStride && tableStride > 0
+      ? tableStride
+      : (bulk.itemCount > 0 && bulk.itemCount % 4 === 0 ? bulk.itemCount / 4 : Math.max(1, bulk.values.length));
+    const basis = bulk.itemCount > 0 ? bulk.itemCount : bulk.values.length;
+    const channelCount = Math.max(1, Math.floor(basis / stride));
+    return { stride, channelCount, base: Math.min(activeChannel, channelCount - 1) * stride };
+  }
+
   /** Fire-and-forget write, serialized on the request chain (so it never injects mid-read). */
   async #send(bytes: number[]): Promise<{ ok: boolean }> {
     await (await this.#conn()).sendQueued(bytes);
@@ -530,9 +544,7 @@ class Gen3Driver implements DeviceDriver {
         this.#watchedChannel = activeCh; // keep the device-edit-burst diff on the same channel (see decodeEditBurst)
         const frames = await dev.request(this.#codec.buildBlockBulkReadPoll(eid), { timeoutMs: dev.slow ? 8000 : 2500, quietMs: dev.slow ? 600 : 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
         const bulk = this.#codec.assembleGen3BlockBulkRead(frames);
-        const stride = Math.max(1, ...defs.map((p) => p.paramId)) + 1;
-        const channelCount = Math.max(1, Math.floor(bulk.values.length / stride));
-        const base = Math.min(activeCh, channelCount - 1) * stride;
+        const { stride, base } = this.#channelSlice(family, bulk, activeCh);
         // Prime the device-edit-push baseline with the OPEN channel's values so a later front-panel
         // edit's burst diffs cleanly to the moved param (no first-sight reload — see decodeEditBurst).
         this.#editSnapshot.set(eid, bulk.values.slice(base, base + stride));
@@ -844,6 +856,7 @@ class Gen3Driver implements DeviceDriver {
     const g = await this.grid();
     const out: { effectId: number; slug: string; defaultId: number; defaultName: string; typeName: string; vals: Record<number, MeterVal> }[] = [];
     const dev = await this.#conn();
+    const status = await this.#statusByEffectId().catch(() => new Map<number, { bypassed: boolean; channel: number }>());
     for (const c of g.cells) {
       if (c.isShunt) continue;
       const slug = slugForEffectId(c.effectId);
@@ -864,15 +877,17 @@ class Gen3Driver implements DeviceDriver {
       try {
         const frames = await dev.request(this.#codec.buildBlockBulkReadPoll(c.effectId), { timeoutMs: 2000, quietMs: 100, match: (fs) => fs.some((f) => f[5] === 0x76) });
         const bulk = this.#codec.assembleGen3BlockBulkRead(frames);
+        const activeCh = status.get(c.effectId)?.channel ?? 0;
+        const { base } = this.#channelSlice(family, bulk, activeCh);
         for (const id of wantIds) {
-          const d = this.#display(family, id, bulk.values[id] ?? 0);
+          const d = this.#display(family, id, bulk.values[base + id] ?? 0);
           vals[id] = { norm: d.norm, value: d.value, unit: d.unit, min: d.min, max: d.max, log: d.log };
         }
         const typeId = this.#paramId(family, 'type');
         if (typeId != null) {
           const roster = this.#prof.rosterFor(slug);
           const tmax = Math.max(0, roster.length - 1);
-          const rawT = bulk.values[typeId] ?? 0;
+          const rawT = bulk.values[base + typeId] ?? 0;
           typeName = roster[rawT > tmax ? Math.round((rawT / 65534) * tmax) : rawT]?.name ?? '';
         }
       } catch {
@@ -1076,12 +1091,10 @@ class Gen3Driver implements DeviceDriver {
     const family = SLUG_FAMILY[(slugForEffectId(eid) ?? '').toLowerCase()] ?? this.#prof.familyForEffectId(eid);
     const defs = family ? (this.#prof.params[family] ?? []) : [];
     if (!family || defs.length === 0) return { events: [], reload: false }; // no param family mapped
-    const stride = Math.max(1, ...defs.map((p) => p.paramId)) + 1;
     // Slice the block's ACTIVE channel (the one blockParams surfaced) — the body is channel-blocked, so
     // diffing against channel A while the user has B-D open would flag every A/B-different param as "moved".
-    const chCount = Math.max(1, Math.floor(bulk.values.length / stride));
-    const ch = eid === this.#watchedEid ? Math.min(this.#watchedChannel, chCount - 1) : 0;
-    const cur = bulk.values.slice(ch * stride, ch * stride + stride);
+    const { stride, base } = this.#channelSlice(family, bulk, eid === this.#watchedEid ? this.#watchedChannel : 0);
+    const cur = bulk.values.slice(base, base + stride);
     const prev = this.#editSnapshot.get(eid);
     this.#editSnapshot.set(eid, cur);
     // First sight of this block (never opened) → we can't diff. Ask the registry for a full reload so the
@@ -1124,8 +1137,12 @@ class Gen3Driver implements DeviceDriver {
   async setChannel(eid: number, channel: string) {
     const idx = CH_LETTERS.indexOf(channel.toUpperCase());
     if (idx < 0 || idx > 3) return { ok: false };
-    const r = await this.#send(this.#codec.buildSetChannel(eid, idx as 0 | 1 | 2 | 3)); // instant
-    this.#emit({ type: 'changed', scope: 'grid' });
+    const wireChannel = idx as 0 | 1 | 2 | 3;
+    const frame = this.#prof.sceneChannelWriteMode === 'fm3-edit-fn01'
+      ? this.#codec.buildSetChannelNative(eid, wireChannel)
+      : this.#codec.buildSetChannel(eid, wireChannel);
+    const r = await this.#send(frame); // instant
+    this.#emit({ type: 'blockState', effectId: eid });
     return r;
   }
 
@@ -1186,7 +1203,10 @@ class Gen3Driver implements DeviceDriver {
   }
   async setScene(index: number) {
     if (index < 0 || index > 7) return { ok: false };
-    const r = await this.#send(this.#codec.buildSetScene(index));
+    const frame = this.#prof.sceneChannelWriteMode === 'fm3-edit-fn01'
+      ? this.#codec.buildSetSceneNative(index)
+      : this.#codec.buildSetScene(index);
+    const r = await this.#send(frame);
     // scene selects per-scene bypass/channel; status is read fresh each placedBlocks() call, so no
     // cache to bust — just notify subscribers so the UI follows.
     this.#emit({ type: 'scene', index });

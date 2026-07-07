@@ -437,6 +437,16 @@ class Gen3Driver implements DeviceDriver {
     return out;
   }
 
+  /** LIGHTWEIGHT per-block scene state — just bypass + active channel from the fn 0x13 status dump,
+   *  NO preset dump. A scene switch never changes the grid STRUCTURE (block placement/routing is
+   *  preset-level), only per-block bypass/channel/param values — so the UI can reuse its cached grid
+   *  and re-apply just this. One small round-trip; keeps scene changes snappy and OFF the heavy,
+   *  crash-prone dump path (a full dump right after a scene switch hits the device mid-rebuild). */
+  async sceneState(): Promise<{ effectId: number; bypassed: boolean; channel: string | null }[]> {
+    const status = await this.#statusByEffectId();
+    return [...status].map(([effectId, s]) => ({ effectId, bypassed: s.bypassed, channel: CH_LETTERS[s.channel] ?? null }));
+  }
+
   // ── catalog ──
   // Full placeable roster — one entry PER INSTANCE (Amp 1, …, Output 1, Output 2) so the palette can
   // place a specific instance instead of always re-sending instance 1 (which the device refuses once
@@ -1170,7 +1180,8 @@ class Gen3Driver implements DeviceDriver {
     const dev = await this.#conn();
     const frames = await dev.request(this.#codec.buildGetScene(), { timeoutMs: 1200, match: (fs) => fs.some((f) => f[5] === 0x0c) });
     const f = frames.find((x) => x[5] === 0x0c);
-    if (!f) return { index: 0 };
+    if (!f) return { index: -1 }; // FAILED read (racy/late on a busy link) — sentinel so the scene watch
+    //                               and UI skip it, instead of fabricating scene 1 (caused a 2↔1 badge flicker)
     return { index: this.#codec.parseSceneResponse(f).scene };
   }
   async setScene(index: number) {

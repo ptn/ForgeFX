@@ -40,6 +40,15 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
       return await d.placedBlocks();
     } catch (e) { return decodeFail(reply, 'blocks decode', e); }
   };
+  // Lightweight per-block bypass+channel (no preset dump) — the UI applies this to its cached grid on a
+  // scene change instead of re-dumping. 501 on drivers without it → the client falls back to a full load.
+  const sceneStateH = async (reply: StatusSink) => {
+    try {
+      const d = await driver();
+      if (!d.sceneState) return unsupported(reply, 'sceneState');
+      return await d.sceneState();
+    } catch (e) { return decodeFail(reply, 'scene-state', e); }
+  };
   const blockParamsH = async (reply: StatusSink, addr: number) => {
     try {
       const d = await driver();
@@ -150,7 +159,7 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
 
   return {
     driver, unsupported, decodeFail,
-    gridH, blocksH, blockParamsH, setParamH, bypassH, sceneSetH,
+    gridH, blocksH, sceneStateH, blockParamsH, setParamH, bypassH, sceneSetH,
     presetSelectH, presetStoreH, presetNameH, locationsH,
     backupH, restoreH, fwValidateH, deviceParamH, modModelH,
     decodeH, decodeBytes

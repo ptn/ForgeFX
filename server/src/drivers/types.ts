@@ -162,6 +162,10 @@ export interface DeviceDriver {
   presetBodyHex?(): Promise<{ len: number; hex: string }>;
   placedBlocks?(): Promise<PresetBlockDTO[]>;
 
+  /** Lightweight per-block scene state (bypass + active channel) WITHOUT a preset dump — for reflecting
+   *  a scene change snappily. Absent on drivers that can't read it cheaply (callers fall back to a full load). */
+  sceneState?(): Promise<{ effectId: number; bypassed: boolean; channel: string | null }[]>;
+
   // ── catalog ──
   blocksCatalog?(): { slug: string; family: string; instance: number; name: string; page: number; paramCount: number; typeCount: number }[];
   blockTypes?(slug: string): TypeModel[];

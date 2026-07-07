@@ -164,6 +164,7 @@ export function createRouter(deps: RuntimeDeps): {
   on('GET', '/presets/:n/grid', (c) => h.gridH(c.reply));
   on('GET', '/preset/grid', (c) => h.gridH(c.reply));
   on('GET', '/preset/blocks', (c) => h.blocksH(c.reply));
+  on('GET', '/preset/scene-state', (c) => h.sceneStateH(c.reply));
   on('POST', '/preset/select', (c) => h.presetSelectH(c.reply, (c.body as { number: number }).number));
   on('POST', '/preset/store', (c) => h.presetStoreH(c.reply, (c.body as { number?: number } | undefined)?.number));
   // AM4 preset library scan → every stored location. Capability presets.canScanNames.

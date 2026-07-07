@@ -47,7 +47,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   // The unified handler bodies + capability gate — shared with the runtime router (see handlers.ts).
   const {
     driver, unsupported,
-    gridH, blocksH, blockParamsH, setParamH, bypassH, sceneSetH,
+    gridH, blocksH, sceneStateH, blockParamsH, setParamH, bypassH, sceneSetH,
     presetSelectH, presetStoreH, presetNameH, locationsH,
     backupH, restoreH, fwValidateH, deviceParamH, modModelH,
     decodeH, decodeBytes
@@ -216,6 +216,8 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   app.get('/preset/grid', async (_req, reply) => gridH(reply));
   app.get<{ Params: { n: string } }>('/presets/:n/grid', async (_req, reply) => gridH(reply));
   app.get('/preset/blocks', async (_req, reply) => blocksH(reply));
+  // Lightweight per-block bypass+channel (no preset dump) — Axis applies it to its cached grid on a scene change.
+  app.get('/preset/scene-state', async (_req, reply) => sceneStateH(reply));
   app.post<{ Body: { number: number } }>('/preset/select', async (req, reply) => presetSelectH(reply, req.body.number));
   app.post<{ Body: { number?: number } }>('/preset/store', async (req, reply) => presetStoreH(reply, req.body?.number));
   // AM4 preset library scan → every stored location {location, code, name, isEmpty}. Capability

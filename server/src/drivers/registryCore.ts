@@ -231,7 +231,10 @@ export class DeviceRegistry {
   #emit(e: DeviceEvent) {
     // Keep the scene-watch baseline in sync with EVERY scene event (app writes via
     // setScene included), so the poll never re-emits a scene change a client already saw.
-    if (e.type === 'scene') this.#lastSceneIdx = e.index;
+    // A scene switch also remaps per-block active channels — reset the channel-watch baseline
+    // too, so it re-primes silently instead of emitting a redundant `changed` (which would drive a
+    // second, heavy grid reload on top of the scene handler's own lightweight refresh).
+    if (e.type === 'scene') { this.#lastSceneIdx = e.index; this.#lastChannels = null; }
     for (const fn of this.#subscribers) {
       try {
         fn(e);

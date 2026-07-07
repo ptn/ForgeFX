@@ -1180,7 +1180,8 @@ class Gen3Driver implements DeviceDriver {
     const dev = await this.#conn();
     const frames = await dev.request(this.#codec.buildGetScene(), { timeoutMs: 1200, match: (fs) => fs.some((f) => f[5] === 0x0c) });
     const f = frames.find((x) => x[5] === 0x0c);
-    if (!f) return { index: 0 };
+    if (!f) return { index: -1 }; // FAILED read (racy/late on a busy link) — sentinel so the scene watch
+    //                               and UI skip it, instead of fabricating scene 1 (caused a 2↔1 badge flicker)
     return { index: this.#codec.parseSceneResponse(f).scene };
   }
   async setScene(index: number) {

@@ -8,13 +8,37 @@ import { __createRegistryForTest } from '../../src/drivers/registry.js';
 import { setProfileOverride, setConnOverride } from '../../src/transport/connection.js';
 import { PROFILES } from '../../src/devices.js';
 import { effectRoster } from 'forgefx-midi/devices/gen3';
+import { createModernFractalCodec, packValue16 } from 'forgefx-midi/gen3/axe-fx-iii';
 import { MockTransport, handshakeReply, isIdentifyBroadcast, assert, assertEqual, sleep, hex } from '../helpers/mock.js';
 
 const GEN3_MODELS = [0x10, 0x11, 0x12] as const;
+const compactHex = (f: readonly number[]) => f.map((b) => b.toString(16).padStart(2, '0')).join('');
 
 // One entry per smoke-invoked driver method (FM3 adds the 2 FC live reads), plus 1 registry
-// tuner case per model.
-export const MODELBYTE_CASE_COUNT = GEN3_MODELS.length * 25 + 2 + GEN3_MODELS.length;
+// tuner case per model, plus the gen-3 channel-stride regression.
+export const MODELBYTE_CASE_COUNT = GEN3_MODELS.length * 25 + 2 + GEN3_MODELS.length + 1;
+
+function sysex(model: number, fn: number, payload: readonly number[]): number[] {
+  const body = [0xf0, 0x00, 0x01, 0x74, model, fn, ...payload];
+  let cs = 0;
+  for (const b of body) cs ^= b;
+  return [...body, cs & 0x7f, 0xf7];
+}
+
+function enc14(v: number): [number, number] {
+  return [v & 0x7f, (v >> 7) & 0x7f];
+}
+
+function blockBulkFrames(model: number, effectId: number, values: readonly number[]): number[][] {
+  const itemCount = values.length;
+  const body: number[] = [0x00, 0x02];
+  for (const v of values) body.push(...packValue16(v));
+  return [
+    sysex(model, 0x74, [...enc14(effectId), ...enc14(itemCount), 0x07]),
+    sysex(model, 0x75, body),
+    sysex(model, 0x76, []),
+  ];
+}
 
 function eidFor(slug: string): number {
   const e = effectRoster().find((x) => x.slug === slug);
@@ -74,6 +98,19 @@ async function smokeDriver(model: number): Promise<void> {
   }
 
   assert(mock.sent.length >= 25, `driver ${prof.key}: smoke emitted ${mock.sent.length} frames (expected ≥25)`);
+  if (model === 0x11) {
+    assert(
+      mock.sent.some((f) => compactHex(f) === 'f0000174110116003a00000001000000000000000038f7'),
+      'FM3 setChannel uses FM3-Edit fn=0x01 sub=0x0016 frame',
+    );
+    assert(
+      mock.sent.some((f) => compactHex(f) === 'f0000174110124000000010002000000000000000032f7'),
+      'FM3 setScene uses FM3-Edit fn=0x01 sub=0x0024 frame',
+    );
+  } else {
+    assert(mock.sent.some((f) => f[5] === 0x0b), `driver ${prof.key}: setChannel stays on spec fn=0x0b`);
+    assert(mock.sent.some((f) => f[5] === 0x0c), `driver ${prof.key}: setScene stays on spec fn=0x0c`);
+  }
   for (const f of mock.sent) {
     assertEqual(f[0], 0xf0, `driver ${prof.key}: frame starts with F0 (${hex(f)})`);
     if (f[4] !== model) {
@@ -105,7 +142,41 @@ async function smokeTuner(model: number): Promise<void> {
   }
 }
 
+async function smokeFm3AmpChannelStride(): Promise<void> {
+  const model = 0x11;
+  const prof = PROFILES[model]!;
+  const amp = eidFor('amp');
+  const codec = createModernFractalCodec(model);
+  const stride = prof.rangeSections.DISTORT?.stride;
+  assertEqual(stride, 144, 'FM3 DISTORT fn=0x1f stride');
+
+  const typeId = 6; // DISTORT_TYPE / Amp model selector in the generated FM3 table.
+  const channelAType = 213; // 5153 50W Blue in the user's live regression preset.
+  const channelBType = 316; // 5153 100W Stealth Red.
+  const values = new Array(stride * 4).fill(0);
+  values[typeId] = channelAType;
+  values[stride + typeId] = channelBType;
+
+  const statusB = sysex(model, 0x13, [
+    ...enc14(amp),
+    (1 << 1) | (4 << 4), // bypass=false, active channel=B, four channels.
+  ]);
+  const bulk = blockBulkFrames(model, amp, values);
+  const mock = new MockTransport('serial', 'mock-fm3-channel-stride');
+  mock.isOpen = true;
+  mock.reply = (req) => {
+    if (compactHex(req) === compactHex(codec.buildStatusDump())) return [statusB];
+    if (compactHex(req) === compactHex(codec.buildBlockBulkReadPoll(amp))) return bulk;
+    return [];
+  };
+  const driver = createGen3Driver(prof, { transport: async () => mock, emit: () => {} });
+  const r = await driver.blockParams(amp);
+  assertEqual(r.type?.value, channelBType, 'FM3 blockParams slices Amp channel B by generated DISTORT stride');
+  assertEqual(r.type?.name, '5153 100W Stealth Red', 'FM3 blockParams returns the channel-B Amp model name');
+}
+
 export async function runModelByteTests(): Promise<void> {
   for (const m of GEN3_MODELS) await smokeDriver(m);
   for (const m of GEN3_MODELS) await smokeTuner(m);
+  await smokeFm3AmpChannelStride();
 }

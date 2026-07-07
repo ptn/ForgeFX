@@ -231,7 +231,10 @@ export class DeviceRegistry {
   #emit(e: DeviceEvent) {
     // Keep the scene-watch baseline in sync with EVERY scene event (app writes via
     // setScene included), so the poll never re-emits a scene change a client already saw.
-    if (e.type === 'scene') this.#lastSceneIdx = e.index;
+    // A scene switch also remaps per-block active channels — reset the channel-watch baseline
+    // too, so it re-primes silently instead of emitting a redundant `changed` (which would drive a
+    // second, heavy grid reload on top of the scene handler's own lightweight refresh).
+    if (e.type === 'scene') { this.#lastSceneIdx = e.index; this.#lastChannels = null; }
     for (const fn of this.#subscribers) {
       try {
         fn(e);
@@ -664,8 +667,8 @@ export class DeviceRegistry {
         // Front-panel CHANNEL-change watch: a device-side amp/block A–D switch emits no unsolicited
         // frame and moves no param value (only the active-channel pointer), so the edit-burst diff
         // can't see it — the amp TYPE NAME is per-channel, so Axis showed the old channel's model.
-        // Poll the tiny fn 0x13 status dump on the meter round-robin (offset 2) and emit `changed`
-        // on any block's active-channel delta → Axis re-reads the per-channel block type. First read
+        // Poll the tiny fn 0x13 status dump on the meter round-robin (offset 2) and emit `blockState`
+        // on any block's active-channel delta → Axis re-reads only live scene/block state. First read
         // only primes the baseline (no event).
         if (this.#meterStep % 8 === 2 && d.getActiveChannels) {
           const chans = await d.getActiveChannels();
@@ -676,7 +679,7 @@ export class DeviceRegistry {
                 if (this.#lastChannels.get(eid) !== ch) { moved = true; break; }
               }
             }
-            if (moved) this.#emit({ type: 'changed', scope: 'grid' });
+            if (moved) this.#emit({ type: 'blockState' });
             this.#lastChannels = chans;
           }
         }

@@ -6,6 +6,11 @@ keeping the same REST contract so [Axis](https://github.com/sKuhLight/Axis) is u
 
 ## Run
 
+Use Node 20 (`.nvmrc` / `engines.node` pin it) — newer majors have been observed to make
+serial-heavy flows like the preset cache rebuild an order of magnitude slower for reasons
+unrelated to this server's code. This also matches the Node version Electron bundles in
+the packaged Axis app, which hosts this server in-process.
+
 ```bash
 cd server
 npm install          # native serialport + fractal-midi

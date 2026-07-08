@@ -315,8 +315,14 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   // auto-detect the connected Fractal unit (FM3/FM9/Axe-Fx/…) via the fn 0x00 handshake
   app.get('/device/detect', () => registry.detect());
 
-  // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — for the cab IR picker
-  app.get('/cab/irs', () => registry.profile.cabIrs());
+  // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — refresh lets a driver merge live per-device banks.
+  app.get<{ Querystring: { refresh?: string } }>('/cab/irs', async (req) => {
+    if (req.query.refresh === '1') {
+      const d = await driver();
+      if (d.cabIrs) return d.cabIrs(true);
+    }
+    return registry.profile.cabIrs();
+  });
 
   // Foot Controller + Modifier address models (field bases + config formula + enums). FM3-decoded;
   // null where the device's model isn't decoded yet. The client computes (eid,pid) from these and

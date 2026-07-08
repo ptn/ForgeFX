@@ -157,6 +157,14 @@ async function am4(): Promise<void> {
     assertEqual(caps.deviceParams, true, 'AM4 deviceParams');
     assert(Array.isArray(caps.virtualEffects) && caps.virtualEffects.length === 0, 'AM4 virtualEffects empty');
     assertEqual(caps.supportsSave, true, 'AM4 supportsSave (curated key intact)');
+    // 2026-07-08: HW-009 (amp/drive/reverb/delay only) was superseded — every AM4 block has an
+    // independent channel register. hasChannels/channelBlocks aren't in the curated Caps type (Axis
+    // doesn't consume them yet — see the block-header CH selector's ad-hoc gate), but the raw
+    // forgefx-midi descriptor values still ride the DTO and are worth locking in here.
+    const raw = device.capabilities as unknown as { hasChannels: boolean; channelNames: string[]; channelBlocks: string[] };
+    assertEqual(raw.hasChannels, true, 'AM4 hasChannels');
+    assertEqual(raw.channelNames.join(','), 'A,B,C,D', 'AM4 channelNames');
+    assertEqual(raw.channelBlocks.length, 18, 'AM4 channelBlocks (all 18 blocks)');
   } finally {
     await app.close();
   }

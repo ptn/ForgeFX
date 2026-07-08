@@ -812,10 +812,27 @@ class Gen3Driver implements DeviceDriver {
     return { eid, values };
   }
 
+  /** Cab IR catalog. `refresh` is the API hook for live per-device USER/SCRATCHPAD reads; the live
+   *  wire path is still RE-pending, so refresh currently preserves the bundled factory/legacy banks
+   *  and fails soft instead of breaking the picker/cache build. */
+  async cabIrs(refresh = false): Promise<Record<string, string[]>> {
+    const base = Object.fromEntries(Object.entries(this.#prof.cabIrs()).map(([k, v]) => [k, [...v]]));
+    if (!refresh) return base;
+    try {
+      const live = await this.#liveCabIrs();
+      return { ...base, ...live };
+    } catch {
+      return base;
+    }
+  }
+
+  async #liveCabIrs(): Promise<Record<string, string[]>> {
+    return {};
+  }
+
   /** Cab block state for the IR picker: current mode (Legacy / DynaCab), per-slot bank + IR index +
    * dyna type, plus the option lists. IR names come from fractal-midi (profile.cabIrs() / GET /cab/irs).
-   * Writes are plain setParam calls: bank = ord at param 0|1, IR index = raw index at param 4|5,
-   * mode = ord at 31, dyna type = ord at 85|86. */
+   * Writes are plain setParam calls through the device-true CABINET_* param ids. */
   async cabState(eid: number) {
     const slug = slugForEffectId(eid) ?? '';
     const family = SLUG_FAMILY[slug.toLowerCase()];
@@ -830,21 +847,30 @@ class Gen3Driver implements DeviceDriver {
     }
     // discrete params store the ordinal; if it looks 16-bit-scaled, unscale against the known max
     const ord = (id: number, max: number) => { const raw = values[id] ?? 0; return max > 0 && raw > max ? Math.round((raw / 65534) * max) : raw; };
-    const bankOptions = this.#enumOptions(family, 0, 'Bank', 0, 4).map((o) => o.label);
-    const dynaLabels = this.#prof.enumLabelsFor(family, 85) ?? [];
-    const dynaOptions = this.#enumOptions(family, 85, 'DynaCab Type', 0, Math.max(0, dynaLabels.length - 1));
-    const modeOptions = this.#enumOptions(family, 31, 'Mode', 0, 1);
-    const irBanks = this.#prof.cabIrs();
-    const slots = [0, 1].map((s) => {
-      const bankV = ord(s, bankOptions.length - 1);
+    const pid = (name: string) => this.#paramId(family, name);
+    const bankPids = [1, 2, 3, 4].map((n) => pid(`CABINET_BANK${n}`)).filter((x): x is number => x != null);
+    const irPids = [1, 2, 3, 4].map((n) => pid(`CABINET_TYPE${n}`)).filter((x): x is number => x != null);
+    const dynaPids = [1, 2, 3, 4].map((n) => pid(`CABINET_DYNACAB_TYPE${n}`)).filter((x): x is number => x != null);
+    const modeParam = pid('CABINET_MODE') ?? 31;
+    const bankOptionPid = bankPids[0] ?? 0;
+    const dynaOptionPid = dynaPids[0] ?? 85;
+    const bankOptions = this.#enumOptions(family, bankOptionPid, 'Bank', 0, 4).map((o) => o.label);
+    const dynaLabels = this.#prof.enumLabelsFor(family, dynaOptionPid) ?? [];
+    const dynaOptions = this.#enumOptions(family, dynaOptionPid, 'DynaCab Type', 0, Math.max(0, dynaLabels.length - 1));
+    const modeOptions = this.#enumOptions(family, modeParam, 'Mode', 0, 1);
+    const irBanks = await this.cabIrs(false);
+    const slots = bankPids.slice(0, 2).map((bankParam, s) => {
+      const irParam = irPids[s] ?? 4 + s;
+      const dynaParam = dynaPids[s] ?? 85 + s;
+      const bankV = ord(bankParam, bankOptions.length - 1);
       const bankLabel = bankOptions[bankV] ?? String(bankV);
       const list = irBanks[bankLabel] ?? [];
-      const irIndex = ord(4 + s, Math.max(0, list.length - 1));
-      const dynaV = ord(85 + s, Math.max(0, dynaOptions.length - 1));
-      return { slot: s + 1, bankParam: s, irParam: 4 + s, dynaParam: 85 + s, bank: { value: bankV, label: bankLabel }, irIndex, irName: list[irIndex] ?? `#${irIndex}`, dyna: { value: dynaV, label: dynaOptions[dynaV]?.label ?? String(dynaV) } };
+      const irIndex = ord(irParam, Math.max(0, list.length - 1));
+      const dynaV = ord(dynaParam, Math.max(0, dynaOptions.length - 1));
+      return { slot: s + 1, bankParam, irParam, dynaParam, bank: { value: bankV, label: bankLabel }, irIndex, irName: list[irIndex] ?? `#${irIndex}`, dyna: { value: dynaV, label: dynaOptions[dynaV]?.label ?? String(dynaV) } };
     });
-    const modeV = ord(31, 1);
-    return { modeParam: 31, mode: { value: modeV, label: modeOptions[modeV]?.label ?? '' }, modeOptions, bankOptions, dynaOptions, slots };
+    const modeV = ord(modeParam, 1);
+    return { modeParam, mode: { value: modeV, label: modeOptions[modeV]?.label ?? '' }, modeOptions, bankOptions, dynaOptions, slots };
   }
 
   /** Per-block "meter" values for the always-on grid level fill + swipe controls.

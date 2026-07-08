@@ -126,8 +126,14 @@ export function createRouter(deps: RuntimeDeps): {
   });
   // auto-detect the connected Fractal unit (FM3/FM9/Axe-Fx/…) via the fn 0x00 handshake
   on('GET', '/device/detect', () => registry.detect());
-  // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — for the cab IR picker
-  on('GET', '/cab/irs', () => registry.profile.cabIrs());
+  // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — refresh lets a driver merge live per-device banks.
+  on('GET', '/cab/irs', async (c) => {
+    if (c.query.get('refresh') === '1') {
+      const d = await driver();
+      if (d.cabIrs) return d.cabIrs(true);
+    }
+    return registry.profile.cabIrs();
+  });
 
   // ── block & parameter help (curated tooltips; see help.ts) ──
   on('GET', '/help', () => helpIndex(registry.profile));

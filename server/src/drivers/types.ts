@@ -176,6 +176,7 @@ export interface DeviceDriver {
   readParams?(eid: number, pids: number[]): Promise<Record<number, number>>;
   readRange?(eid: number, pids: number[]): Promise<Record<number, number>>;
   rawBlock?(eid: number): Promise<{ eid: number; values: Record<number, number> }>;
+  cabIrs?(refresh?: boolean): Promise<Record<string, string[]>>;
   cabState?(eid: number): Promise<unknown>;
   meters?(wants?: Record<string, number[]>): Promise<
     { effectId: number; slug: string; defaultId: number; defaultName: string; typeName: string; vals: Record<number, MeterVal> }[]

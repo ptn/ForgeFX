@@ -838,15 +838,20 @@ class Gen3Driver implements DeviceDriver {
     const family = SLUG_FAMILY[slug.toLowerCase()];
     if (family !== 'CABINET') return { error: 'not a cab block' };
     let values: number[] = [];
+    let base = 0;
     try {
       const dev = await this.#conn();
       const frames = await dev.request(this.#codec.buildBlockBulkReadPoll(eid), { timeoutMs: 2500, quietMs: 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
-      values = this.#codec.assembleGen3BlockBulkRead(frames).values;
+      const bulk = this.#codec.assembleGen3BlockBulkRead(frames);
+      values = bulk.values;
+      const activeCh = (await this.#statusByEffectId()).get(eid)?.channel ?? 0;
+      base = this.#channelSlice(family, bulk, activeCh).base;
     } catch {
       /* device unreachable — return option lists with zeroed current state */
     }
     // discrete params store the ordinal; if it looks 16-bit-scaled, unscale against the known max
-    const ord = (id: number, max: number) => { const raw = values[id] ?? 0; return max > 0 && raw > max ? Math.round((raw / 65534) * max) : raw; };
+    // (base = this channel's slice of the bulk read — cab mode/bank/IR/dyna are per-channel, like everything else on the block)
+    const ord = (id: number, max: number) => { const raw = values[base + id] ?? 0; return max > 0 && raw > max ? Math.round((raw / 65534) * max) : raw; };
     const pid = (name: string) => this.#paramId(family, name);
     const bankPids = [1, 2, 3, 4].map((n) => pid(`CABINET_BANK${n}`)).filter((x): x is number => x != null);
     const irPids = [1, 2, 3, 4].map((n) => pid(`CABINET_TYPE${n}`)).filter((x): x is number => x != null);

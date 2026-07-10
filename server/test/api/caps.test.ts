@@ -6,7 +6,7 @@
 import { buildTestApp } from '../helpers/api.js';
 import { assert, assertEqual } from '../helpers/mock.js';
 
-export const CAPS_CASE_COUNT = 4;
+export const CAPS_CASE_COUNT = 5;
 
 type Caps = {
   slotModel: string;
@@ -170,9 +170,46 @@ async function am4(): Promise<void> {
   }
 }
 
+// gen-1 (Axe-Fx Standard/Ultra, model 0x01) — a conservative, read-only capability matrix: no grid
+// edit / scenes / channels / save / telemetry / backup, everything the driver doesn't implement is false.
+async function gen1(): Promise<void> {
+  const { device, caps, app } = await fetchCaps(0x01);
+  try {
+    assertEqual(device.modelId, 0x01, 'gen1 modelId');
+    assertEqual(caps.slotModel, 'linear', 'gen1 slotModel (matches upstream descriptor)');
+    assertEqual(caps.presets.canRename, false, 'gen1 presets.canRename');
+    assertEqual(caps.presets.canScanNames, false, 'gen1 presets.canScanNames');
+    assertEqual(caps.presets.canDeepScan, false, 'gen1 presets.canDeepScan (param region opaque)');
+    assertEqual(caps.presets.liveQuery, false, 'gen1 presets.liveQuery (no live preset ref)');
+    assertEqual(caps.gridRouting, false, 'gen1 gridRouting');
+    assertEqual(caps.gridCursorSelect, false, 'gen1 gridCursorSelect');
+    assertEqual(caps.shuntBase, null, 'gen1 shuntBase');
+    assertEqual(caps.tempo, false, 'gen1 tempo');
+    assertEqual(caps.tuner, false, 'gen1 tuner');
+    assertEqual(caps.meters.blockMeters, false, 'gen1 meters.blockMeters');
+    assertEqual(caps.meters.outputLevels, false, 'gen1 meters.outputLevels');
+    assertEqual(caps.meters.cpu, false, 'gen1 meters.cpu');
+    assertEqual(caps.sceneNamesWritable, false, 'gen1 sceneNamesWritable');
+    assertEqual(caps.fc.model, false, 'gen1 fc.model');
+    assertEqual(caps.modifiers.model, false, 'gen1 modifiers.model');
+    assertEqual(caps.modifiers.bind, false, 'gen1 modifiers.bind');
+    assertEqual(caps.cabIrs, false, 'gen1 cabIrs');
+    assertEqual(caps.firmwareValidate, false, 'gen1 firmwareValidate');
+    assertEqual(caps.backupDump, false, 'gen1 backupDump');
+    assertEqual(caps.restoreDump, false, 'gen1 restoreDump');
+    assertEqual(caps.versionStore, false, 'gen1 versionStore');
+    assertEqual(caps.deviceParams, false, 'gen1 deviceParams');
+    assert(Array.isArray(caps.virtualEffects) && caps.virtualEffects.length === 0, 'gen1 virtualEffects empty');
+    assertEqual(caps.supportsSave, false, 'gen1 supportsSave');
+  } finally {
+    await app.close();
+  }
+}
+
 export async function runCapsTests(): Promise<void> {
   await fm3();
   await fm9();
   await axe3();
   await am4();
+  await gen1();
 }

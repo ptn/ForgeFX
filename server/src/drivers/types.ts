@@ -230,8 +230,10 @@ export interface DeviceDriver {
   storedPresetName?(n: number): Promise<{ number: number; name: string; code?: string }>;
   /** Scan every stored location by name (GET /preset/locations) — capability presets.canScanNames. */
   scanPresets?(): Promise<{ count: number; presets: { location: number; code: string; name: string; isEmpty: boolean }[] }>;
-  /** Verbatim .syx dump of one preset (POST /preset/backup) — capability backupDump. */
-  backupPreset?(location?: number): Promise<{ location: number | null; code: string | null; name: string; bytes: number[] }>;
+  /** Verbatim .syx dump of one preset (POST /preset/backup) — capability backupDump. `sceneNames`
+   *  and `crcValid` are ADDITIVE, opt-in container-decode fields (AM4) alongside the opaque `bytes`;
+   *  absent when the device/decoder doesn't surface them. */
+  backupPreset?(location?: number): Promise<{ location: number | null; code: string | null; name: string; bytes: number[]; sceneNames?: string[]; crcValid?: boolean }>;
   /** Verbatim re-emit of a preset dump (POST /preset/restore) — capability restoreDump. */
   restorePreset?(bytes: number[]): Promise<{ ok: boolean; location: number | null; code: string | null }>;
   /** Offline firmware .syx integrity check (POST /firmware/validate) — capability firmwareValidate. */

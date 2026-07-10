@@ -7,7 +7,7 @@ import { setProfileOverride, setConnOverride } from '../../src/transport/connect
 import type { Conn } from '../../src/transport/types.js';
 import { MockTransport, handshakeReply, isIdentifyBroadcast, assert, assertEqual, sleep } from '../helpers/mock.js';
 
-export const DETECTION_CASE_COUNT = 9;
+export const DETECTION_CASE_COUNT = 10;
 
 function makeRegistry(conn: Conn | null, mock: MockTransport): DeviceRegistry {
   return __createRegistryForTest({
@@ -168,6 +168,20 @@ async function portNameNewDevices(): Promise<void> {
   assertEqual((await a3Reg.detect()).modelId, 0x10, 'Axe-Fx III still wins the longest-name match');
 }
 
+/** j. gen-1 handshake reply `F0 00 01 74 01 …` → active driver modelId 0x01, key 'gen1'. */
+async function serialGen1(): Promise<void> {
+  const mock = new MockTransport('midi', 'Axe-Fx Ultra');
+  mock.reply = (req) => (isIdentifyBroadcast(req) ? [handshakeReply(0x01)] : []);
+  const reg = makeRegistry({ transport: 'midi', id: 'Axe-Fx Ultra MIDI In', inId: 'Axe-Fx Ultra MIDI In', outId: 'Axe-Fx Ultra MIDI Out' }, mock);
+  const r = await reg.detect();
+  assertEqual(r.connected, true, 'gen1 connected');
+  assertEqual(r.modelId, 0x01, 'gen1 modelId');
+  const d = await reg.driver();
+  assertEqual(d.modelId, 0x01, 'active driver modelId');
+  assertEqual(d.key, 'gen1', 'active driver key');
+  assertEqual(d.capabilities.slotModel, 'linear', 'gen1 is a linear device');
+}
+
 export async function runDetectionTests(): Promise<void> {
   // isolation guard: these tests must never run against a persisted user override
   setConnOverride(null);
@@ -181,4 +195,5 @@ export async function runDetectionTests(): Promise<void> {
   await serialAxe2();
   await serialVp4();
   await portNameNewDevices();
+  await serialGen1();
 }

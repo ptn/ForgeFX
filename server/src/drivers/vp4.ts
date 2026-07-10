@@ -16,9 +16,12 @@ import {
   buildVp4SetParam,
   buildVp4SetBypass,
   buildVp4Save,
+  buildVp4GetStructureBlob,
+  parseVp4StructureBlob,
   VP4_PARAMS,
+  type Vp4StructureBlob,
 } from 'forgefx-midi/gen3/vp4';
-import { VP4_DESCRIPTOR } from 'forgefx-midi/devices/gen3';
+import { VP4_DESCRIPTOR, slugForEffectId } from 'forgefx-midi/devices/gen3';
 import { resolveBlock } from 'forgefx-midi/gen3/axe-fx-iii';
 import type { DispatchCtx, PresetSnapshot } from 'forgefx-midi/core';
 import { dispatchCtx } from './descriptorConn.js';
@@ -73,6 +76,7 @@ class Vp4Driver implements DeviceDriver {
   #reader = VP4_DESCRIPTOR.reader;
   #readerLock: Promise<unknown> = Promise.resolve();
   #presetCache: { snap: PresetSnapshot; at: number } | null = null;
+  #structureCache: { blob: Vp4StructureBlob; at: number } | null = null;
   static #PRESET_TTL_MS = 500;
   #lastTransport: Transport | null = null;
 
@@ -101,7 +105,39 @@ class Vp4Driver implements DeviceDriver {
       }
     });
   }
-  #invalidate() { this.#presetCache = null; }
+  #invalidate() { this.#presetCache = null; this.#structureCache = null; }
+
+  /** True when `f` is a well-formed VP4 structure-blob response (parseVp4StructureBlob accepts it). */
+  #isStructure(f: number[]): boolean {
+    try { parseVp4StructureBlob(f); return true; } catch { return false; }
+  }
+
+  /** Read the whole-preset STRUCTURE blob (eid206 pid0 tc=0x1f): preset + scene names, current scene,
+   *  and the TRUE 4-slot serial chain (effect IDs in physical slot order — unlike the discovery-order
+   *  block inventory getPreset returns). One read = the register VP4-Edit itself polls to render the
+   *  chain. TTL-cached; null on a silent/malformed response so grid() falls back to the legacy read. */
+  async readStructure(): Promise<Vp4StructureBlob | null> {
+    const now = Date.now();
+    if (this.#structureCache && now - this.#structureCache.at < Vp4Driver.#PRESET_TTL_MS) return this.#structureCache.blob;
+    const dev = await this.#openTransport();
+    try {
+      const req = buildVp4GetStructureBlob();
+      const frames = await dev.request(req, {
+        timeoutMs: dev.slow ? 4000 : 1500,
+        quietMs: dev.slow ? 300 : 120,
+        match: (fs) => fs.some((f) => this.#isStructure(f)),
+      });
+      const f = frames.find((x) => this.#isStructure(x));
+      if (!f) { this.#log('readStructure: no structure-blob response'); return null; }
+      const blob = parseVp4StructureBlob(f);
+      this.#structureCache = { blob, at: Date.now() };
+      this.#log(`readStructure: "${blob.presetName}" scene ${blob.currentSceneDisplay}, chain [${blob.chain.map((c) => c?.name ?? '—').join(', ')}]`);
+      return blob;
+    } catch (e) {
+      this.#log(`readStructure failed: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+  }
 
   /** slug → wire effectId (gen-3 first-instance effect ID). null when the block isn't in the roster. */
   #eidFor(slug: string): number | null {
@@ -113,9 +149,23 @@ class Vp4Driver implements DeviceDriver {
     return snap?.slots.find((s) => this.#eidFor(s.block_type) === eid);
   }
 
-  /** 1×4 linear grid DTO from the discovered block inventory (col = discovery order — NOT the true
-   *  physical slot; see the file header). Prefers `live_grid` positions if the device ever returns them. */
+  /** 1×4 linear grid DTO. PREFERS the whole-preset structure blob (readStructure): it carries the
+   *  TRUE serial chain (physical slot order), the preset name, the four scene names, and the current
+   *  scene — so scenes are finally populated and slot placement is real, not discovery order. Falls
+   *  back to the legacy block-inventory read (discovery order, no scene names — see the file header)
+   *  when the structure register is unavailable. */
   async grid(): Promise<PresetGridDTO> {
+    const st = await this.readStructure();
+    if (st) {
+      const cells = st.chain.flatMap((slot, i) => {
+        if (!slot) return [];
+        const slug = slugForEffectId(slot.effectId) ?? slot.name ?? `0x${slot.effectId.toString(16)}`;
+        const name = slot.name ?? slug;
+        return [{ row: 0, col: i, effectId: slot.effectId, name, isShunt: false, routeFlag: 0, fromRows: [] as number[], slug }];
+      });
+      this.#log(`grid (structure): "${st.presetName}" — ${cells.map((c) => c.name).join(', ') || '(empty)'}`);
+      return { model: 'vp4', name: st.presetName, crcValid: true, rows: 1, cols: SLOT_COUNT, scenes: [...st.sceneNames], cells, source: 'dump' };
+    }
     const snap = await this.readPreset();
     const live = (snap as unknown as { live_grid?: { effect_id: number; row: number; col: number; is_shunt: boolean }[] } | null)?.live_grid;
     let cells;
@@ -198,6 +248,13 @@ class Vp4Driver implements DeviceDriver {
     await dev.sendQueued(buildVp4SetParam(eid, paramId, Math.min(1, Math.max(0, value)), { continuous: true }));
     this.#invalidate();
     return { ok: true };
+  }
+
+  /** Current scene (0-based) from the structure blob — read-only (scene SWITCH is undecoded, so
+   *  setScene stays omitted and POST /scene answers 501). Surfaces the active scene on GET /scene. */
+  async getScene(): Promise<{ index: number }> {
+    const st = await this.readStructure();
+    return { index: st?.currentScene ?? 0 };
   }
 
   async setBypass(eid: number, bypassed: boolean): Promise<{ ok: boolean }> {

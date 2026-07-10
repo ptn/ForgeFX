@@ -49,12 +49,15 @@ import {
   // against KNOWN_PARAMS here to recover the unit / range / enum-option / norm metadata the DTO carries.
   KNOWN_PARAMS,
   TOTAL_LOCATIONS,
+  // Raw-int MIDI-config registers (global MIDI map + per-scene MIDI, and the `_cc` CC-assignment
+  // slots) read back a literal integer whose 128 value is the "None"/unassigned sentinel (BUG-6/GAP-2).
+  RAW_INT_NONE_SENTINEL,
   type Param,
   type ParamKey
 } from 'forgefx-midi/am4';
 // The VERIFIED high-level descriptor reader (hardware-confirmed upstream). We drive it over an adapter
 // that wraps ForgeFX's Transport as the MidiConnection the reader expects (see Am4Conn below).
-import { AM4_DESCRIPTOR, readActiveBufferEditedBit, readAllParams } from 'forgefx-midi/devices/am4';
+import { AM4_DESCRIPTOR, readActiveBufferEditedBit, readAllParams, decodeAm4PresetDumpBytes } from 'forgefx-midi/devices/am4';
 import type { MidiConnection } from 'forgefx-midi/core/midi';
 import type { DispatchCtx, PresetSnapshot } from 'forgefx-midi/core';
 import type { Transport } from '../transport/types.js';
@@ -73,6 +76,32 @@ function splitSysex(bytes: number[]): number[][] {
     i = end + 1;
   }
   return out;
+}
+
+/** Raw-int MIDI-config registers (the `_cc` CC-assignment slots) read back the literal string
+ *  'None' (RAW_INT_NONE_SENTINEL = 128, decoded upstream by decodeRawIntRegister) when unassigned.
+ *  Such a value is NOT a knob position: coercing it in blockParams' continuous branch would land a
+ *  broken `Number('None') || 0` → 0 (a real CC). Surface it instead as a single-option selector so
+ *  Axis renders "None" verbatim. Returns null for any numeric (or numeric-string) display — the
+ *  normal knob/enum path handles those. Exported for unit tests. */
+export function am4NoneSelector(id: number, name: string, display: number | string): EnumParam | null {
+  if (typeof display !== 'string') return null;
+  if (display.trim() === '' || Number.isFinite(Number(display))) return null; // numeric string → normal path
+  return { id, name, value: RAW_INT_NONE_SENTINEL, options: [{ value: RAW_INT_NONE_SENTINEL, label: display }] };
+}
+
+/** Opt-in container decode of a verbatim AM4 preset dump (the 6-message 0x77/0x78/0x79 stream) →
+ *  the CRC-validity flag + the four plaintext scene names, for enriching the backup / offline-decode
+ *  DTOs. ADDITIVE: the opaque `bytes` round-trip is untouched. Returns null (never throws) on a
+ *  malformed/corrupt dump so the enrichment silently degrades and the opaque backup still succeeds.
+ *  Exported for unit tests. */
+export function am4DecodeEnrichment(rawBytes: Uint8Array): { sceneNames: string[]; crcValid: boolean } | null {
+  try {
+    const d = decodeAm4PresetDumpBytes(rawBytes);
+    return { sceneNames: [...d.sceneNames].map((s) => s.trim()), crcValid: d.crcValid };
+  } catch {
+    return null;
+  }
 }
 
 // ── AM4 preset-structure read (fn 0x01, readType 0x1F) — wire-decoded in fractal-midi's am4 SYSEX-MAP.
@@ -528,6 +557,10 @@ class Am4Driver implements DeviceDriver {
         if (p.name === 'channel') continue;
         enums.push({ id: encId(p), name: am4ParamLabel(p), value, options });
       } else {
+        // A raw-int `_cc` register reads back the string 'None' when unassigned — surface it as a
+        // labeled selector, not a knob coerced to a broken 0 (see am4NoneSelector).
+        const none = am4NoneSelector(encId(p), am4ParamLabel(p), display);
+        if (none) { enums.push(none); continue; }
         const value = typeof display === 'number' ? display : Number(display) || 0;
         named.push({
           id: encId(p),
@@ -895,7 +928,7 @@ class Am4Driver implements DeviceDriver {
   /** Back up a preset off the device as a verbatim .syx dump (the 6-message 0x77/0x78/0x79 stream).
    *  `location` omitted → the active edit buffer. Returns the raw bytes (byte-identical, replayable)
    *  plus the decoded location + name. Community-beta: the dump-request path is capture-derived. */
-  async backupPreset(location?: number): Promise<{ location: number | null; code: string | null; name: string; bytes: number[] }> {
+  async backupPreset(location?: number): Promise<{ location: number | null; code: string | null; name: string; bytes: number[]; sceneNames?: string[]; crcValid?: boolean }> {
     const dev = await this.#openTransport();
     const req = location == null ? buildRequestActiveBufferDump() : buildRequestStoredPresetDump(location);
     const frames = await dev.request(req, { timeoutMs: 5000, quietMs: 200, match: (fs) => fs.some((f) => f[4] === 0x15 && f[5] === 0x79) });
@@ -903,8 +936,17 @@ class Am4Driver implements DeviceDriver {
     const raw = Uint8Array.from(dumpMsgs.flat());
     const dump = parseAm4PresetDump(raw); // validates every envelope + checksum; throws on malformed
     const loc = am4DumpLocation(dump);
-    this.#log(`backup ${loc.code ?? '(active)'} "${decodeAm4PresetNameFromFrame(dump.raw)}" ${dump.raw.length}B`);
-    return { location: loc.active ? null : (loc.index ?? null), code: loc.code ?? null, name: decodeAm4PresetNameFromFrame(dump.raw), bytes: [...dump.raw] };
+    // ADDITIVE opt-in decode (crcValid + scene names) atop the opaque, byte-identical `bytes` — a
+    // corrupt dump degrades to no extra fields (am4DecodeEnrichment never throws) and still backs up.
+    const enrich = am4DecodeEnrichment(dump.raw);
+    this.#log(`backup ${loc.code ?? '(active)'} "${decodeAm4PresetNameFromFrame(dump.raw)}" ${dump.raw.length}B${enrich ? ` crc=${enrich.crcValid ? 'ok' : 'BAD'}` : ''}`);
+    return {
+      location: loc.active ? null : (loc.index ?? null),
+      code: loc.code ?? null,
+      name: decodeAm4PresetNameFromFrame(dump.raw),
+      bytes: [...dump.raw],
+      ...(enrich ? { sceneNames: enrich.sceneNames, crcValid: enrich.crcValid } : {})
+    };
   }
 
   /** Restore a preset .syx (single 12,352-byte dump) to the device by verbatim re-emit (goes back to
@@ -921,14 +963,22 @@ class Am4Driver implements DeviceDriver {
 
   /** Offline decode of an AM4 .syx (a single dump or a whole bank, e.g. the 104-preset factory file):
    *  returns each preset's location + name. No device needed — for library import / browsing. */
-  decodeSyx(bytes: number[]): { count: number; presets: { index: number; location: number | null; code: string | null; name: string }[] } {
+  decodeSyx(bytes: number[]): { count: number; presets: { index: number; location: number | null; code: string | null; name: string; sceneNames?: string[]; crcValid?: boolean }[] } {
     const raw = Uint8Array.from(bytes);
     const dumps = raw.length > AM4_PRESET_FRAME_SIZE && raw.length % AM4_PRESET_FRAME_SIZE === 0
       ? parseAm4PresetBank(raw)
       : [parseAm4PresetDump(raw)];
     const presets = dumps.map((d, index) => {
       const l = am4DumpLocation(d);
-      return { index, location: l.active ? null : (l.index ?? null), code: l.code ?? null, name: decodeAm4PresetNameFromFrame(d.raw) };
+      // ADDITIVE opt-in decode (crcValid + scene names); silently omitted on a corrupt dump.
+      const enrich = am4DecodeEnrichment(d.raw);
+      return {
+        index,
+        location: l.active ? null : (l.index ?? null),
+        code: l.code ?? null,
+        name: decodeAm4PresetNameFromFrame(d.raw),
+        ...(enrich ? { sceneNames: enrich.sceneNames, crcValid: enrich.crcValid } : {})
+      };
     });
     return { count: presets.length, presets };
   }

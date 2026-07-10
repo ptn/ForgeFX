@@ -6,6 +6,8 @@
 import './helpers/env.js'; // MUST stay the first import: isolates ~/.forgefx-conn before transport/connection.ts loads
 import { runDetectionTests, DETECTION_CASE_COUNT } from './drivers/detection.test.js';
 import { runGen2Tests, GEN2_CASE_COUNT } from './drivers/gen2.test.js';
+import { runGen1Tests, GEN1_CASE_COUNT } from './drivers/gen1.test.js';
+import { runAm4Tests, AM4_CASE_COUNT } from './drivers/am4.test.js';
 import { runVp4Tests, VP4_CASE_COUNT } from './drivers/vp4.test.js';
 import { runModelByteTests, MODELBYTE_CASE_COUNT } from './drivers/modelbyte.test.js';
 import { runTablesTests, TABLES_CASE_COUNT } from './drivers/tables.test.js';
@@ -19,7 +21,9 @@ import { runRouterParityTests, ROUTER_PARITY_CASE_COUNT } from './api/router.tes
 const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `drivers/detection (${DETECTION_CASE_COUNT} cases, mocked Conn/Transport)`, run: runDetectionTests },
   { name: `drivers/gen2 (${GEN2_CASE_COUNT} cases, Axe-Fx II write frames + caps)`, run: runGen2Tests },
-  { name: `drivers/vp4 (${VP4_CASE_COUNT} cases, VP4 gated writes + caps)`, run: runVp4Tests },
+  { name: `drivers/gen1 (${GEN1_CASE_COUNT} cases, Axe-Fx gen-1 dump grid + caps)`, run: runGen1Tests },
+  { name: `drivers/am4 (${AM4_CASE_COUNT} cases, None-selector + decode enrichment)`, run: runAm4Tests },
+  { name: `drivers/vp4 (${VP4_CASE_COUNT} cases, VP4 gated writes + structure read + caps)`, run: runVp4Tests },
   { name: `drivers/modelbyte (${MODELBYTE_CASE_COUNT} cases, wrong-model-byte guard)`, run: runModelByteTests },
   { name: `drivers/tables (${TABLES_CASE_COUNT} identity checks, paramId cross-contamination guard)`, run: runTablesTests },
   { name: `api/alias-parity (${ALIAS_PARITY_CASE_COUNT} alias↔unified twins, mocked AM4)`, run: runAliasParityTests },

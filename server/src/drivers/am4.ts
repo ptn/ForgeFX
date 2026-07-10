@@ -190,7 +190,7 @@ class Am4Driver implements DeviceDriver {
     slotCount: 4,
     gridEdit: true, // slot block-type write (buildSetBlockType): place/change/clear a block in slots 1..4
     scenes: 4,
-    channels: false,
+    channels: true, // 2026-07-08: every block has an independent A/B/C/D channel register (see setChannel)
     presetDump: false, // AM4 backups run their own verbatim dump path (/am4/preset/backup), not the gen-3 one
     blockParamDecode: false,
     telemetry: { tuner: true, outputMeters: false, cpu: false }, // tuner via block-0x0023 live-poll (readTuner); no gen-3 meter/CPU frames
@@ -438,9 +438,12 @@ class Am4Driver implements DeviceDriver {
   }
 
   /** Placed blocks in the unified PresetBlockDTO shape (GET /preset/blocks): the 4-slot chain as
-   *  row 1 / col 1..4, fromRows [] (linear — the grid DTO carries the chain), channel null (no
-   *  channels on AM4). Bypass state rides the TTL-cached atomic reader dump (the same read
-   *  blockParams uses); null when that read is unavailable. */
+   *  row 1 / col 1..4, fromRows [] (linear — the grid DTO carries the chain). Bypass + channel state
+   *  ride the TTL-cached atomic reader dump (the same read blockParams uses); null when that read is
+   *  unavailable. Channel comes from the dump's `params_by_channel` key — the reader defaults to
+   *  reading only the currently-active channel (see getPreset's `include_channel_state`), so there's
+   *  exactly one key to report; 'unknown' channel_status (selector read failed) still surfaces its
+   *  best-effort fallback key rather than null, consistent with blockParams(). */
   async placedBlocks(): Promise<PresetBlockDTO[]> {
     const s = await this.#readStructure();
     const slots = (s?.slots ?? this.#emptySlots()).filter((sl) => sl.pidLow !== 0 && sl.blockType !== 'none');
@@ -449,8 +452,9 @@ class Am4Driver implements DeviceDriver {
       const slug = resolveBlockTypeValue(sl.pidLow)?.name ?? sl.blockType;
       // match the reader slot by POSITION, not block name — a preset can hold two instances of the
       // same block type (drive 0x76 + drive 0x77), and a name match would return the wrong one
-      const byp = (snap?.slots.find((x) => x.slot === sl.slot) ?? snap?.slots.find((x) => x.block_type === slug))?.bypassed;
-      return { slug, name: sl.blockType, effectId: sl.pidLow, row: 1, col: sl.slot, fromRows: [], bypassed: byp ?? null, channel: null };
+      const matched = snap?.slots.find((x) => x.slot === sl.slot) ?? snap?.slots.find((x) => x.block_type === slug);
+      const channel = matched?.params_by_channel ? Object.keys(matched.params_by_channel)[0] ?? null : null;
+      return { slug, name: sl.blockType, effectId: sl.pidLow, row: 1, col: sl.slot, fromRows: [], bypassed: matched?.bypassed ?? null, channel };
     });
   }
 
@@ -519,6 +523,9 @@ class Am4Driver implements DeviceDriver {
         const value = this.#enumOrdinal(p, display);
         // the block's own type selector is surfaced separately (like gen-3's `type`), not as a plain enum
         if (p.name === 'type') { type = { value, name: p.enumValues?.[value] ?? String(display) }; continue; }
+        // channel rides the block header's dedicated A/B/C/D selector (placedBlocks().channel +
+        // setChannel), not a generic dropdown — skip it here like `type` above.
+        if (p.name === 'channel') continue;
         enums.push({ id: encId(p), name: am4ParamLabel(p), value, options });
       } else {
         const value = typeof display === 'number' ? display : Number(display) || 0;
@@ -680,6 +687,22 @@ class Am4Driver implements DeviceDriver {
     await dev.sendQueued(buildSetBlockBypass(blockPidLow, bypassed));
     this.#invalidate();
     return { ok: true };
+  }
+
+  /** Switch a placed block's active channel (A/B/C/D) — POST /preset/blocks/:eid/channel, mirrors
+   *  gen-3's setChannel. Unlike gen-3 (dedicated wire frame + fn-0x13 status read), AM4's channel is
+   *  an ordinary enum SET_PARAM at `<block>.channel` (pidHigh=0x07d2, hardware-confirmed on
+   *  amp/drive/reverb/delay, pattern-extended to every block — see forgefx-midi's params.ts), so this
+   *  is a thin wrapper over the existing generic key-write path. */
+  async setChannel(eid: number, channel: string) {
+    const blockName = resolveBlockTypeValue(eid)?.name;
+    if (!blockName || blockName === 'none') return { ok: false };
+    const idx = ['A', 'B', 'C', 'D'].indexOf(channel.toUpperCase());
+    if (idx < 0) return { ok: false };
+    const res = await this.setParamByKey(`${blockName}.channel`, idx);
+    this.#invalidate();
+    this.#ctx.emit({ type: 'blockState', effectId: eid });
+    return res;
   }
 
   /** Rename the current preset (POST /preset/name; capability presets.canRename). AM4's rename command

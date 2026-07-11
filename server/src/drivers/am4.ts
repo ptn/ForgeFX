@@ -22,6 +22,8 @@ import {
   parseGetPresetNameResponse,
   // Tuner readout (block 0x0023) — live-poll reads decoded upstream (BigCapture 2026-07-05).
   // (buildReadParam already imported above for the atomic structure read.)
+  buildReadActiveChannel,
+  parseActiveChannelResponse,
   READ_TYPE_LIVE_POLL,
   parseReadResponse,
   isPollResponse,
@@ -255,6 +257,18 @@ class Am4Driver implements DeviceDriver {
   // page load then reuse ONE ~500 ms atomic read (mirrors the gen-3 driver's #gridCache pattern).
   #presetCache: { snap: PresetSnapshot; at: number } | null = null;
   static #PRESET_TTL_MS = 500;
+  // Active-channel tracking (eid/pidLow → channel idx 0..3). Two sources keep it current:
+  //   1) DEVICE read — #refreshActiveChannels reads the real active channel from register 0x07DD (byte
+  //      50; decoded FORGEFXMID-16/18 from Channels.pcapng). The channel-SELECT register 0x07D2 is
+  //      write-only for switching and reads back cached firmware state, so 0x07DD is the reliable source.
+  //      readPreset and the edit-watch call it, so front-panel / AM4-Edit channel switches now reflect.
+  //   2) OPTIMISTIC — setChannel() records the target index immediately for instant UI feedback; the next
+  //      device read confirms/corrects it. Both feed the slice in #slotParamValues / placedBlocks so the
+  //      active channel's params (e.g. reverb type) surface instead of the channel-A fallback.
+  // Cleared when the preset/scene context changes (see #readStructure), then repopulated from the device.
+  #activeChannel = new Map<number, number>(); // eid (pidLow) → channel idx 0..3
+  #ctxSig: string | null = null;
+  static #CHAN_LETTERS = ['A', 'B', 'C', 'D'] as const;
 
   /** Serialize `fn` behind the in-instance reader mutex so no two reader calls interleave on the
    *  shared transport. Returns fn's result; the lock advances whether fn resolves or throws. */
@@ -283,8 +297,16 @@ class Am4Driver implements DeviceDriver {
       if (this.#presetCache && t - this.#presetCache.at < Am4Driver.#PRESET_TTL_MS) return this.#presetCache.snap;
       this.#lastTransport = await this.#openTransport();
       try {
-        const snap = await this.#reader.getPreset!(this.#dispatchCtx(), {});
+        // Read ALL four channels from the single fn-0x1F dump (no extra round-trips): the active channel
+        // can't be read from the device (0x07d2 is unreadable), so we slice the tracked channel ourselves
+        // in #slotParamValues rather than trust getPreset's channel-A fallback.
+        const snap = await this.#reader.getPreset!(this.#dispatchCtx(), { include_channel_state: true });
         this.#presetCache = { snap, at: Date.now() };
+        // Resolve the REAL active channel per placed block from the device (0x07DD) so placedBlocks /
+        // blockParams slice the channel the UNIT is actually on — not the channel-A fallback. #readStructure
+        // (TTL-cached, and it clears #activeChannel on a preset/scene context change) gives the placed pidLows.
+        const placed = (await this.#readStructure())?.slots.filter((sl) => sl.pidLow !== 0 && sl.blockType !== 'none').map((sl) => sl.pidLow) ?? [];
+        await this.#refreshActiveChannels(placed);
         this.#log(`readPreset: ${snap.slots.length} placed block(s), scene ${snap.active_scene ?? '?'} (${snap._meta.read_duration_ms ?? '?'}ms)`);
         return snap;
       } catch (e) {
@@ -332,6 +354,11 @@ class Am4Driver implements DeviceDriver {
         scene: int32LE(b, STRUCT_SCENE_OFFSET),
         location: int32LE(b, STRUCT_LOCATION_OFFSET)
       };
+      // Drop optimistic channel tracking when the preset/scene context changes — a switch remaps every
+      // block's active channel on the device, and we have no way to read the new mapping (0x07d2 is
+      // unreadable), so falling back to channel A is the safe default until the user re-selects.
+      const sig = `${s.location}:${s.scene}`;
+      if (sig !== this.#ctxSig) { this.#ctxSig = sig; this.#activeChannel.clear(); }
       this.#structCache = { s, at: Date.now() };
       return s;
     } catch {
@@ -364,7 +391,7 @@ class Am4Driver implements DeviceDriver {
   // frame whose bytes 29/30/31/236 free-run, and the preset dump which drifts ~20% on a no-op re-dump).
   // If a block's array drifts on a no-op re-read, exclude its drifting indices in #hashPlacedParams. A
   // false positive only costs a redundant reload; it never misses a real edit.
-  #deviceEditBaseline: { edited: boolean; hash: string; scene: number } | null = null;
+  #deviceEditBaseline: { edited: boolean; hash: string; scene: number; channels: string } | null = null;
   #selfEditPending = false;
 
   /** One device-edit watch tick. Returns `{changed:true}` when a DEVICE-originated (front-panel /
@@ -385,19 +412,29 @@ class Am4Driver implements DeviceDriver {
       // it's not a working-buffer edit), so the edited-gate above would miss it. Cheap: the structure
       // is TTL-cached and #hashPlacedParams already warmed it when dirty. (#STRUCT_TTL 500ms <
       // edit-watch cadence 1500ms, so each tick re-reads fresh.)
-      const scene = (await this.#readStructure())?.scene ?? 0;
+      const struct = await this.#readStructure();
+      const scene = struct?.scene ?? 0;
+      // Read each placed block's REAL active channel (0x07DD). A front-panel channel switch does NOT
+      // reliably set the working-buffer edited bit and leaves the channel-A hash unchanged, so without
+      // this it would go undetected. #refreshActiveChannels also updates #activeChannel, so the reload
+      // this triggers reports the channel the unit actually switched to.
+      const placed = (struct?.slots ?? []).filter((sl) => sl.pidLow !== 0 && sl.blockType !== 'none').map((sl) => sl.pidLow);
+      const channels = await this.#refreshActiveChannels(placed);
       const base = this.#deviceEditBaseline;
       // First run, or our own write just dirtied the buffer → adopt as baseline and emit nothing.
       if (base === null || this.#selfEditPending) {
         this.#selfEditPending = false;
-        this.#deviceEditBaseline = { edited, hash, scene };
+        this.#deviceEditBaseline = { edited, hash, scene, channels };
         return { changed: false };
       }
       // Front-panel scene change (footswitch): emit a `scene` event (same shape gen-3 emits) so Axis
       // moves the badge AND reloads the per-scene grid/params. Separate from the edit `changed` signal.
       if (scene !== base.scene) this.#ctx.emit({ type: 'scene', index: scene });
-      const changed = edited !== base.edited || hash !== base.hash;
-      this.#deviceEditBaseline = { edited, hash, scene };
+      // A front-panel channel switch (channels sig changed) is a device-originated edit → reload so the
+      // new active channel's params/type surface. #invalidate() on our own writes seeds the baseline
+      // (via #selfEditPending) so AXIS-initiated switches don't double-fire here.
+      const changed = edited !== base.edited || hash !== base.hash || channels !== base.channels;
+      this.#deviceEditBaseline = { edited, hash, scene, channels };
       return { changed };
     });
   }
@@ -416,6 +453,41 @@ class Am4Driver implements DeviceDriver {
         parts.push(`${sl.pidLow}:${r.values.slice(0, stride).join(',')}`);
       } catch {
         // block not readable this tick — skip it (its absence is itself part of the fingerprint)
+      }
+    }
+    return parts.join('|');
+  }
+
+  /** Read each placed block's REAL active channel from the device (0x07DD long read, byte 50 —
+   *  decoded in FORGEFXMID-16/18 from Channels.pcapng) and update #activeChannel to the device truth.
+   *  Unlike the 0x07D2 SELECT register (write-only for switching; reads back cached firmware state),
+   *  0x07DD reads back a clean 0..3 index, so this reflects channel switches made on the UNIT / in
+   *  AM4-Edit — not just the ones AXIS made. Returns a stable signature (`pidLow:idx|…`) the edit-watch
+   *  uses to detect a front-panel channel switch. Best-effort per block: a read miss leaves that block's
+   *  tracked value (or the channel-A fallback) untouched. Callers already hold #withReader. */
+  async #refreshActiveChannels(placedPidLows: number[]): Promise<string> {
+    if (!placedPidLows.length) return '';
+    const dev = await this.#openTransport();
+    const isFor = (f: number[], pidLow: number) => f[6] === (pidLow & 0x7f) && f[7] === ((pidLow >> 7) & 0x7f);
+    const parts: string[] = [];
+    for (const pidLow of placedPidLows) {
+      try {
+        const req = buildReadActiveChannel(pidLow);
+        const frames = await dev.request(req, {
+          timeoutMs: dev.slow ? 1200 : 800,
+          quietMs: dev.slow ? 100 : 50,
+          match: (fs) => fs.some((f) => isFor(f, pidLow) && parseActiveChannelResponse(f) !== null),
+        });
+        const idx = frames
+          .filter((f) => isFor(f, pidLow))
+          .map((f) => parseActiveChannelResponse(f))
+          .find((v) => v !== null);
+        if (idx != null) {
+          this.#activeChannel.set(pidLow, idx);
+          parts.push(`${pidLow}:${idx}`);
+        }
+      } catch {
+        // block unreadable this tick — keep the tracked/fallback channel, don't churn
       }
     }
     return parts.join('|');
@@ -482,7 +554,13 @@ class Am4Driver implements DeviceDriver {
       // match the reader slot by POSITION, not block name — a preset can hold two instances of the
       // same block type (drive 0x76 + drive 0x77), and a name match would return the wrong one
       const matched = snap?.slots.find((x) => x.slot === sl.slot) ?? snap?.slots.find((x) => x.block_type === slug);
-      const channel = matched?.params_by_channel ? Object.keys(matched.params_by_channel)[0] ?? null : null;
+      // Report the resolved active channel: readPreset() ran #refreshActiveChannels, so #activeChannel
+      // holds the REAL device channel (0x07DD) for placed blocks; fall back to the dump's first channel
+      // key (A) only if that read missed.
+      const trackedIdx = this.#activeChannel.get(sl.pidLow);
+      const channel = trackedIdx !== undefined
+        ? (Am4Driver.#CHAN_LETTERS[trackedIdx] ?? null)
+        : (matched?.params_by_channel ? Object.keys(matched.params_by_channel)[0] ?? null : null);
       return { slug, name: sl.blockType, effectId: sl.pidLow, row: 1, col: sl.slot, fromRows: [], bypassed: matched?.bypassed ?? null, channel };
     });
   }
@@ -523,7 +601,7 @@ class Am4Driver implements DeviceDriver {
     const chainSlot = (await this.#readStructure())?.slots.find((sl) => sl.pidLow === pidLow)?.slot;
     const slot = (chainSlot !== undefined ? snap?.slots.find((s) => s.slot === chainSlot) : undefined)
       ?? snap?.slots.find((s) => s.block_type === blockName);
-    const decoded = this.#slotParamValues(slot);
+    const decoded = this.#slotParamValues(slot, this.#activeChannel.get(pidLow));
     // The reader's decoded keys should match KNOWN_PARAMS names verbatim, but casing/space/underscore
     // drift between the catalog and the descriptor reader would silently drop every param (display
     // undefined → skipped), leaving a block like `amp` with 154 recovered knobs rendering empty. Index
@@ -596,11 +674,21 @@ class Am4Driver implements DeviceDriver {
 
   /** The decoded (display-value) param dict for a placed slot: `params` on non-channel blocks, else the
    *  single active-channel dict the reader nested under `params_by_channel`. Empty when the slot is absent. */
-  #slotParamValues(slot: PresetSnapshot['slots'][number] | undefined): Record<string, number | string> {
+  #slotParamValues(slot: PresetSnapshot['slots'][number] | undefined, preferredIdx?: number): Record<string, number | string> {
     if (!slot) return {};
     if (slot.params) return slot.params as Record<string, number | string>;
     const byCh = slot.params_by_channel;
-    if (byCh) { const first = Object.values(byCh)[0]; if (first) return first as Record<string, number | string>; }
+    if (byCh) {
+      // Prefer the tracked active channel (the one Axis last switched to); fall back to the first key
+      // (channel A) when nothing is tracked — the dump now carries all four channels A/B/C/D.
+      if (preferredIdx !== undefined) {
+        const letter = Am4Driver.#CHAN_LETTERS[preferredIdx];
+        const pref = letter ? byCh[letter] : undefined;
+        if (pref) return pref as Record<string, number | string>;
+      }
+      const first = Object.values(byCh)[0];
+      if (first) return first as Record<string, number | string>;
+    }
     return {};
   }
 
@@ -733,6 +821,11 @@ class Am4Driver implements DeviceDriver {
     const idx = ['A', 'B', 'C', 'D'].indexOf(channel.toUpperCase());
     if (idx < 0) return { ok: false };
     const res = await this.setParamByKey(`${blockName}.channel`, idx);
+    // Remember the channel we just selected — the device won't read it back (0x07d2 is unreadable), so
+    // this is the only way subsequent reads reflect the switch (keyed by the eid the caller addresses,
+    // so two instances of a block type track independently). #invalidate() drops the dump caches but
+    // NOT this map; #readStructure clears it on a preset/scene context change.
+    this.#activeChannel.set(eid, idx);
     this.#invalidate();
     this.#ctx.emit({ type: 'blockState', effectId: eid });
     return res;

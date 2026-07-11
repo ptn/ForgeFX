@@ -22,6 +22,8 @@ import {
   parseGetPresetNameResponse,
   // Tuner readout (block 0x0023) — live-poll reads decoded upstream (BigCapture 2026-07-05).
   // (buildReadParam already imported above for the atomic structure read.)
+  buildReadActiveChannel,
+  parseActiveChannelResponse,
   READ_TYPE_LIVE_POLL,
   parseReadResponse,
   isPollResponse,
@@ -255,14 +257,15 @@ class Am4Driver implements DeviceDriver {
   // page load then reuse ONE ~500 ms atomic read (mirrors the gen-3 driver's #gridCache pattern).
   #presetCache: { snap: PresetSnapshot; at: number } | null = null;
   static #PRESET_TTL_MS = 500;
-  // Optimistic active-channel tracking. The device's per-block channel-selector register (pidHigh 0x07d2)
-  // does NOT read the active channel back — it returns derived firmware state / a constant 0 (verified from
-  // a live log 2026-07-10, FORGEFXMID-16) — so getPreset can't resolve it and every channel-bearing block
-  // falls back to channel A. When AXIS switches a block's channel we remember the index here (keyed by the
-  // eid/pidLow the caller uses) and slice THAT channel out of the all-channel dump, so the switch — and any
-  // per-channel value it exposes, e.g. reverb type — reflects immediately. Reset when the preset/scene
-  // context changes (see #readStructure). Device-side / front-panel channel changes still can't be
-  // reflected until the real active-channel field is decoded (FORGEFXMID-16, capture-dependent).
+  // Active-channel tracking (eid/pidLow → channel idx 0..3). Two sources keep it current:
+  //   1) DEVICE read — #refreshActiveChannels reads the real active channel from register 0x07DD (byte
+  //      50; decoded FORGEFXMID-16/18 from Channels.pcapng). The channel-SELECT register 0x07D2 is
+  //      write-only for switching and reads back cached firmware state, so 0x07DD is the reliable source.
+  //      readPreset and the edit-watch call it, so front-panel / AM4-Edit channel switches now reflect.
+  //   2) OPTIMISTIC — setChannel() records the target index immediately for instant UI feedback; the next
+  //      device read confirms/corrects it. Both feed the slice in #slotParamValues / placedBlocks so the
+  //      active channel's params (e.g. reverb type) surface instead of the channel-A fallback.
+  // Cleared when the preset/scene context changes (see #readStructure), then repopulated from the device.
   #activeChannel = new Map<number, number>(); // eid (pidLow) → channel idx 0..3
   #ctxSig: string | null = null;
   static #CHAN_LETTERS = ['A', 'B', 'C', 'D'] as const;
@@ -299,6 +302,11 @@ class Am4Driver implements DeviceDriver {
         // in #slotParamValues rather than trust getPreset's channel-A fallback.
         const snap = await this.#reader.getPreset!(this.#dispatchCtx(), { include_channel_state: true });
         this.#presetCache = { snap, at: Date.now() };
+        // Resolve the REAL active channel per placed block from the device (0x07DD) so placedBlocks /
+        // blockParams slice the channel the UNIT is actually on — not the channel-A fallback. #readStructure
+        // (TTL-cached, and it clears #activeChannel on a preset/scene context change) gives the placed pidLows.
+        const placed = (await this.#readStructure())?.slots.filter((sl) => sl.pidLow !== 0 && sl.blockType !== 'none').map((sl) => sl.pidLow) ?? [];
+        await this.#refreshActiveChannels(placed);
         this.#log(`readPreset: ${snap.slots.length} placed block(s), scene ${snap.active_scene ?? '?'} (${snap._meta.read_duration_ms ?? '?'}ms)`);
         return snap;
       } catch (e) {
@@ -383,7 +391,7 @@ class Am4Driver implements DeviceDriver {
   // frame whose bytes 29/30/31/236 free-run, and the preset dump which drifts ~20% on a no-op re-dump).
   // If a block's array drifts on a no-op re-read, exclude its drifting indices in #hashPlacedParams. A
   // false positive only costs a redundant reload; it never misses a real edit.
-  #deviceEditBaseline: { edited: boolean; hash: string; scene: number } | null = null;
+  #deviceEditBaseline: { edited: boolean; hash: string; scene: number; channels: string } | null = null;
   #selfEditPending = false;
 
   /** One device-edit watch tick. Returns `{changed:true}` when a DEVICE-originated (front-panel /
@@ -404,19 +412,29 @@ class Am4Driver implements DeviceDriver {
       // it's not a working-buffer edit), so the edited-gate above would miss it. Cheap: the structure
       // is TTL-cached and #hashPlacedParams already warmed it when dirty. (#STRUCT_TTL 500ms <
       // edit-watch cadence 1500ms, so each tick re-reads fresh.)
-      const scene = (await this.#readStructure())?.scene ?? 0;
+      const struct = await this.#readStructure();
+      const scene = struct?.scene ?? 0;
+      // Read each placed block's REAL active channel (0x07DD). A front-panel channel switch does NOT
+      // reliably set the working-buffer edited bit and leaves the channel-A hash unchanged, so without
+      // this it would go undetected. #refreshActiveChannels also updates #activeChannel, so the reload
+      // this triggers reports the channel the unit actually switched to.
+      const placed = (struct?.slots ?? []).filter((sl) => sl.pidLow !== 0 && sl.blockType !== 'none').map((sl) => sl.pidLow);
+      const channels = await this.#refreshActiveChannels(placed);
       const base = this.#deviceEditBaseline;
       // First run, or our own write just dirtied the buffer → adopt as baseline and emit nothing.
       if (base === null || this.#selfEditPending) {
         this.#selfEditPending = false;
-        this.#deviceEditBaseline = { edited, hash, scene };
+        this.#deviceEditBaseline = { edited, hash, scene, channels };
         return { changed: false };
       }
       // Front-panel scene change (footswitch): emit a `scene` event (same shape gen-3 emits) so Axis
       // moves the badge AND reloads the per-scene grid/params. Separate from the edit `changed` signal.
       if (scene !== base.scene) this.#ctx.emit({ type: 'scene', index: scene });
-      const changed = edited !== base.edited || hash !== base.hash;
-      this.#deviceEditBaseline = { edited, hash, scene };
+      // A front-panel channel switch (channels sig changed) is a device-originated edit → reload so the
+      // new active channel's params/type surface. #invalidate() on our own writes seeds the baseline
+      // (via #selfEditPending) so AXIS-initiated switches don't double-fire here.
+      const changed = edited !== base.edited || hash !== base.hash || channels !== base.channels;
+      this.#deviceEditBaseline = { edited, hash, scene, channels };
       return { changed };
     });
   }
@@ -435,6 +453,41 @@ class Am4Driver implements DeviceDriver {
         parts.push(`${sl.pidLow}:${r.values.slice(0, stride).join(',')}`);
       } catch {
         // block not readable this tick — skip it (its absence is itself part of the fingerprint)
+      }
+    }
+    return parts.join('|');
+  }
+
+  /** Read each placed block's REAL active channel from the device (0x07DD long read, byte 50 —
+   *  decoded in FORGEFXMID-16/18 from Channels.pcapng) and update #activeChannel to the device truth.
+   *  Unlike the 0x07D2 SELECT register (write-only for switching; reads back cached firmware state),
+   *  0x07DD reads back a clean 0..3 index, so this reflects channel switches made on the UNIT / in
+   *  AM4-Edit — not just the ones AXIS made. Returns a stable signature (`pidLow:idx|…`) the edit-watch
+   *  uses to detect a front-panel channel switch. Best-effort per block: a read miss leaves that block's
+   *  tracked value (or the channel-A fallback) untouched. Callers already hold #withReader. */
+  async #refreshActiveChannels(placedPidLows: number[]): Promise<string> {
+    if (!placedPidLows.length) return '';
+    const dev = await this.#openTransport();
+    const isFor = (f: number[], pidLow: number) => f[6] === (pidLow & 0x7f) && f[7] === ((pidLow >> 7) & 0x7f);
+    const parts: string[] = [];
+    for (const pidLow of placedPidLows) {
+      try {
+        const req = buildReadActiveChannel(pidLow);
+        const frames = await dev.request(req, {
+          timeoutMs: dev.slow ? 1200 : 800,
+          quietMs: dev.slow ? 100 : 50,
+          match: (fs) => fs.some((f) => isFor(f, pidLow) && parseActiveChannelResponse(f) !== null),
+        });
+        const idx = frames
+          .filter((f) => isFor(f, pidLow))
+          .map((f) => parseActiveChannelResponse(f))
+          .find((v) => v !== null);
+        if (idx != null) {
+          this.#activeChannel.set(pidLow, idx);
+          parts.push(`${pidLow}:${idx}`);
+        }
+      } catch {
+        // block unreadable this tick — keep the tracked/fallback channel, don't churn
       }
     }
     return parts.join('|');
@@ -501,8 +554,9 @@ class Am4Driver implements DeviceDriver {
       // match the reader slot by POSITION, not block name — a preset can hold two instances of the
       // same block type (drive 0x76 + drive 0x77), and a name match would return the wrong one
       const matched = snap?.slots.find((x) => x.slot === sl.slot) ?? snap?.slots.find((x) => x.block_type === slug);
-      // Report the tracked active channel (the one Axis last switched to) when we have one; otherwise the
-      // dump's first channel key (A). The device can't tell us the real active channel (0x07d2 unreadable).
+      // Report the resolved active channel: readPreset() ran #refreshActiveChannels, so #activeChannel
+      // holds the REAL device channel (0x07DD) for placed blocks; fall back to the dump's first channel
+      // key (A) only if that read missed.
       const trackedIdx = this.#activeChannel.get(sl.pidLow);
       const channel = trackedIdx !== undefined
         ? (Am4Driver.#CHAN_LETTERS[trackedIdx] ?? null)

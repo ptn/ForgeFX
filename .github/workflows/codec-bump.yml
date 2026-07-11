@@ -1,0 +1,108 @@
+name: codec-bump
+
+# The codec → ForgeFX ripple (stage 1 → stage 2). When forgefx-midi publishes a release it
+# fires a `codec-released` repository_dispatch; this workflow opens a PR that bumps ForgeFX's
+# pinned codec ref (stack.lock.json → forgefx-midi.ref) to the released commit. CI then
+# validates the server against the new pin. Merging the PR adopts the pin; whether to also cut
+# a ForgeFX RELEASE is a human decision (see docs/RELEASING.md — wire/API-affecting or
+# catalog-affecting codec change → release; internal-only → the pin rides the next release).
+#
+# Can also be run manually (workflow_dispatch) with an explicit ref, or with an empty ref to
+# pin the codec's current default-branch HEAD.
+on:
+  repository_dispatch:
+    types: [codec-released]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: >-
+          forgefx-midi tag or commit SHA to pin. Empty = resolve sKuhLight/forgefx-midi
+          default-branch HEAD via git ls-remote.
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    name: bump forgefx-midi pin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Precedence: manual input > dispatch payload tag > dispatch payload sha > default HEAD.
+      - name: Determine target codec ref
+        id: target
+        env:
+          MANUAL_REF: ${{ github.event.inputs.ref }}
+          PAYLOAD_TAG: ${{ github.event.client_payload.tag }}
+          PAYLOAD_SHA: ${{ github.event.client_payload.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="$MANUAL_REF"
+          # explicit ifs — a bare `[ test ] && cmd` whose test is false would trip set -e
+          if [ -z "$REF" ]; then REF="$PAYLOAD_TAG"; fi
+          if [ -z "$REF" ]; then REF="$PAYLOAD_SHA"; fi
+          if [ -z "$REF" ]; then
+            echo "No ref supplied — resolving forgefx-midi default-branch HEAD."
+            REF="$(git ls-remote https://github.com/sKuhLight/forgefx-midi.git HEAD | awk '{print $1}')"
+          fi
+          if [ -z "$REF" ]; then
+            echo "::error::Could not determine a forgefx-midi ref to pin."
+            exit 1
+          fi
+          echo "Target codec ref: $REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+      # jq-write to a tmp file + mv (never edit JSON in place). No change → nothing to PR.
+      - name: Update stack.lock.json pin
+        id: pin
+        env:
+          REF: ${{ steps.target.outputs.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq --arg ref "$REF" '.["forgefx-midi"].ref = $ref' stack.lock.json > stack.lock.json.tmp
+          mv stack.lock.json.tmp stack.lock.json
+          if git diff --quiet -- stack.lock.json; then
+            echo "pin already current ($REF) — nothing to do." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A PAT (STACK_DISPATCH_TOKEN) makes the auto-PR's OWN CI run; with the fallback
+      # GITHUB_TOKEN the PR is still created, but its CI must be triggered manually
+      # (close/reopen the PR). Commits are authored as the maintainer, no AI attribution.
+      - name: Open pin-bump PR
+        if: steps.pin.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.STACK_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
+          branch: bump/forgefx-midi-${{ steps.target.outputs.ref }}
+          author: sKuhLight <sKuhLight@users.noreply.github.com>
+          committer: sKuhLight <sKuhLight@users.noreply.github.com>
+          commit-message: "stack: bump forgefx-midi pin to ${{ steps.target.outputs.ref }}"
+          title: "stack: bump forgefx-midi pin to ${{ steps.target.outputs.ref }}"
+          body: |
+            ## Codec pin bump
+
+            forgefx-midi published a release; this bumps ForgeFX's pinned codec ref so the next
+            tag build ships against it. CI validates the server against the new pin.
+
+            | field | value |
+            |---|---|
+            | released version | `${{ github.event.client_payload.version || 'n/a (manual / HEAD)' }}` |
+            | tag | `${{ github.event.client_payload.tag || 'n/a' }}` |
+            | sha | `${{ github.event.client_payload.sha || 'n/a' }}` |
+            | pinned ref → | `${{ steps.target.outputs.ref }}` |
+
+            ### Decision (yours, on this PR)
+            - **Merge** = adopt the pin.
+            - **Cut a ForgeFX release too?**
+              - Wire/API surface or user-visible catalog change → **yes**, cut a ForgeFX
+                release (see `docs/RELEASING.md`).
+              - Internal-only codec change → **no**, let the pin ride along the next release.

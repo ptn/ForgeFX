@@ -28,5 +28,24 @@ codec's default-branch HEAD (latest-against-latest integration testing).
 ## Secrets
 
 - `STACK_DISPATCH_TOKEN` — PAT with `repo` scope on `sKuhLight/Axis`; used by `ci.yml`'s
-  `notify-axis` job (green main pushes redeploy axisapp.live). Soft-gated: unset → skipped.
+  `notify-axis` job (green main pushes redeploy axisapp.live) and by `release-published.yml`
+  (a published release notifies Axis). Soft-gated: unset → skipped. A PAT also lets the
+  auto-PRs (`codec-bump.yml`) trigger their own CI; with only `GITHUB_TOKEN` the PR is still
+  opened but its CI must be kicked manually (close/reopen).
 - GHCR push uses the built-in `GITHUB_TOKEN` (`packages: write`).
+
+## Automation & ripple decision rule
+
+- **version-guard** (`ci.yml`) rejects any non-docs PR whose `server/package.json` version
+  isn't greater than the base branch's (docs-only PRs pass). Bump with
+  `cd server && npm version X.Y.Z-beta --no-git-tag-version` (lockfile too).
+- **Codec ripple in (`codec-bump.yml`).** A forgefx-midi release fires `codec-released`,
+  which opens an auto-PR bumping `stack.lock.json → forgefx-midi.ref`. **Merge that PR
+  instead of hand-editing the pin.** Then the **release-or-not decision:**
+  - The codec change touches the **wire/API surface** ForgeFX exposes, or changes a
+    **catalog** Axis users see → **cut a ForgeFX release** (bump server version, tag).
+  - The change is **internal-only** → don't release; the new pin simply **rides along the
+    next release**.
+- **Release ripple out (`release-published.yml`).** Creating a draft does nothing downstream;
+  **publishing** a ForgeFX release fires `server-released` at Axis, which opens *its own*
+  bump PR pinning this server tag + the codec ref this release shipped against.

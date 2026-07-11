@@ -6,6 +6,9 @@
 # Local-only Claude Code context (documents RE/capture methods — never commit)
 CLAUDE.md
 
+# Claude Code session git worktrees (per-session .wt-* checkouts)
+.wt-*/
+
 # dotenv files
 .env
 

@@ -1,7 +1,12 @@
 name: release
 
-# Tag a version (e.g. v0.1.0-beta) to build the multi-arch Docker image, push it to GHCR,
-# and open a DRAFT GitHub release for you to review and publish.
+# Stage 2 of the cross-repo release chain (forgefx-midi → ForgeFX → Axis → axisapp.live).
+# Tag a version (e.g. v0.1.0-beta) to run the full test gate against the PINNED codec ref
+# (stack.lock.json), build the multi-arch Docker image, push it to GHCR, and open a DRAFT
+# GitHub release for you to review and publish. See docs/RELEASING.md.
+#
+# NOTE: CI (ci.yml) always tracks codec default-branch HEAD — only these tag builds pin the
+# sibling ref via stack.lock.json, so a release is reproducible against a known codec commit.
 on:
   push:
     tags: ['v*']
@@ -11,16 +16,77 @@ permissions:
   packages: write
 
 jobs:
-  docker:
-    name: docker image -> GHCR
+  gate:
+    name: test gate (codec + server)
     runs-on: ubuntu-latest
+    outputs:
+      codec-ref: ${{ steps.resolve.outputs.ref }}
     steps:
+      # ForgeFX FIRST — the resolve step reads its stack.lock.json before the codec checkout.
       - uses: actions/checkout@v4
-      # the Dockerfile builds the sibling forgefx-midi codec in-image — stage a copy of it
-      # inside the build context (see Dockerfile header + ci.yml)
+        with:
+          path: ForgeFX
+      - name: Resolve pinned codec ref
+        id: resolve
+        working-directory: ForgeFX
+        run: |
+          REF="$(jq -r '.["forgefx-midi"].ref // empty' stack.lock.json 2>/dev/null || true)"
+          if [ -z "$REF" ]; then
+            echo "::warning::stack.lock.json missing forgefx-midi.ref — falling back to codec default branch."
+            echo "⚠ stack.lock.json missing forgefx-midi.ref — building against codec default branch." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Pinned codec ref: $REF"
+            echo "Pinned codec ref: \`$REF\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+      # Codec checkout at the resolved ref ('' = default branch).
       - uses: actions/checkout@v4
         with:
           repository: sKuhLight/forgefx-midi
+          ref: ${{ steps.resolve.outputs.ref }}
+          path: forgefx-midi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            ForgeFX/server/package-lock.json
+            forgefx-midi/package-lock.json
+      - name: Build codec (server exports resolve to dist/)
+        working-directory: forgefx-midi
+        run: |
+          npm ci
+          npm run build
+      - name: Server install + typecheck + tests + build
+        working-directory: ForgeFX/server
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+  docker:
+    name: docker image -> GHCR
+    runs-on: ubuntu-latest
+    needs: gate
+    steps:
+      - uses: actions/checkout@v4
+      # the Dockerfile builds the sibling forgefx-midi codec in-image — stage a copy of it
+      # inside the build context (see Dockerfile header + ci.yml), pinned to the codec ref
+      # from stack.lock.json so the image matches the gated stack.
+      - name: Resolve pinned codec ref
+        id: resolve
+        run: |
+          REF="$(jq -r '.["forgefx-midi"].ref // empty' stack.lock.json 2>/dev/null || true)"
+          if [ -z "$REF" ]; then
+            echo "::warning::stack.lock.json missing forgefx-midi.ref — falling back to codec default branch."
+            echo "⚠ stack.lock.json missing forgefx-midi.ref — building against codec default branch." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: sKuhLight/forgefx-midi
+          ref: ${{ steps.resolve.outputs.ref }}
           path: midi-checkout
       - name: Stage forgefx-midi into the build context
         run: rsync -a --exclude node_modules --exclude .git midi-checkout/ forgefx-midi/ && rm -rf midi-checkout
@@ -47,9 +113,12 @@ jobs:
   release:
     name: draft github release
     runs-on: ubuntu-latest
-    needs: docker
+    needs: [gate, docker]
     steps:
       - uses: actions/checkout@v4
+      - name: Read server version
+        id: ver
+        run: echo "server=$(node -p "require('./server/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
@@ -63,5 +132,9 @@ jobs:
             ```sh
             docker run --rm -p 5056:5056 --device /dev/ttyACM0 ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ```
+
+            **Shipped stack:**
+            - forgefx-server: `${{ steps.ver.outputs.server }}`
+            - forgefx-midi (pinned): `${{ needs.gate.outputs.codec-ref || 'default branch' }}`
 
             Independent, third-party software. Not affiliated with Fractal Audio Systems. Use at your own risk — see DISCLAIMER.md.

@@ -1,0 +1,61 @@
+name: release-published
+
+# The ForgeFX → Axis release ripple (stage 2 → stage 3). Our releases are created as DRAFTS
+# by release.yml — PUBLISHING one is the deliberate "this is now real" step, so publishing
+# (not the draft) is what notifies Axis. Axis then opens its own stack-bump PR pinning this
+# server release AND the codec ref it shipped against (the two pins move together — Axis must
+# never pin a codec newer than the one ForgeFX shipped).
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify-axis:
+    name: notify Axis (server-released)
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the tag the release points at so the version + pinned codec ref we report
+      # are exactly what shipped.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - name: Gather release facts
+        id: facts
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVER_VERSION="$(node -p "require('./server/package.json').version")"
+          CODEC_REF="$(jq -r '.["forgefx-midi"].ref // empty' stack.lock.json 2>/dev/null || true)"
+          SHA="$(git rev-parse HEAD)"
+          echo "Server version: $SERVER_VERSION"
+          echo "Pinned codec ref: ${CODEC_REF:-<none — default branch>}"
+          echo "Tag commit SHA: $SHA"
+          echo "server_version=$SERVER_VERSION" >> "$GITHUB_OUTPUT"
+          echo "codec_ref=$CODEC_REF" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      # Soft-gated: no token → print a notice and succeed (never a red X on forks /
+      # unconfigured repos). jq builds the JSON payload so refs/versions can't break quoting.
+      - name: Dispatch server-released to Axis
+        env:
+          TOKEN: ${{ secrets.STACK_DISPATCH_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          SHA: ${{ steps.facts.outputs.sha }}
+          SERVER_VERSION: ${{ steps.facts.outputs.server_version }}
+          CODEC_REF: ${{ steps.facts.outputs.codec_ref }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "STACK_DISPATCH_TOKEN not configured — skipping Axis notify."
+            exit 0
+          fi
+          PAYLOAD="$(jq -nc \
+            --arg tag "$TAG" \
+            --arg sha "$SHA" \
+            --arg server_version "$SERVER_VERSION" \
+            --arg codec_ref "$CODEC_REF" \
+            '{event_type:"server-released", client_payload:{tag:$tag, sha:$sha, server_version:$server_version, codec_ref:$codec_ref}}')"
+          curl -sf -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/sKuhLight/Axis/dispatches \
+            -d "$PAYLOAD"

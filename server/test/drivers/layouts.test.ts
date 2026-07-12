@@ -3,8 +3,8 @@
 //   • variant selection: type-value match, amp firmware-pin preference, null/first fallback;
 //   • v2 passthrough: pages → rows → controls carry widget/rawWidget/placement/crossBlock verbatim;
 //   • AM4 gets a layout for the first time (family mapping via am4LayoutFor).
-import { PROFILES, am4LayoutFor, type DeviceLayout } from '../../src/devices.js';
-import { EDITOR_WIDGET_KINDS } from 'forgefx-midi/gen3/fm3';
+import { PROFILES, am4LayoutFor, resolveLayoutPages, type DeviceLayout, type SelectorValues } from '../../src/devices.js';
+import { EDITOR_WIDGET_KINDS, type EditorLayoutPage } from 'forgefx-midi/gen3/fm3';
 
 const fm3 = PROFILES[0x11]!;
 const fm9 = PROFILES[0x12]!;
@@ -84,6 +84,81 @@ const checks: Array<{ name: string; ok: () => boolean }> = [
   { name: "AM4 'volpan' → VOLUME layout", ok: () => am4LayoutFor('volpan')?.family === 'VOLUME' },
   { name: "AM4 'compressor' → COMP layout", ok: () => am4LayoutFor('compressor')?.family === 'COMP' },
   { name: "AM4 unmapped block → undefined", ok: () => am4LayoutFor('none') === undefined && am4LayoutFor('bogus') === undefined },
+
+  // ── serve-time page filtering (FORGEFX-24): a multi-selector variant's pages collapse to the ones
+  //    the editor actually shows for the block's current selector + firmware state (was: 57 'Authentic'
+  //    amp tabs served at once → duplicate tabs in Axis) ──
+  { name: 'FM3 amp: DISTORT_TYPE selector picks exactly one Authentic page for the current model', ok: () => {
+    const sel: SelectorValues = (n) => (n === 'DISTORT_TYPE' ? 29 : undefined);
+    const l = fm3.layoutFor('DISTORT', 29, sel);
+    return !!l && l.pages.filter((p) => p.name === 'Authentic').length === 1; } },
+  { name: 'FM3 amp: firmware preference keeps the gtet page over its lt-only sibling (model 15)', ok: () => {
+    const sel: SelectorValues = (n) => (n === 'DISTORT_TYPE' ? 15 : undefined);
+    const l = fm3.layoutFor('DISTORT', 15, sel);
+    const auth = l?.pages.filter((p) => p.name === 'Authentic') ?? [];
+    return auth.length === 1 && auth[0]!.fw?.gtet === '10,00' && auth[0]!.fw?.lt === undefined; } },
+  { name: 'FM3 amp: no-selector pages (Preamp/Speaker) are always included', ok: () => {
+    const sel: SelectorValues = (n) => (n === 'DISTORT_TYPE' ? 29 : undefined);
+    const l = fm3.layoutFor('DISTORT', 29, sel);
+    return !!l && l.pages.some((p) => p.name === 'Preamp') && l.pages.some((p) => p.name === 'Speaker'); } },
+  { name: 'FM3 amp: every served page name is unique (no duplicate tabs)', ok: () => {
+    const sel: SelectorValues = (n) => (n === 'DISTORT_TYPE' ? 29 : undefined);
+    const l = fm3.layoutFor('DISTORT', 29, sel); if (!l) return false;
+    const names = l.pages.map((p) => p.name);
+    return new Set(names).size === names.length; } },
+  { name: 'FM3 amp: a non-matching selector group contributes no page (strict membership)', ok: () => {
+    // 29 lives in an 'Authentic' page but not in any 'Ideal' page → Ideal must be dropped entirely.
+    const sel: SelectorValues = (n) => (n === 'DISTORT_TYPE' ? 29 : undefined);
+    const l = fm3.layoutFor('DISTORT', 29, sel);
+    return !!l && l.pages.filter((p) => p.name === 'Ideal').length === 0; } },
+  { name: 'FM3 amp: unknown selector value never serves ALL — one page per same-named group', ok: () => {
+    const l = fm3.layoutFor('DISTORT'); if (!l) return false; // no typeValue, no selectors
+    const byName = new Map<string, number>();
+    for (const p of l.pages) byName.set(p.name, (byName.get(p.name) ?? 0) + 1);
+    return [...byName.values()].every((c) => c === 1); } },
+
+  // ── page filtering: split (single-selector) families with selector-free variant pages are unaffected ──
+  { name: 'split family (selector-free variant pages) passes through unchanged', ok: () => {
+    const pages: EditorLayoutPage[] = [
+      { name: 'Basic', rows: [] }, { name: 'Advanced', rows: [] }, { name: 'Mix', rows: [] },
+    ];
+    const out = resolveLayoutPages(pages, 3);
+    return out.length === 3 && out.map((p) => p.name).join(',') === 'Basic,Advanced,Mix'; } },
+
+  // ── page filtering: deterministic firmware rule on synthetic same-named siblings ──
+  { name: 'fw rule: highest gtet supersedes lt-only and null-gated siblings', ok: () => {
+    const pages: EditorLayoutPage[] = [
+      { name: 'X', rows: [], fw: { lt: '10,00' } },
+      { name: 'X', rows: [], fw: { gtet: '10,00' } },
+      { name: 'X', rows: [], fw: { gtet: '20,00' } },
+      { name: 'X', rows: [] },
+    ];
+    const out = resolveLayoutPages(pages);
+    return out.length === 1 && out[0]!.fw?.gtet === '20,00'; } },
+  { name: 'fw rule: null-gated sibling beats lt-only when no gtet present', ok: () => {
+    const pages: EditorLayoutPage[] = [
+      { name: 'X', rows: [], fw: { lt: '6,00' } }, { name: 'X', rows: [] },
+    ];
+    const out = resolveLayoutPages(pages);
+    return out.length === 1 && out[0]!.fw === undefined; } },
+  { name: 'fw rule: only lt-only siblings → newest reaches the highest lt bound', ok: () => {
+    const pages: EditorLayoutPage[] = [
+      { name: 'X', rows: [], fw: { lt: '6,00' } }, { name: 'X', rows: [], fw: { lt: '12,00' } },
+    ];
+    const out = resolveLayoutPages(pages);
+    return out.length === 1 && out[0]!.fw?.lt === '12,00'; } },
+
+  // ── page filtering: per-control firmware pruning (lt-bounded controls hidden on newest firmware) ──
+  { name: 'control fw pruning: lt-bounded controls are dropped, gtet/ungated kept', ok: () => {
+    const pages: EditorLayoutPage[] = [{ name: 'P', rows: [{ section: 'parameters', controls: [
+      { label: 'keep-plain', paramName: 'A', paramId: 1, widget: 'knob', rawWidget: 'knob' },
+      { label: 'keep-gtet', paramName: 'B', paramId: 2, widget: 'knob', rawWidget: 'knob', fw: { gtet: '6,00' } },
+      { label: 'drop-lt', paramName: 'C', paramId: 3, widget: 'knob', rawWidget: 'knob', fw: { lt: '10,00' } },
+      { label: 'drop-range', paramName: 'D', paramId: 4, widget: 'knob', rawWidget: 'knob', fw: { gtet: '6,00', lt: '10,00' } },
+    ] }] }];
+    const out = resolveLayoutPages(pages);
+    const labels = out[0]!.rows[0]!.controls.map((c) => c.label);
+    return labels.length === 2 && labels.join(',') === 'keep-plain,keep-gtet'; } },
 ];
 
 export const LAYOUTS_CASE_COUNT = checks.length;

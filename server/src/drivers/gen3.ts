@@ -27,7 +27,7 @@ import {
   retargetPresetDumpToEditBuffer,
   type DecodedBlock
 } from 'forgefx-midi/devices/gen3';
-import { SLUG_FAMILY, type DeviceProfile, type TypeModel, type DeviceLayout } from '../devices.js';
+import { SLUG_FAMILY, type DeviceProfile, type TypeModel, type DeviceLayout, type SelectorValues } from '../devices.js';
 import type {
   DeviceDriver, DriverCapabilities, DriverCtx,
   PresetGridDTO, PresetBlockDTO, PresetSummary, NamedParam, EnumParam, MeterVal,
@@ -577,9 +577,23 @@ class Gen3Driver implements DeviceDriver {
         for (const p of knobs) named.push({ id: p.paramId, name: paramLabel(p), value: 0, norm: 0 });
       }
     }
+    // Current value of any page/control selector param, keyed by its editor symbol: the family type
+    // selector answers with the type just decoded; other selectors (EQ type, drive type, …) with the
+    // block's read enum/knob value. Lets layoutFor filter the served pages down to the ones the editor
+    // would actually show — collapsing e.g. the amp's per-model 'Authentic' pages to the current model.
+    const valueByPid = new Map<number, number>();
+    for (const e of enums) valueByPid.set(e.id, e.value);
+    for (const n of named) if (typeof n.value === 'number') valueByPid.set(n.id, n.value);
+    const selectors: SelectorValues = (selectorParamName) => {
+      const pid = this.#paramId(family, selectorParamName);
+      if (pid == null) return undefined;
+      if (typeId != null && pid === typeId) return type?.value;
+      return valueByPid.get(pid);
+    };
     // Re-resolve the layout to the variant selected by the block's CURRENT type value (EQ band count,
-    // amp firmware-pinned variant, etc.); falls back to the null/first variant when type is unknown.
-    layout = this.#prof.layoutFor(family, type?.value);
+    // amp firmware-pinned variant, etc.) and filter its pages to the current selector/firmware state;
+    // falls back to the null/first variant when type is unknown.
+    layout = this.#prof.layoutFor(family, type?.value, selectors);
     // disambiguate repeated labels within a block (e.g. the cab's 4× "Low Cut", amp's two "Depth")
     // so identical names get a 1/2/3 suffix the UI can tell apart.
     dedupeLabels(named);

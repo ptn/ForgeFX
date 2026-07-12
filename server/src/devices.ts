@@ -49,6 +49,7 @@ import {
 } from 'forgefx-midi/gen3/axe-fx-iii';
 import type {
   DeviceEditorLayouts, EditorBlockLayout, EditorLayoutVariant, EditorLayoutPage,
+  EditorLayoutRow, EditorFwRange,
 } from 'forgefx-midi/gen3/fm3';
 import { AM4_LAYOUTS } from 'forgefx-midi/am4';
 
@@ -98,22 +99,113 @@ const selectVariant = (block: EditorBlockLayout, typeValue?: number): EditorLayo
   return cands.find((v) => v.pinned) ?? cands[0];
 };
 
-// Resolve a family's editor layout to the wire DeviceLayout for the block's CURRENT type value.
-const layoutFrom = (layouts: DeviceEditorLayouts) => (family: string, typeValue?: number): DeviceLayout | undefined => {
-  const block = layouts[family];
-  if (!block) return undefined;
-  const variant = selectVariant(block, typeValue);
-  if (!variant) return undefined;
-  return {
-    editorName: block.editorName,
-    family: block.family,
-    variantName: variant.name,
-    variantValue: variant.value,
-    ...(variant.fw ? { fw: variant.fw } : {}),
-    ...(variant.pinned ? { pinned: true } : {}),
-    pages: variant.pages,
-  };
+// Lookup from an editor selector parameter symbol (e.g. 'DISTORT_EQTYPE', 'DISTORT_TYPE') to the block's
+// CURRENT numeric value of that param, or undefined when unknown. The driver builds this from the block's
+// live read: the family type selector answers with the type already decoded in blockParams, other
+// selectors (EQ type / drive type / …) with the block's named/enum param values.
+export type SelectorValues = (selectorParamName: string) => number | undefined;
+
+// Parse an editor firmware bound ("maj,min", e.g. "6,03" / "12,00") into a comparable integer. Absent → 0.
+const fwBound = (v?: string): number => {
+  if (!v) return 0;
+  const [maj = 0, min = 0] = v.split(',').map((s) => Number(s.trim()) || 0);
+  return maj * 1000 + min;
 };
+
+// Among same-named siblings (pages, or controls) that differ only by firmware gate, keep the one(s) that
+// apply to the NEWEST firmware — deterministic, no live firmware version needed:
+//   • a `gtet` (>=) sibling supersedes everything → keep the single highest `gtet`;
+//   • else null-gated (always-applicable) siblings supersede `lt`-only ones → keep the null-gated ones;
+//   • else (only `lt`-only siblings) the newest firmware reaches the highest `lt` bound → keep that one.
+// With no firmware gates in the set the siblings are genuinely distinct → all kept.
+const preferNewestFw = <T extends { fw?: EditorFwRange }>(items: T[]): T[] => {
+  if (items.length <= 1) return items;
+  if (!items.some((i) => i.fw && (i.fw.gtet || i.fw.lt))) return items;
+  const gtet = items.filter((i) => i.fw?.gtet);
+  if (gtet.length) return [gtet.reduce((a, b) => (fwBound(b.fw!.gtet) > fwBound(a.fw!.gtet) ? b : a))];
+  const nullGated = items.filter((i) => !i.fw?.gtet && !i.fw?.lt);
+  if (nullGated.length) return nullGated;
+  return [items.reduce((a, b) => (fwBound(b.fw!.lt) > fwBound(a.fw!.lt) ? b : a))];
+};
+
+// Selector filter for one group of same-named pages: a page with no selector value is always kept; a
+// selector-gated page is kept iff the block's CURRENT selector value is in its value list. When the
+// current value is unknown (selector not resolvable) we never include the whole set — prefer the page
+// whose list contains the block's type value, else the first gated page in editor order.
+const filterPagesBySelector = (
+  group: EditorLayoutPage[],
+  typeValue: number | undefined,
+  selectors?: SelectorValues,
+): EditorLayoutPage[] => {
+  const gated = group.filter((p) => p.selectorParamName != null && p.value != null);
+  if (!gated.length) return group; // nothing selector-gated → all pages always apply
+  const ungated = group.filter((p) => p.selectorParamName == null || p.value == null);
+  const cur = selectors?.(gated[0]!.selectorParamName!);
+  if (cur != null) {
+    // known current value → strict membership; a group that matches nothing contributes no page
+    return [...ungated, ...gated.filter((p) => parseSelectorValues(p.value).includes(cur))];
+  }
+  const byType = typeValue != null ? gated.filter((p) => parseSelectorValues(p.value).includes(typeValue)) : [];
+  return [...ungated, ...(byType.length ? byType : [gated[0]!])];
+};
+
+// Drop controls that the newest firmware would hide: a control gated with an `lt` (only firmware < X)
+// bound never applies to the newest firmware (whether it also carries a `gtet` — a closed range — or not).
+// Controls with a `gtet`-only gate or no gate always apply and pass through untouched.
+const pruneControlsByFw = (page: EditorLayoutPage): EditorLayoutPage => {
+  let touched = false;
+  const rows: EditorLayoutRow[] = page.rows.map((row) => {
+    const controls = row.controls.filter((c) => {
+      const drop = c.fw?.lt != null;
+      if (drop) touched = true;
+      return !drop;
+    });
+    return controls.length === row.controls.length ? row : { ...row, controls };
+  });
+  return touched ? { ...page, rows } : page;
+};
+
+// Filter a variant's pages down to what the editor actually shows for the block's current state: pages
+// group by display name (same-named pages are selector/firmware siblings), each group collapses to the
+// selector-matching page(s), firmware siblings collapse to the newest-firmware one, and per-control
+// firmware gates prune controls hidden on the newest firmware. Order preserved.
+export const resolveLayoutPages = (
+  pages: EditorLayoutPage[],
+  typeValue?: number,
+  selectors?: SelectorValues,
+): EditorLayoutPage[] => {
+  const order: string[] = [];
+  const groups = new Map<string, EditorLayoutPage[]>();
+  for (const p of pages) {
+    if (!groups.has(p.name)) { groups.set(p.name, []); order.push(p.name); }
+    groups.get(p.name)!.push(p);
+  }
+  const out: EditorLayoutPage[] = [];
+  for (const name of order) {
+    const kept = preferNewestFw(filterPagesBySelector(groups.get(name)!, typeValue, selectors));
+    for (const p of kept) out.push(pruneControlsByFw(p));
+  }
+  return out;
+};
+
+// Resolve a family's editor layout to the wire DeviceLayout for the block's CURRENT type value, with the
+// selected variant's pages filtered to the current selector/firmware state (see resolveLayoutPages).
+const layoutFrom = (layouts: DeviceEditorLayouts) =>
+  (family: string, typeValue?: number, selectors?: SelectorValues): DeviceLayout | undefined => {
+    const block = layouts[family];
+    if (!block) return undefined;
+    const variant = selectVariant(block, typeValue);
+    if (!variant) return undefined;
+    return {
+      editorName: block.editorName,
+      family: block.family,
+      variantName: variant.name,
+      variantValue: variant.value,
+      ...(variant.fw ? { fw: variant.fw } : {}),
+      ...(variant.pinned ? { pinned: true } : {}),
+      pages: resolveLayoutPages(variant.pages, typeValue, selectors),
+    };
+  };
 
 // AM4 block-name → catalog family symbol (the AM4_LAYOUTS key). Most AM4 blocks match SLUG_FAMILY, but
 // the AM4 catalog names its compressor `compressor` (not `comp`) and its volume/pan block `volpan`
@@ -127,9 +219,9 @@ const am4LayoutOf = layoutFrom(AM4_LAYOUTS);
 /** Editor-authentic layout for an AM4 block (by its lowercase block name, e.g. 'amp'/'drive'), for the
  *  block's current type value. Controls join to the AM4 catalog by cacheId in the codec; unresolved
  *  paramIds ride through as null (display-only). Undefined for a block with no AM4 layout. */
-export const am4LayoutFor = (block: string, typeValue?: number): DeviceLayout | undefined => {
+export const am4LayoutFor = (block: string, typeValue?: number, selectors?: SelectorValues): DeviceLayout | undefined => {
   const family = AM4_FAMILY_BY_BLOCK[block.toLowerCase()];
-  return family ? am4LayoutOf(family, typeValue) : undefined;
+  return family ? am4LayoutOf(family, typeValue, selectors) : undefined;
 };
 
 // FC + Modifier address models (FM3-decoded; other devices not decoded yet). Lets the client compute
@@ -293,8 +385,9 @@ export interface DeviceProfile {
   /** effectId → catalog family, incl. virtual effects (GLOBAL=1, Controllers=2, Modifier=3, FC=199). */
   familyForEffectId(eid: number): string | undefined;
   /** Editor-authentic UI layout for a family, resolved to the block-type/firmware variant selected by
-   *  the block's CURRENT type value (`typeValue`), or undefined. */
-  layoutFor(family: string, typeValue?: number): DeviceLayout | undefined;
+   *  the block's CURRENT type value (`typeValue`); the variant's pages are further filtered to the
+   *  block's current selector/firmware state via `selectors` (see resolveLayoutPages). Undefined if none. */
+  layoutFor(family: string, typeValue?: number, selectors?: SelectorValues): DeviceLayout | undefined;
   /** Foot Controller address model. FM3 supports live state read; FM9/III expose the address model only. */
   fcModel?: FcModel;
   /** Modifier address model. Field map (bind) confirmed on FM3/FM9/III; source enum FM3-only for now. */

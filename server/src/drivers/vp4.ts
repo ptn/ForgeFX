@@ -62,6 +62,7 @@ class Vp4Driver implements DeviceDriver {
     fcLiveRead: false,
     modBind: false,
     cabIrs: false,
+    editorLayouts: false, // no VP4 editor layouts shipped yet
     supportsSave: true, // save is allowlisted (byte-exact captured; community-beta)
     deviceEditPush: false,
     deviceEditWatch: false,

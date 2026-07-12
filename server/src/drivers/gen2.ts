@@ -76,6 +76,7 @@ class Gen2Driver implements DeviceDriver {
     fcLiveRead: false,
     modBind: false,
     cabIrs: false,
+    editorLayouts: false, // gen-2 (Axe-Fx II) ships no editor layouts
     supportsSave: true,
     deviceEditPush: false,
     deviceEditWatch: false,

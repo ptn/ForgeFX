@@ -22,6 +22,7 @@ type Caps = {
   fc: { model: boolean; liveState: boolean };
   modifiers: { model: boolean; bind: boolean };
   cabIrs: boolean;
+  editorLayouts: boolean;
   firmwareValidate: boolean;
   backupDump: boolean;
   restoreDump: boolean;
@@ -60,6 +61,7 @@ function checkGen3Common(caps: Caps, label: string): void {
   assertEqual(caps.fc.model, true, `${label} fc.model`);
   assertEqual(caps.modifiers.model, true, `${label} modifiers.model`);
   assertEqual(caps.modifiers.bind, true, `${label} modifiers.bind`);
+  assertEqual(caps.editorLayouts, true, `${label} editorLayouts (ships *_LAYOUTS)`);
   assertEqual(caps.firmwareValidate, false, `${label} firmwareValidate`);
   // gen-3 dumps raw .syx by slot (library export-to-disk + audition); restore stays the
   // version-store flow (loadPresetBytes + store), so restoreDump remains false.
@@ -150,6 +152,7 @@ async function am4(): Promise<void> {
     assertEqual(caps.modifiers.model, true, 'AM4 modifiers.model (data-only model exists)');
     assertEqual(caps.modifiers.bind, false, 'AM4 modifiers.bind');
     assertEqual(caps.cabIrs, false, 'AM4 cabIrs');
+    assertEqual(caps.editorLayouts, true, 'AM4 editorLayouts (ships AM4_LAYOUTS)');
     assertEqual(caps.firmwareValidate, true, 'AM4 firmwareValidate');
     assertEqual(caps.backupDump, true, 'AM4 backupDump');
     assertEqual(caps.restoreDump, true, 'AM4 restoreDump');
@@ -194,6 +197,7 @@ async function gen1(): Promise<void> {
     assertEqual(caps.modifiers.model, false, 'gen1 modifiers.model');
     assertEqual(caps.modifiers.bind, false, 'gen1 modifiers.bind');
     assertEqual(caps.cabIrs, false, 'gen1 cabIrs');
+    assertEqual(caps.editorLayouts, false, 'gen1 editorLayouts (none)');
     assertEqual(caps.firmwareValidate, false, 'gen1 firmwareValidate');
     assertEqual(caps.backupDump, false, 'gen1 backupDump');
     assertEqual(caps.restoreDump, false, 'gen1 restoreDump');

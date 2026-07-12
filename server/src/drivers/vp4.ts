@@ -63,6 +63,9 @@ class Vp4Driver implements DeviceDriver {
     modBind: false,
     cabIrs: false,
     supportsSave: true, // save is allowlisted (byte-exact captured; community-beta)
+    // gen-3 self-describe is expected to work over the VP4's shared codec but is hardware-unverified —
+    // keep the on-connect cache build off until a VP4 walk is captured, then flip this to true.
+    selfDescribe: false,
     deviceEditPush: false,
     deviceEditWatch: false,
   };

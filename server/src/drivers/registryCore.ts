@@ -14,8 +14,13 @@ import {
   buildIdentifyBroadcast,
   isFractalHeaderFrame,
   parseIdentifyResponse,
-  modelFromPortName
+  modelFromPortName,
+  buildFirmwareVersionQuery,
+  parseFirmwareVersionReply,
+  formatFirmwareVersion,
+  FN_FIRMWARE_VERSION
 } from 'forgefx-midi/shared';
+import type { BuiltCache } from 'forgefx-midi/cache';
 import {
   buildTunerPageOpen,
   buildTunerPageClose,
@@ -40,13 +45,20 @@ import { AM4_DESCRIPTOR } from 'forgefx-midi/devices/am4';
 import { AXEFX2_DESCRIPTOR } from 'forgefx-midi/devices/gen2';
 import { AXEFXGEN1_DESCRIPTOR } from 'forgefx-midi/devices/gen1';
 import type { Transport, Conn, ConnKind } from '../transport/types.js';
-import { DEFAULT_PROFILE, PROFILES, profileForModel, profileForKey, type DeviceProfile } from '../devices.js';
+import { DEFAULT_PROFILE, PROFILES, profileForModel, profileForKey, runtimeProfileFrom, type DeviceProfile } from '../devices.js';
 import { createGen3Driver } from './gen3.js';
 import { createAm4Driver, type Am4Driver } from './am4.js';
 import { createGen2Driver } from './gen2.js';
 import { createGen1Driver } from './gen1.js';
 import { createVp4Driver } from './vp4.js';
-import type { DeviceDriver, DeviceEvent, DriverCtx } from './types.js';
+import type { DeviceDriver, DeviceEvent, DriverCtx, DriverCapabilities } from './types.js';
+
+/** Device-cache doc key for the deviceCaches store collection: `<model-hex>_<major>p<minor>`
+ *  (e.g. FM3 fw 12.0 → `11_12p0`). Shared by the registry (runtime profile swap) + the deviceCache
+ *  service (status / build / delete) so both address the exact same doc. */
+export function deviceCacheKey(modelId: number, major: number, minor: number): string {
+  return `${modelId.toString(16).padStart(2, '0')}_${major}p${minor}`;
+}
 
 const DESCRIPTOR_BY_MODEL: Record<number, { capabilities: Record<string, unknown> }> = {
   0x01: AXEFXGEN1_DESCRIPTOR as never,
@@ -105,6 +117,10 @@ export interface RegistryDeps {
   autoDetectPath(): string | null;
   /** Native MIDI binding availability (diagnostics only). */
   midiAvailable(): boolean;
+  /** Load a persisted device cache for the given key (deviceCacheKey), or null when none exists.
+   *  Injected so the core stays store-agnostic: the Node server reads defaultStore; a browser runtime
+   *  its own. Absent → the registry never swaps in a runtime profile (static profile only). */
+  loadDeviceCache?(key: string): BuiltCache | null | Promise<BuiltCache | null>;
 }
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -148,6 +164,9 @@ export class DeviceRegistry {
   #connecting: Promise<Transport> | null = null;
   #detected = false;
   #modelId = -1; // the ACTUAL attached/forced model byte (-1 = not identified yet)
+  // Running firmware, populated best-effort during detect() on gen-3 units (fn 0x08). null until a
+  // reply lands (silence/timeout/non-gen-3 keeps it null); surfaced via deviceInfo() + firmwareInfo().
+  #firmware: { major: number; minor: number; version: string; build: string } | null = null;
   // The active driver — set ONLY by detect() from a positively identified (or forced) model. No
   // identification → no active driver → the telemetry supervisor never fires a frame at an unknown
   // unit (this replaces the old `#modelId === -1` wait-loop AND every #isAm4() gate).
@@ -157,6 +176,18 @@ export class DeviceRegistry {
   #ctx: DriverCtx = { transport: () => this.transport(), emit: (e) => this.#emit(e) };
 
   get profile() { return this.#prof; }
+
+  /** The positively-detected model byte (-1 until detection identifies a unit). */
+  get detectedModelId() { return this.#modelId; }
+  /** The active driver's capabilities, or null when nothing is positively identified (the deviceCache
+   *  service gates its selfDescribe precondition on this). */
+  activeCapabilities(): DriverCapabilities | null { return this.#active?.capabilities ?? null; }
+  /** Running firmware (populated best-effort on gen-3 during detect), or null. Includes the numeric
+   *  major/minor the deviceCache key needs alongside the display `version`. */
+  firmwareInfo(): { major: number; minor: number; version: string; build: string } | null { return this.#firmware; }
+  /** Public emit seam: services (device-cache build progress) publish on the same SSE bus the drivers
+   *  reach through DriverCtx.emit. */
+  emitEvent(e: DeviceEvent): void { this.#emit(e); }
 
   /** Driver factory: model byte → per-device driver over the shared transport. */
   #driverFor(modelId: number): DeviceDriver | null {
@@ -336,6 +367,7 @@ export class DeviceRegistry {
     }
     this.#connecting = null;
     this.#detected = false;
+    this.#firmware = null; // re-query firmware against whatever the next detect identifies
     this.#active = null; // the next detect re-identifies — never poll the new port with the old model
     return { ok: true, chosen: await this.#deps.resolveConn(), profileOverride: this.#deps.getProfileOverride() };
   }
@@ -381,6 +413,8 @@ export class DeviceRegistry {
       fc: { model: c.fcModel, liveState: c.fcLiveRead },
       modifiers: { model: (d.modifierModel?.() ?? null) != null, bind: c.modBind },
       cabIrs: c.cabIrs,
+      // On-connect device-cache self-describe build (POST /device/cache/build). Gen-3 grid units only.
+      selfDescribe: c.selfDescribe,
       firmwareValidate: !!d.validateFirmware,
       backupDump: !!d.backupPreset,
       restoreDump: !!d.restorePreset,
@@ -415,7 +449,7 @@ export class DeviceRegistry {
     const m = DEVICE_MODELS[mid];
     // apiVersion mirrors /healthz's api.version — the unified-API handshake (placed mid-object so
     // the route-sweep diff stays additive-only).
-    return { model: m?.name ?? this.#prof.name, modelByte: `0x${mid.toString(16)}`, modelId: mid, apiVersion: 2, capabilities: this.#capabilitiesDto(mid), firmware: null as null | { version: string; build: string }, port: this.port };
+    return { model: m?.name ?? this.#prof.name, modelByte: `0x${mid.toString(16)}`, modelId: mid, apiVersion: 2, capabilities: this.#capabilitiesDto(mid), firmware: this.#firmware ? { version: this.#firmware.version, build: this.#firmware.build } : (null as null | { version: string; build: string }), port: this.port };
   }
 
   /** Ensure the active driver matches the attached unit — runs detect once, lazily, so direct API
@@ -452,6 +486,7 @@ export class DeviceRegistry {
       this.#modelId = modelId;
       this.#detected = true;
       this.#activate(modelId >= 0 ? this.#driverFor(modelId) : null);
+      await this.#afterActivate(modelId); // firmware populate + runtime-cache profile swap (best-effort)
       let port: string | null = null;
       try { await this.transport(); port = this.#transport?.label ?? conn.id; } catch { /* dead port — report best-effort */ }
       const m = DEVICE_MODELS[modelId];
@@ -488,6 +523,7 @@ export class DeviceRegistry {
       this.#modelId = modelId;
       this.#detected = true;
       this.#activate(modelId >= 0 ? this.#driverFor(modelId) : null);
+      await this.#afterActivate(modelId); // firmware populate + runtime-cache profile swap (best-effort)
       // Report what actually handles the unit — the ACTIVE DRIVER, not the vestigial gen-3 `#prof`. A
       // non-gen-3 unit (the AM4) has a real driver (its own codec + capabilities) even though `#prof`
       // keeps its FM3 default; logging "profile fm3 kept default" for an AM4 reads as a detection failure
@@ -529,6 +565,75 @@ export class DeviceRegistry {
     // picked the driver, or drop it on a device that doesn't push.
     if (d && !d.capabilities.deviceEditPush) this.#stopEditPush();
     else if (d && d.capabilities.deviceEditPush && this.#subscribers.size > 0) this.#startEditPush();
+  }
+
+  /** Post-activation best-effort work, run inside detect() after the driver is chosen: populate the
+   *  running firmware (gen-3 fn 0x08) then, if a device cache exists for this model+firmware, swap the
+   *  driver's static profile for the device-true runtime one. Both are wrapped so neither can fail
+   *  detection — silence/timeout/no-cache simply leave the static behavior in place. */
+  async #afterActivate(modelId: number): Promise<void> {
+    await this.#populateFirmware(modelId);
+    await this.applyRuntimeCache();
+  }
+
+  /** Best-effort firmware-version read (fn 0x08) over the shared transport — gen-3 only (the query is
+   *  HW-verified on the FM3, shared on FM9/III; AM4/gen1/gen2 are never queried). Silence/timeout or a
+   *  non-gen-3 model leaves `#firmware` null; never throws (detection must not depend on it). */
+  async #populateFirmware(modelId: number): Promise<void> {
+    if (modelId < 0 || DEVICE_MODELS[modelId]?.gen !== 3) return;
+    try {
+      const dev = await this.transport();
+      const frames = await dev.request(buildFirmwareVersionQuery(modelId), {
+        timeoutMs: 800,
+        quietMs: 40,
+        match: (fs) => fs.some((f) => isFractalHeaderFrame(f) && f[5] === FN_FIRMWARE_VERSION)
+      });
+      const f = frames.find((x) => isFractalHeaderFrame(x) && x[5] === FN_FIRMWARE_VERSION);
+      const v = f ? parseFirmwareVersionReply(f) : null;
+      if (v) this.#firmware = { major: v.major, minor: v.minor, version: formatFirmwareVersion(v.major, v.minor), build: v.build ?? '' };
+    } catch {
+      /* silence / timeout / dead port → firmware stays null */
+    }
+  }
+
+  /** Swap the active driver's profile for a device-cache-derived RUNTIME profile when a cache doc
+   *  exists for the attached model+firmware. Called on a fresh detect AND by the deviceCache service
+   *  after a build completes. No-op without a loadDeviceCache hook, a selfDescribe driver, known
+   *  firmware, or a stored cache. Never throws. */
+  async applyRuntimeCache(): Promise<void> {
+    if (!this.#deps.loadDeviceCache) return;
+    const d = this.#active;
+    const mid = this.#modelId;
+    if (mid < 0 || !d || !d.capabilities.selfDescribe || !d.applyRuntimeProfile || !this.#firmware) return;
+    const key = deviceCacheKey(mid, this.#firmware.major, this.#firmware.minor);
+    let built: BuiltCache | null = null;
+    try { built = (await this.#deps.loadDeviceCache(key)) ?? null; } catch { built = null; }
+    if (!built) return;
+    const runtime = runtimeProfileFrom(built, PROFILES[mid] ?? this.#prof);
+    d.applyRuntimeProfile(runtime);
+    if (PROFILES[mid]) this.#prof = runtime; // keep /diag + reporting profile in sync for gen-3
+  }
+
+  /** Pause the telemetry supervisor for the duration of an exclusive operation (the device-cache
+   *  self-describe walk saturates the port). Stops the tuner / meters / edit-watch / edit-push and
+   *  returns a resume fn that restarts exactly what was running (respecting the live subscriber count
+   *  + tuner-enabled state). Idempotent-safe: the resume closure captures the paused state. */
+  pauseTelemetry(): () => void {
+    const hadTuner = !!this.#tunerTimer;
+    const hadMeters = !!this.#metersTimer;
+    const hadEditWatch = !!this.#editWatchTimer;
+    const hadEditPush = !!this.#editPushUnsub;
+    if (this.#tunerTimer) { clearTimeout(this.#tunerTimer); this.#tunerTimer = null; }
+    this.#stopMeters();
+    this.#stopEditWatch();
+    this.#stopEditPush();
+    return () => {
+      if (hadMeters) this.#startMeters();
+      if (hadEditWatch) this.#startEditWatch();
+      if (hadEditPush) this.#startEditPush();
+      // the tuner page is still open (we only paused the poll) — just restart its poll timer.
+      if (hadTuner && this.#tunerDriver && !this.#tunerTimer) this.#tunerTimer = setTimeout(() => this.#pollTuner(), 30);
+    };
   }
 
   /** DEBUG probe: send a raw SysEx frame, return every response frame as hex (for FC read-decode). */

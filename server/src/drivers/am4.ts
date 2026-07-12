@@ -230,6 +230,7 @@ class Am4Driver implements DeviceDriver {
     modBind: false, // modifier model is data-only (see modifierModel); the wire binding is not captured
     cabIrs: false,
     supportsSave: true,
+    selfDescribe: false, // the AM4 has its own (non-gen-3) codec; the gen-3 self-describe walk does not apply
     deviceEditWatch: true // AM4 pushes NOTHING on front-panel / AM4-Edit edits (HW-107) → registry polls readDeviceEditState()
   };
 

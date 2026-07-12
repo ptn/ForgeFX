@@ -3,7 +3,7 @@
 // must not drift. `DeviceDriver` is the per-device surface the routes call; methods a device lacks
 // are optional and mirrored by `DriverCapabilities` so routes can answer 501 instead of guessing.
 import type { DecodedBlock } from 'forgefx-midi/devices/gen3';
-import type { TypeModel, DeviceLayout } from '../devices.js';
+import type { TypeModel, DeviceLayout, DeviceProfile } from '../devices.js';
 import type { Transport } from '../transport/types.js';
 
 /** Library-friendly decoded preset: name, scenes, and the unique effect blocks it contains. */
@@ -75,6 +75,12 @@ export type DeviceEvent =
   /** Live output level meters in dB (−40…0, floor-clamped), from the Preset Leveling poll (fn 0x19).
    *  Output 1 & 2, each L/R. Decoded from a 5-septet float (RMS) → 10·log10 → dB; smoothed. */
   | { type: 'meters'; out1L: number; out1R: number; out2L: number; out2R: number }
+  /** Device-cache self-describe BUILD progress (the runtime on-connect cache build; capability
+   *  selfDescribe). `phase` walks the job: 'walking' (per-block sweep) → 'building' (deriving tables)
+   *  → 'done' (persisted) | 'cancelled' | 'error'; 'already-built' is emitted when a build was asked
+   *  for but a cache already existed. `done`/`total` are the block-sweep counters; `key`/`model`/
+   *  `firmware` identify the cache; `error` carries the failure message on 'error'. */
+  | { type: 'cacheBuild'; phase: 'walking' | 'building' | 'done' | 'error' | 'cancelled' | 'already-built'; done: number; total: number; key?: string; model?: number; firmware?: string; error?: string }
   /** A shared Axis config doc (layouts / swipe-quick-actions / tags / surface …) was written by one UI —
    *  streamed to the others so layouts/quick-actions/arrange stay in sync live, both directions. `origin` is
    *  the writer's client id so it can ignore its own echo (and not reload while it's mid-edit). */
@@ -119,6 +125,10 @@ export interface DriverCapabilities {
   cabIrs: boolean;
   /** Store-to-slot save supported. */
   supportsSave: boolean;
+  /** The device can be walked by the codec's live self-describe (fn 0x01 DEFINITION/ENUM-LABEL
+   *  queries) to build a device-true param/roster/enum cache on connect (capability gate for
+   *  POST /device/cache/build). Gen-3 grid units only; false everywhere the walk is unverified. */
+  selfDescribe: boolean;
   /** The device does NOT push front-panel / editor edits, so the registry supervisor should poll the
    *  driver's `readDeviceEditState()` to catch out-of-band edits (AM4 only — HW-107). Absent = no poll. */
   deviceEditWatch?: boolean;
@@ -149,6 +159,12 @@ export interface DeviceDriver {
   /** Display name (e.g. 'FM3'). */
   readonly name: string;
   readonly capabilities: DriverCapabilities;
+
+  /** Swap in a device-cache-derived RUNTIME profile (device-true rosters / enum labels / ranges over
+   *  the static one). The model byte is unchanged, so the bound codec stays valid — only the data the
+   *  driver reads through the profile changes. Implemented by gen-3 (capability selfDescribe); absent
+   *  on drivers whose profile is fixed. */
+  applyRuntimeProfile?(profile: DeviceProfile): void;
 
   /** Routing grid (the AM4 serves its 4 slots as a 1×4 grid DTO). */
   grid(): Promise<PresetGridDTO>;

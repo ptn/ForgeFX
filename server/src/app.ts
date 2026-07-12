@@ -24,6 +24,7 @@ import { existsSync, statSync, createReadStream } from 'node:fs';
 import { join, resolve, extname } from 'node:path';
 import type { DeviceRegistry } from './drivers/registry.js';
 import * as backups from './services/backups.js';
+import * as deviceCache from './services/deviceCache.js';
 import * as store from './store.js';
 import { createUnifiedHandlers } from './runtime/handlers.js';
 import { putStoreDoc } from './runtime/services.js';
@@ -98,6 +99,20 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     if (b?.id) return registry.selectConnection({ transport: b.transport === 'midi' ? 'midi' : 'serial', id: b.id }, model);
     return registry.selectConnection(null, model); // clear the port back to auto (a forced profile can remain via `model`)
   }); // manual pick
+
+  // ── device cache (on-connect self-describe build; capability selfDescribe) ──
+  // Status: current key + existence + live build progress + stored-doc meta.
+  app.get('/device/cache', () => deviceCache.cacheStatus(store.defaultStore, registry));
+  // Start a background build (501 no selfDescribe, 503 no device/firmware, 409 already building).
+  app.post<{ Body: { force?: boolean } }>('/device/cache/build', async (req, reply) => {
+    const r = await deviceCache.startCacheBuild(store.defaultStore, registry, { force: req.body?.force });
+    reply.code(r.code);
+    return r.body;
+  });
+  // Cancel the running build (idempotent).
+  app.post('/device/cache/cancel', () => deviceCache.cancelCacheBuild(registry));
+  // Delete the current key's stored cache.
+  app.delete('/device/cache', () => deviceCache.deleteCache(store.defaultStore, registry));
 
   // ── unified handlers ──────────────────────────────────────────────────────────────────────────
   // Each capability-gated handler that a /am4/* alias folds into is a named function from

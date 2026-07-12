@@ -180,6 +180,9 @@ class Gen3Driver implements DeviceDriver {
       modBind: !!profile.modModel,
       cabIrs: Object.keys(profile.cabIrs()).length > 0,
       supportsSave: true,
+      // Live self-describe walk (fn 0x01 DEFINITION/ENUM-LABEL sweep) is HW-verified on the FM3 and
+      // shares the gen-3 protocol on the FM9 / Axe-Fx III → the on-connect device-cache build is offered.
+      selfDescribe: true,
       // Device-edit reflection splits by whether the unit PUSHES front-panel edits:
       //  • FM9 / Axe-Fx III / VP4 push an unsolicited 0x74/0x75/0x76 burst → registry LISTENS (deviceEditPush).
       //  • FM3 (0x11) proven NOT to push (tap 2026-07-04: a front-panel knob emitted zero unsolicited
@@ -194,6 +197,11 @@ class Gen3Driver implements DeviceDriver {
   get key() { return this.#prof.key; }
   get name() { return this.#prof.name; }
   get profile() { return this.#prof; }
+
+  /** Adopt a device-cache-derived runtime profile (device-true rosters / enum labels / ranges). The
+   *  model byte is unchanged so the codec bound at construction stays valid; only the data the reads
+   *  resolve through (#prof) is swapped. Idempotent — re-applying a fresh profile just replaces it. */
+  applyRuntimeProfile(profile: DeviceProfile): void { this.#prof = profile; }
 
   #gridCache: { grid: PresetGridDTO; at: number } | null = null;
   #gridInflight: Promise<PresetGridDTO> | null = null;

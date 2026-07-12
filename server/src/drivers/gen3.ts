@@ -179,6 +179,7 @@ class Gen3Driver implements DeviceDriver {
       fcLiveRead: !!profile.fcModel?.liveState,
       modBind: !!profile.modModel,
       cabIrs: Object.keys(profile.cabIrs()).length > 0,
+      editorLayouts: true, // FM3 / FM9 / Axe-Fx III all ship *_LAYOUTS (profile.layoutFor)
       supportsSave: true,
       // Device-edit reflection splits by whether the unit PUSHES front-panel edits:
       //  • FM9 / Axe-Fx III / VP4 push an unsolicited 0x74/0x75/0x76 burst → registry LISTENS (deviceEditPush).
@@ -501,7 +502,9 @@ class Gen3Driver implements DeviceDriver {
     const meta = BLOCK_META[codecSlug];
     const blockName = meta?.name ?? family ?? slug;
     const page = meta?.page ?? -1;
-    const layout = family ? this.#prof.layoutFor(family) : undefined; // editor-authentic pages (Default layout seed)
+    // Seed the editor-authentic layout with the family's fallback variant; once the block's CURRENT
+    // type is read below we re-resolve to the type-matched (or firmware-pinned) variant.
+    let layout = family ? this.#prof.layoutFor(family) : undefined;
     if (!family) {
       return { block: blockName, slug, page, named: [], enums: [], type: null, layout }; // no device-true param family mapped
     }
@@ -574,6 +577,9 @@ class Gen3Driver implements DeviceDriver {
         for (const p of knobs) named.push({ id: p.paramId, name: paramLabel(p), value: 0, norm: 0 });
       }
     }
+    // Re-resolve the layout to the variant selected by the block's CURRENT type value (EQ band count,
+    // amp firmware-pinned variant, etc.); falls back to the null/first variant when type is unknown.
+    layout = this.#prof.layoutFor(family, type?.value);
     // disambiguate repeated labels within a block (e.g. the cab's 4× "Low Cut", amp's two "Depth")
     // so identical names get a 1/2/3 suffix the UI can tell apart.
     dedupeLabels(named);

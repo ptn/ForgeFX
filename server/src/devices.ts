@@ -47,16 +47,90 @@ import {
   AXE3_MOD_EFFECT_ID, AXE3_MOD_SLOT_COUNT, AXE3_MOD_FIELDS, AXE3_MOD_SOURCES_STATUS,
   AXE3_RANGE_SECTIONS,
 } from 'forgefx-midi/gen3/axe-fx-iii';
+import type {
+  DeviceEditorLayouts, EditorBlockLayout, EditorLayoutVariant, EditorLayoutPage,
+} from 'forgefx-midi/gen3/fm3';
+import { AM4_LAYOUTS } from 'forgefx-midi/am4';
 
-// Editor-authentic UI layout (pages → controls), per family, from fractal-midi (*_LAYOUTS).
-export type LayoutControl = { label: string; paramName: string; paramId: number | null; col?: number };
-export type DeviceLayout = { editorName?: string; pages: { name: string; controls: LayoutControl[] }[] };
-type LayoutMap = Record<string, DeviceLayout>;
+// Editor-authentic UI layout (v2 schema — see forgefx-midi src/editorLayouts.ts). The wire `layout`
+// on /preset/blocks/:eid/params carries ONE resolved block-type/firmware variant of a block's editor
+// layout: the block's editorName + family, plus which variant was chosen, plus ALL of that variant's
+// pages (tabs → rows → controls) passed through VERBATIM from the codec's *_LAYOUTS (widget / rawWidget /
+// placement / crossBlock / per-control fw preserved). No unioning across variants; the client renders
+// exactly the pages the editor would show for the current block type.
+export type DeviceLayout = {
+  editorName: string;
+  family: string;
+  /** Chosen variant display name (e.g. 'Analog', '10 Band', 'Amp GTE 28.09'). */
+  variantName: string;
+  /** Chosen variant's block-type selector value(s), comma-joined as in the editor XML, or null for an
+   *  unconditional / firmware-only-versioned variant (e.g. the Amp block). */
+  variantValue: string | null;
+  /** Firmware gate of the chosen variant, when present. */
+  fw?: EditorLayoutVariant['fw'];
+  /** True when the chosen variant is the firmware-current pinned one (amp DISTORT block). */
+  pinned?: boolean;
+  /** All pages of the chosen variant ONLY (editor display order); rows → controls verbatim from the codec. */
+  pages: EditorLayoutPage[];
+};
 // gen-3 shared virtual-effect effectIds (capture-confirmed on FM3; III reuses them since its package
 // ships layouts but no effectId table). Audio-block eids resolve via the codec (slugForEffectId).
 const VIRTUAL_EID_FAMILY: Record<number, string> = { 1: 'GLOBAL', 2: 'CONTROLLERS', 3: 'MOD', 190: 'MIDIBLOCK', 199: 'FC' };
 const eidFamily = (map?: Record<number, string>) => (eid: number): string | undefined => map?.[eid] ?? VIRTUAL_EID_FAMILY[eid];
-const layoutOf = (layouts: LayoutMap) => (family: string): DeviceLayout | undefined => layouts[family];
+
+// Parse a variant/page selector `value` ("10,11,12") into the numeric block-type values it activates.
+const parseSelectorValues = (value: string | null | undefined): number[] =>
+  value == null ? [] : value.split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n));
+
+// Pick the block-type / firmware variant that matches the block's CURRENT type value:
+//   1. variants whose selector `value` list contains typeValue win (the normal per-type case);
+//   2. else the unconditional (value === null) variants — the firmware-only-versioned Amp block, whose
+//      variants all carry value:null but differ by `fw`;
+//   3. else every variant (degenerate: nothing declared).
+// Within the winning set, prefer the firmware-pinned variant (amp DISTORT ships every historical fw
+// layout with exactly one pinned:true), else the first in editor order.
+const selectVariant = (block: EditorBlockLayout, typeValue?: number): EditorLayoutVariant | undefined => {
+  const variants = block.variants;
+  if (!variants.length) return undefined;
+  let cands = typeValue == null ? [] : variants.filter((v) => parseSelectorValues(v.value).includes(typeValue));
+  if (!cands.length) cands = variants.filter((v) => v.value == null);
+  if (!cands.length) cands = variants;
+  return cands.find((v) => v.pinned) ?? cands[0];
+};
+
+// Resolve a family's editor layout to the wire DeviceLayout for the block's CURRENT type value.
+const layoutFrom = (layouts: DeviceEditorLayouts) => (family: string, typeValue?: number): DeviceLayout | undefined => {
+  const block = layouts[family];
+  if (!block) return undefined;
+  const variant = selectVariant(block, typeValue);
+  if (!variant) return undefined;
+  return {
+    editorName: block.editorName,
+    family: block.family,
+    variantName: variant.name,
+    variantValue: variant.value,
+    ...(variant.fw ? { fw: variant.fw } : {}),
+    ...(variant.pinned ? { pinned: true } : {}),
+    pages: variant.pages,
+  };
+};
+
+// AM4 block-name → catalog family symbol (the AM4_LAYOUTS key). Most AM4 blocks match SLUG_FAMILY, but
+// the AM4 catalog names its compressor `compressor` (not `comp`) and its volume/pan block `volpan`
+// (not `volume`), so this map is explicit rather than piggy-backing the gen-3 SLUG_FAMILY table.
+const AM4_FAMILY_BY_BLOCK: Record<string, string> = {
+  amp: 'DISTORT', compressor: 'COMP', geq: 'GEQ', peq: 'PEQ', reverb: 'REVERB', delay: 'DELAY',
+  chorus: 'CHORUS', flanger: 'FLANGER', rotary: 'ROTARY', phaser: 'PHASER', wah: 'WAH', volpan: 'VOLUME',
+  tremolo: 'TREMOLO', filter: 'FILTER', drive: 'FUZZ', enhancer: 'ENHANCER', gate: 'GATE',
+};
+const am4LayoutOf = layoutFrom(AM4_LAYOUTS);
+/** Editor-authentic layout for an AM4 block (by its lowercase block name, e.g. 'amp'/'drive'), for the
+ *  block's current type value. Controls join to the AM4 catalog by cacheId in the codec; unresolved
+ *  paramIds ride through as null (display-only). Undefined for a block with no AM4 layout. */
+export const am4LayoutFor = (block: string, typeValue?: number): DeviceLayout | undefined => {
+  const family = AM4_FAMILY_BY_BLOCK[block.toLowerCase()];
+  return family ? am4LayoutOf(family, typeValue) : undefined;
+};
 
 // FC + Modifier address models (FM3-decoded; other devices not decoded yet). Lets the client compute
 // (eid,pid) for any footswitch field / modifier field without hard-coding paramIds.
@@ -218,8 +292,9 @@ export interface DeviceProfile {
   cabIrs(): Record<string, string[]>;
   /** effectId → catalog family, incl. virtual effects (GLOBAL=1, Controllers=2, Modifier=3, FC=199). */
   familyForEffectId(eid: number): string | undefined;
-  /** Editor-authentic UI layout (pages → controls) for a family, or undefined. */
-  layoutFor(family: string): DeviceLayout | undefined;
+  /** Editor-authentic UI layout for a family, resolved to the block-type/firmware variant selected by
+   *  the block's CURRENT type value (`typeValue`), or undefined. */
+  layoutFor(family: string, typeValue?: number): DeviceLayout | undefined;
   /** Foot Controller address model. FM3 supports live state read; FM9/III expose the address model only. */
   fcModel?: FcModel;
   /** Modifier address model. Field map (bind) confirmed on FM3/FM9/III; source enum FM3-only for now. */
@@ -353,7 +428,7 @@ export const PROFILES: Record<number, DeviceProfile> = {
     enumLabelsFor: axe3EnumLabels,
     cabIrs: () => AXE3_CAB_IRS as unknown as Record<string, string[]>, // factory banks bundled (III editor cache, fw 32.6 era); USER banks read live
     familyForEffectId: eidFamily(), // III ships no effectId table → shared gen-3 virtual eids only
-    layoutFor: layoutOf(AXE3_LAYOUTS as unknown as LayoutMap),
+    layoutFor: layoutFrom(AXE3_LAYOUTS as unknown as DeviceEditorLayouts),
     fcModel: AXE3_FC_MODEL,
     modModel: AXE3_MOD_MODEL,
     monitorParams: AXE3_MONITOR_PARAMS
@@ -370,7 +445,7 @@ export const PROFILES: Record<number, DeviceProfile> = {
     enumLabelsFor: fm3EnumLabels,
     cabIrs: () => fm3CabIrs, // device-true IR names per bank (fractal-midi FM3_CAB_IRS)
     familyForEffectId: eidFamily(FM3_FAMILY_BY_EFFECT_ID as Record<number, string>),
-    layoutFor: layoutOf(FM3_LAYOUTS as unknown as LayoutMap),
+    layoutFor: layoutFrom(FM3_LAYOUTS as unknown as DeviceEditorLayouts),
     fcModel: FM3_FC_MODEL,
     modModel: FM3_MOD_MODEL,
     monitorParams: FM3_MONITOR_PARAMS,
@@ -387,7 +462,7 @@ export const PROFILES: Record<number, DeviceProfile> = {
     enumLabelsFor: fm9EnumLabels,
     cabIrs: () => FM9_CAB_IRS as unknown as Record<string, string[]>, // factory banks bundled (FM9-Edit cache 76p0); USER banks read live
     familyForEffectId: eidFamily(FM9_FAMILY_BY_EFFECT_ID as Record<number, string>),
-    layoutFor: layoutOf(FM9_LAYOUTS as unknown as LayoutMap),
+    layoutFor: layoutFrom(FM9_LAYOUTS as unknown as DeviceEditorLayouts),
     fcModel: FM9_FC_MODEL,
     modModel: FM9_MOD_MODEL,
     monitorParams: FM9_MONITOR_PARAMS

@@ -117,6 +117,9 @@ export interface DriverCapabilities {
   modBind: boolean;
   /** Bundled cab IR names per bank. */
   cabIrs: boolean;
+  /** Editor-authentic block-editor UI layouts (v2 pages → rows → controls) served on the block-params
+   *  `layout` field. True on the four devices that ship *_LAYOUTS (FM3 / FM9 / Axe-Fx III / AM4). */
+  editorLayouts: boolean;
   /** Store-to-slot save supported. */
   supportsSave: boolean;
   /** The device does NOT push front-panel / editor edits, so the registry supervisor should poll the

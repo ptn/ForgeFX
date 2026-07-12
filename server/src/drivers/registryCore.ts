@@ -381,6 +381,7 @@ export class DeviceRegistry {
       fc: { model: c.fcModel, liveState: c.fcLiveRead },
       modifiers: { model: (d.modifierModel?.() ?? null) != null, bind: c.modBind },
       cabIrs: c.cabIrs,
+      editorLayouts: c.editorLayouts,
       firmwareValidate: !!d.validateFirmware,
       backupDump: !!d.backupPreset,
       restoreDump: !!d.restorePreset,

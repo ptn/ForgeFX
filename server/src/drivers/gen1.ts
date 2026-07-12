@@ -44,6 +44,7 @@ class Gen1Driver implements DeviceDriver {
     fcLiveRead: false,
     modBind: false,
     cabIrs: false,
+    editorLayouts: false, // gen-1 (Axe-Fx Standard/Ultra) ships no editor layouts
     supportsSave: false, // save/store is not part of the pinned gen-1 subset
     deviceEditPush: false,
     deviceEditWatch: false,

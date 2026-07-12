@@ -64,7 +64,7 @@ import type { MidiConnection } from 'forgefx-midi/core/midi';
 import type { DispatchCtx, PresetSnapshot } from 'forgefx-midi/core';
 import type { Transport } from '../transport/types.js';
 import type { DeviceDriver, DriverCapabilities, DriverCtx, PresetGridDTO, PresetBlockDTO, NamedParam, EnumParam, Am4Slot } from './types.js';
-import type { TypeModel } from '../devices.js';
+import { am4LayoutFor, type TypeModel, type DeviceLayout } from '../devices.js';
 
 /** Split a raw byte stream into its complete F0..F7 SysEx messages. */
 function splitSysex(bytes: number[]): number[][] {
@@ -229,6 +229,7 @@ class Am4Driver implements DeviceDriver {
     fcLiveRead: false,
     modBind: false, // modifier model is data-only (see modifierModel); the wire binding is not captured
     cabIrs: false,
+    editorLayouts: true, // AM4 ships AM4_LAYOUTS (served via am4LayoutFor in blockParams)
     supportsSave: true,
     deviceEditWatch: true // AM4 pushes NOTHING on front-panel / AM4-Edit edits (HW-107) → registry polls readDeviceEditState()
   };
@@ -583,7 +584,7 @@ class Am4Driver implements DeviceDriver {
    *    slot.bypassed              → the leading 'Bypass' EnumParam
    *  `named` carries the continuous knobs, `enums` the discrete selectors, and the block's own `type`
    *  selector is surfaced separately — exactly as gen-3 splits them, so Axis renders both the same way. */
-  async blockParams(pidLow: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null }> {
+  async blockParams(pidLow: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null; layout?: DeviceLayout }> {
     // instance-aware: pidLow may be an instance code (base+N, e.g. drive #2 = 0x77) — the catalog
     // is keyed by the BASE pidLow, the wire address stays the instance code (see encId/setParam)
     const resolved = resolveBlockTypeValue(pidLow);
@@ -668,8 +669,12 @@ class Am4Driver implements DeviceDriver {
       // above every bare pidHigh (≤ 0x7d2) and below every composite (≥ 0x3a0000), so it can't collide.
       enumsOut.unshift({ id: 0xffff, name: 'Bypass', value: slot.bypassed ? 1 : 0, options: [{ value: 0, label: 'Engaged' }, { value: 1, label: 'Bypassed' }] });
     }
+    // Editor-authentic layout (v2), resolved to the variant for this block's current type value. AM4
+    // controls join to the catalog by cacheId in the codec; unresolved paramIds ride through as null
+    // (display-only). Same wire shape as the gen-3 driver so Axis renders both through one path.
+    const layout = am4LayoutFor(blockName, type?.value);
     this.#log(`blockParams ${blockName} (pidLow ${pidLow}): ${namedOut.length} knobs, ${enumsOut.length} enums${type ? ` type=${type.name}` : ''}`);
-    return { block: blockName, slug: blockName, page: -1, named: namedOut, enums: enumsOut, type };
+    return { block: blockName, slug: blockName, page: -1, named: namedOut, enums: enumsOut, type, layout };
   }
 
   /** The decoded (display-value) param dict for a placed slot: `params` on non-channel blocks, else the

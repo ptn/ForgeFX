@@ -42,7 +42,7 @@ export interface CacheStatus {
   exists: boolean;
   building: boolean;
   progress?: { done: number; total: number; phase: string };
-  meta?: { recordCount: number; builtAt: string | null; firmware: string | null; unmappedSections: number; unmappedFamilies: number };
+  meta?: { recordCount: number; builtAt: string | null; firmware: string | null; unmappedSections: number; unmappedFamilies: number; source: string };
 }
 
 /** Gen-3 param catalog for the walk's section→family voter, by model byte. Only selfDescribe (gen-3
@@ -136,7 +136,10 @@ export async function cacheStatus(store: Store, registry: DeviceRegistry): Promi
       builtAt: data.meta?.builtAt ?? null,
       firmware: data.firmware ?? null,
       unmappedSections: data.unmappedSections?.length ?? 0,
-      unmappedFamilies: data.unmappedFamilies?.length ?? 0
+      unmappedFamilies: data.unmappedFamilies?.length ?? 0,
+      // Where the persisted profile came from: 'live' (A3 walk), 'editor-cache' (import), 'cloud'
+      // (pull). Axis surfaces this next to the device info.
+      source: (data.meta as { source?: string } | undefined)?.source ?? 'live'
     };
   }
   return out;

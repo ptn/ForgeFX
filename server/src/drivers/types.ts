@@ -5,6 +5,7 @@
 import type { DecodedBlock } from 'forgefx-midi/devices/gen3';
 import type { TypeModel, DeviceLayout, DeviceProfile } from '../devices.js';
 import type { Transport } from '../transport/types.js';
+import type { TelemetryMode, CadenceProfile } from './telemetryProfiles.js';
 
 /** Library-friendly decoded preset: name, scenes, and the unique effect blocks it contains. */
 export type PresetSummary = {
@@ -84,7 +85,14 @@ export type DeviceEvent =
   /** A shared Axis config doc (layouts / swipe-quick-actions / tags / surface …) was written by one UI —
    *  streamed to the others so layouts/quick-actions/arrange stay in sync live, both directions. `origin` is
    *  the writer's client id so it can ignore its own echo (and not reload while it's mid-edit). */
-  | { type: 'config'; id: string; data: unknown; origin?: string };
+  | { type: 'config'; id: string; data: unknown; origin?: string }
+  /** The active telemetry cadence mode changed (PUT /telemetry/config, or the setter) — streamed so
+   *  every UI reflects the new mode without re-polling the config endpoint. */
+  | { type: 'telemetryConfig'; mode: TelemetryMode }
+  /** Rolling device-link traffic counters, emitted ~1×/s while ≥1 SSE client is listening (only when a
+   *  counter moved since the last emit). All four counters are CUMULATIVE since `since` (epoch ms, the
+   *  connection's instrumentation start); `loops` is the currently-active supervisor set. */
+  | { type: 'traffic'; txMsgs: number; txBytes: number; rxMsgs: number; rxBytes: number; since: number; loops: string[] };
 
 // ── AM4 (moved verbatim from am4Device.ts) ──
 export interface Am4Slot {
@@ -123,6 +131,12 @@ export interface DriverCapabilities {
   modBind: boolean;
   /** Bundled cab IR names per bank. */
   cabIrs: boolean;
+  /** Editor-authentic block-editor UI layouts (v2 pages → rows → controls) served on the block-params
+   *  `layout` field. True on the four devices that ship *_LAYOUTS (FM3 / FM9 / Axe-Fx III / AM4). */
+  editorLayouts: boolean;
+  /** The server exposes GET/PUT /telemetry/config (cadence-mode control). Registry-level, not per-driver
+   *  — advertised on every device so Axis can show the telemetry-mode control unconditionally. */
+  telemetryControl?: boolean;
   /** Store-to-slot save supported. */
   supportsSave: boolean;
   /** The device can be walked by the codec's live self-describe (fn 0x01 DEFINITION/ENUM-LABEL
@@ -143,6 +157,10 @@ export interface DriverCapabilities {
 export interface DriverCtx {
   transport(): Promise<Transport>;
   emit(e: DeviceEvent): void;
+  /** The registry-resolved cadence for the CURRENT telemetry mode + this device's family. Drivers that
+   *  run their own edit-watch cadence (the AM4 redesign uses `editRehashMs`) read it here instead of
+   *  hardcoding intervals, so a mode switch reaches them without a re-wire. */
+  getCadence(): CadenceProfile;
 }
 
 /**

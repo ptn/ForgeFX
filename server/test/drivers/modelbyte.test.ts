@@ -4,6 +4,7 @@
 // assert EVERY recorded frame carries the driver's own model byte at f[4]. A driver must be
 // physically unable to emit another device's frames.
 import { createGen3Driver } from '../../src/drivers/gen3.js';
+import { cadenceFor } from '../../src/drivers/telemetryProfiles.js';
 import { __createRegistryForTest } from '../../src/drivers/registry.js';
 import { setProfileOverride, setConnOverride } from '../../src/transport/connection.js';
 import { PROFILES } from '../../src/devices.js';
@@ -60,7 +61,7 @@ async function smokeDriver(model: number): Promise<void> {
   const prof = PROFILES[model]!;
   const mock = new MockTransport('serial', `mock-${prof.key}`);
   mock.isOpen = true;
-  const driver = createGen3Driver(prof, { transport: async () => mock, emit: () => {} });
+  const driver = createGen3Driver(prof, { transport: async () => mock, emit: () => {}, getCadence: () => cadenceFor(null, 'balanced') });
   assertEqual(driver.modelId, model, `driver ${prof.key} modelId`);
 
   const amp = eidFor('amp');
@@ -169,7 +170,7 @@ async function smokeFm3AmpChannelStride(): Promise<void> {
     if (compactHex(req) === compactHex(codec.buildBlockBulkReadPoll(amp))) return bulk;
     return [];
   };
-  const driver = createGen3Driver(prof, { transport: async () => mock, emit: () => {} });
+  const driver = createGen3Driver(prof, { transport: async () => mock, emit: () => {}, getCadence: () => cadenceFor(null, 'balanced') });
   const r = await driver.blockParams(amp);
   assertEqual(r.type?.value, channelBType, 'FM3 blockParams slices Amp channel B by generated DISTORT stride');
   assertEqual(r.type?.name, '5153 100W Stealth Red', 'FM3 blockParams returns the channel-B Amp model name');

@@ -51,6 +51,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     gridH, blocksH, sceneStateH, blockParamsH, setParamH, bypassH, sceneSetH,
     presetSelectH, presetStoreH, presetNameH, locationsH,
     backupH, restoreH, fwValidateH, deviceParamH, modModelH,
+    telemetryConfigH, telemetrySetH,
     decodeH, decodeBytes
   } = createUnifiedHandlers(registry);
 
@@ -290,6 +291,10 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     if (!d.selectCell) return unsupported(reply, 'gridEdit');
     return d.selectCell(req.body.row, req.body.col);
   });
+
+  // ── telemetry cadence-mode control (GET/PUT /telemetry/config) ──
+  app.get('/telemetry/config', () => telemetryConfigH());
+  app.put<{ Body: { mode?: string } }>('/telemetry/config', (req, reply) => telemetrySetH(reply, req.body?.mode));
 
   // ── telemetry: tuner · tempo · scene ──
   app.post<{ Body: { on: boolean } }>('/tuner', (req) => registry.setTuner(!!req.body?.on));

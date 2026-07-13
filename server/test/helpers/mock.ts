@@ -10,24 +10,46 @@ export class MockTransport implements Transport {
   isOpen = false;
   /** Every outgoing frame, in order, across send/sendQueued/sendPaced/request. */
   readonly sent: number[][] = [];
-  /** Scripted replies: request(bytes) → response frames. Default: no reply (device silent). */
-  reply: (bytes: readonly number[]) => number[][] = () => [];
+  /** Scripted replies: request(bytes) → response frames. May return a Promise so a test can hold a
+   *  request IN FLIGHT (echo-guard / interactive-yield tests). Default: no reply (device silent). */
+  reply: (bytes: readonly number[]) => number[][] | Promise<number[][]> = () => [];
+  /** Scripted RESPONSE to a `send()` (the AM4 Am4Conn path — its edited-bit GET_PATCH read and its
+   *  fn-0x1F GET_ALL_PARAMS dumps go out via send() and the device replies asynchronously on onFrame,
+   *  not via request()). When set, send() emits each returned frame back through onFrame SYNCHRONOUSLY,
+   *  so a waiter/listener registered before the send (the AM4 codec always subscribes first) receives
+   *  it. Default: no reply — existing suites that only use send/request are unaffected. */
+  sendReply: (bytes: readonly number[]) => number[][] = () => [];
 
   constructor(kind: ConnKind = 'serial', label = 'mock') {
     this.kind = kind;
     this.label = label;
   }
 
+  /** Registered inbound-frame handlers (see onFrame / emitFrame) — lets tests drive the RX path
+   *  (traffic counting, edit-push bursts) that request()'s scripted replies don't cover. */
+  readonly frameHandlers = new Set<(frame: number[]) => void>();
+
   async open(): Promise<void> { this.isOpen = true; }
   async close(): Promise<void> { this.isOpen = false; }
-  send(bytes: readonly number[]): void { this.sent.push([...bytes]); }
+  send(bytes: readonly number[]): void {
+    this.sent.push([...bytes]);
+    for (const f of this.sendReply(bytes)) this.emitFrame(f);
+  }
   async sendQueued(bytes: readonly number[], _settleMs?: number): Promise<void> { this.sent.push([...bytes]); }
   async sendPaced(bytes: readonly number[], _chunk?: number, _delayMs?: number): Promise<void> { this.sent.push([...bytes]); }
   async request(bytes: readonly number[], _opts?: RequestOpts): Promise<number[][]> {
     this.sent.push([...bytes]);
     return this.reply(bytes);
   }
-  onFrame(_handler: (frame: number[]) => void): () => void { return () => {}; }
+  onFrame(handler: (frame: number[]) => void): () => void {
+    this.frameHandlers.add(handler);
+    return () => { this.frameHandlers.delete(handler); };
+  }
+  /** TEST HELPER: simulate an inbound SysEx frame — dispatches to every onFrame handler (the transport
+   *  contract: additive fan-out, coexists with request() waiters). */
+  emitFrame(bytes: readonly number[]): void {
+    for (const h of this.frameHandlers) h([...bytes]);
+  }
 }
 
 /** A plausible fn 0x00 handshake reply frame from a device with the given model byte. */

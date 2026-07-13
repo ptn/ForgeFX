@@ -116,6 +116,11 @@ const ROWS: Row[] = [
   { name: 'tempo set', method: 'POST', url: '/tempo', body: { bpm: 121 } },
   { name: 'tempo tap', method: 'POST', url: '/tempo/tap' },
   { name: 'tuner (caps off)', method: 'POST', url: '/tuner', body: { on: true } },
+  // telemetry cadence-mode control (registry-level; identical on both surfaces). GET before PUT so the
+  // GET row observes the default; PUT switches the shared registry, invalid PUT 400s.
+  { name: 'telemetry config get', method: 'GET', url: '/telemetry/config' },
+  { name: 'telemetry config set', method: 'PUT', url: '/telemetry/config', body: { mode: 'performance' } },
+  { name: 'telemetry config bad mode 400', method: 'PUT', url: '/telemetry/config', body: { mode: 'nope' } },
   { name: 'preset select', method: 'POST', url: '/preset/select', body: { number: 33 } },
   { name: 'preset store', method: 'POST', url: '/preset/store', body: { number: 5 } },
   { name: 'stored name stub', method: 'GET', url: '/presets/9' },

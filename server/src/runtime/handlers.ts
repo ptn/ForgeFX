@@ -132,6 +132,17 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
     const d = await driver();
     return d.modifierModel ? d.modifierModel() : null;
   };
+  // Telemetry cadence-mode control (registry-level, no driver needed). GET serves the current mode +
+  // its resolved cadence + the mode list; PUT switches the mode (400 on an unknown value) and the
+  // setter emits a `telemetryConfig` event so every live UI reflects it.
+  const telemetryConfigH = () => registry.getTelemetryConfig();
+  const telemetrySetH = (reply: StatusSink, mode?: string) => {
+    if (mode == null || !registry.telemetryModes().includes(mode as never)) {
+      reply.code(400);
+      return { error: 'unknown mode', modes: registry.telemetryModes() };
+    }
+    return registry.setTelemetryMode(mode);
+  };
   // Offline preset decode with model-byte dispatch: sniff frame[4] of the first F0 frame. 0x15 →
   // the AM4 offline decoder (works whatever unit is attached — decode touches no transport);
   // anything else → the active driver's gen-3 decode, byte-identical to the pre-Phase-6 behavior.
@@ -162,6 +173,7 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
     gridH, blocksH, sceneStateH, blockParamsH, setParamH, bypassH, sceneSetH,
     presetSelectH, presetStoreH, presetNameH, locationsH,
     backupH, restoreH, fwValidateH, deviceParamH, modModelH,
+    telemetryConfigH, telemetrySetH,
     decodeH, decodeBytes
   };
 }

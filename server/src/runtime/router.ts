@@ -309,6 +309,10 @@ export function createRouter(deps: RuntimeDeps): {
     return d.selectCell(b.row, b.col);
   });
 
+  // ── telemetry cadence-mode control (GET/PUT /telemetry/config) ──
+  on('GET', '/telemetry/config', () => h.telemetryConfigH());
+  on('PUT', '/telemetry/config', (c) => h.telemetrySetH(c.reply, (c.body as { mode?: string } | undefined)?.mode));
+
   // ── telemetry: tuner · tempo · scene ──
   on('POST', '/tuner', (c) => registry.setTuner(!!(c.body as { on?: boolean } | undefined)?.on));
   on('GET', '/tempo', async (c) => {

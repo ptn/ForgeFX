@@ -1,6 +1,6 @@
 {
   "name": "forgefx-server",
-  "version": "0.6.12-beta",
+  "version": "0.6.13-beta",
   "private": true,
   "description": "ForgeFX — open HTTP API for Fractal devices. Node backend powered by fractal-midi.",
   "license": "MIT",
@@ -27,7 +27,8 @@
     "check:browser": "tsx scripts/check-browser-safe.ts",
     "test": "tsx test/run-all.ts && tsx scripts/check-browser-safe.ts",
     "probe:grid": "tsx src/probes/grid-read.ts",
-    "probe:grid2e": "tsx src/probes/grid-2e.ts"
+    "probe:grid2e": "tsx src/probes/grid-2e.ts",
+    "probe:walk": "tsx src/probes/walk-probe.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

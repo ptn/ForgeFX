@@ -232,6 +232,7 @@ class Am4Driver implements DeviceDriver {
     editorLayouts: true, // AM4 ships AM4_LAYOUTS (served via am4LayoutFor in blockParams)
     supportsSave: true,
     selfDescribe: false, // the AM4 has its own (non-gen-3) codec; the gen-3 self-describe walk does not apply
+    cacheImport: false, // AM4 cache uses a different param model (paramsForModel is gen-3-only)
     deviceEditWatch: true // AM4 pushes NOTHING on front-panel / AM4-Edit edits (HW-107) → registry polls readDeviceEditState()
   };
 

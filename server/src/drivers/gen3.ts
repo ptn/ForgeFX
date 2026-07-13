@@ -184,6 +184,8 @@ class Gen3Driver implements DeviceDriver {
       // Live self-describe walk (fn 0x01 DEFINITION/ENUM-LABEL sweep) is HW-verified on the FM3 and
       // shares the gen-3 protocol on the FM9 / Axe-Fx III → the on-connect device-cache build is offered.
       selfDescribe: true,
+      // Same buildCache path as the live walk → an official-editor .cache file can be imported too.
+      cacheImport: true,
       // Device-edit reflection splits by whether the unit PUSHES front-panel edits:
       //  • FM9 / Axe-Fx III / VP4 push an unsolicited 0x74/0x75/0x76 burst → registry LISTENS (deviceEditPush).
       //  • FM3 (0x11) proven NOT to push (tap 2026-07-04: a front-panel knob emitted zero unsolicited

@@ -42,12 +42,13 @@ export interface CacheStatus {
   exists: boolean;
   building: boolean;
   progress?: { done: number; total: number; phase: string };
-  meta?: { recordCount: number; builtAt: string | null; firmware: string | null; unmappedSections: number; unmappedFamilies: number };
+  meta?: { recordCount: number; builtAt: string | null; firmware: string | null; unmappedSections: number; unmappedFamilies: number; source: string };
 }
 
 /** Gen-3 param catalog for the walk's section→family voter, by model byte. Only selfDescribe (gen-3
- *  grid) models reach here; FM3 is the defensive default. */
-function paramsForModel(model: number): DeviceParam[] {
+ *  grid) models reach here; FM3 is the defensive default. Shared with the editor-cache import service
+ *  (services/editorCacheImport.ts) so both feed buildCache the identical per-model catalog. */
+export function paramsForModel(model: number): DeviceParam[] {
   switch (model) {
     case 0x12: return FM9_PARAMS as unknown as DeviceParam[];
     case 0x10: return AXE3_PARAMS as unknown as DeviceParam[];
@@ -135,7 +136,10 @@ export async function cacheStatus(store: Store, registry: DeviceRegistry): Promi
       builtAt: data.meta?.builtAt ?? null,
       firmware: data.firmware ?? null,
       unmappedSections: data.unmappedSections?.length ?? 0,
-      unmappedFamilies: data.unmappedFamilies?.length ?? 0
+      unmappedFamilies: data.unmappedFamilies?.length ?? 0,
+      // Where the persisted profile came from: 'live' (A3 walk), 'editor-cache' (import), 'cloud'
+      // (pull). Axis surfaces this next to the device info.
+      source: (data.meta as { source?: string } | undefined)?.source ?? 'live'
     };
   }
   return out;

@@ -18,6 +18,8 @@ import type { DeviceRegistry } from '../drivers/registryCore.js';
 import type { DeviceEvent } from '../drivers/types.js';
 import * as backups from '../services/backups.js';
 import * as deviceCache from '../services/deviceCache.js';
+import * as editorCacheImport from '../services/editorCacheImport.js';
+import * as cloudProfiles from '../services/cloudProfiles.js';
 import { blockHelpBySlug, helpIndex } from '../help.js';
 import { createUnifiedHandlers } from './handlers.js';
 import { putStoreDoc } from './services.js';
@@ -137,6 +139,34 @@ export function createRouter(deps: RuntimeDeps): {
   });
   on('POST', '/device/cache/cancel', () => deviceCache.cancelCacheBuild(registry));
   on('DELETE', '/device/cache', () => deviceCache.deleteCache(store, registry));
+  // ── editor-cache import (SECOND cache source; capability cacheImport). Disk discovery is Node-only,
+  //    so the browser twin returns an empty candidate list (discovery:'unavailable') + octet-only import. ──
+  on('GET', '/device/cache/sources', async () => {
+    const persisted = await editorCacheImport.isPersisted(store, registry);
+    return { persisted, candidates: [], discovery: 'unavailable' };
+  });
+  on('POST', '/device/cache/import', async (c) => {
+    if (!c.raw || !c.raw.length) { c.reply.code(400); return { error: 'POST the .cache bytes as application/octet-stream with ?name=<filename>' }; }
+    const name = c.query.get('name');
+    if (!name) { c.reply.code(400); return { error: 'missing ?name=<filename>' }; }
+    const force = c.query.get('force') === '1' || c.query.get('force') === 'true';
+    const r = await editorCacheImport.importEditorCache(registry, store, c.raw, { name, force });
+    c.reply.code(r.code);
+    return r.body;
+  }, { octet: true });
+  // ── shared device-definition profiles (THIRD cache source; services/cloudProfiles.ts). deps.cloud is
+  //    optional — absent (no cloud in this runtime) degrades to the same non-erroring disabled shape. ──
+  on('GET', '/device/cache/cloud', () => cloudProfiles.cloudCacheCheck(deps.cloud ?? null, registry));
+  on('POST', '/device/cache/cloud/pull', async (c) => {
+    const r = await cloudProfiles.cloudCachePull(deps.cloud ?? null, store, registry);
+    c.reply.code(r.code);
+    return r.body;
+  });
+  on('POST', '/device/cache/cloud/publish', async (c) => {
+    const r = await cloudProfiles.cloudCachePublish(deps.cloud ?? null, store, registry);
+    c.reply.code(r.code);
+    return r.body;
+  });
   // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — refresh lets a driver merge live per-device banks.
   on('GET', '/cab/irs', async (c) => {
     if (c.query.get('refresh') === '1') {

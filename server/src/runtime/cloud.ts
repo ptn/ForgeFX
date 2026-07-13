@@ -128,6 +128,39 @@ export class Cloud {
     return { enabled: true, url: this.#cfg.url, user, subscription, quota };
   }
 
+  // ── shared device-definition profile store (axis-cloud `device-profiles` edge fn; META-22) ──
+  /** Fetch the newest shared device-definition profile for (model, firmware), or null when cloud is
+   *  off / none exists / the fetch fails. Anonymous endpoint — no session needed (profiles are shared,
+   *  non-user data), so this works signed-out. */
+  async deviceProfileGet(model: number, firmware: string): Promise<{ profile: unknown; contentHash: string; source: string; recordCount: number | null; createdAt: string } | null> {
+    if (!this.#enabled()) return null;
+    try {
+      const u = `${this.#cfg.url}/functions/v1/device-profiles?model=${model}&firmware=${encodeURIComponent(firmware)}`;
+      const res = await fetch(u, { headers: { apikey: this.#cfg.anonKey }, signal: AbortSignal.timeout(15000) });
+      if (!res.ok) return null;
+      const d = await res.json() as { profile: unknown; content_hash: string; source: string; record_count: number | null; created_at: string };
+      return { profile: d.profile, contentHash: d.content_hash, source: d.source, recordCount: d.record_count, createdAt: d.created_at };
+    } catch { return null; }
+  }
+  /** Publish a derived profile to the shared store. The edge fn verifies the caller's JWT, so this
+   *  requires a signed-in session (401 otherwise). Returns the fn's HTTP outcome verbatim — the route
+   *  passes code+body straight through (200/201 ok, `{deduped:true}` on an identical existing row). */
+  async deviceProfilePublish(body: { model: number; firmware: string; source: 'live-walk' | 'editor-cache'; profile: unknown }): Promise<{ code: number; body: unknown }> {
+    if (!this.#enabled()) return { code: 503, body: { error: 'cloud disabled' } };
+    const { data: s } = await this.#c().auth.getSession();
+    const token = s.session?.access_token;
+    if (!token) return { code: 401, body: { error: 'not signed in' } };
+    try {
+      const res = await fetch(`${this.#cfg.url}/functions/v1/device-profiles`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, apikey: this.#cfg.anonKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30000)
+      });
+      return { code: res.status, body: await res.json().catch(() => ({})) };
+    } catch (e) { return { code: 503, body: { error: (e as Error).message } }; }
+  }
+
   /** For Axis Cloud Remote: the authed Supabase client + current user id (for the Realtime host channel),
    *  or null when cloud is off / signed out. The client carries the user's session, so its Realtime
    *  connection is authorized for that user's private channel. */

@@ -47,6 +47,11 @@ import { createGen2Driver } from './gen2.js';
 import { createGen1Driver } from './gen1.js';
 import { createVp4Driver } from './vp4.js';
 import type { DeviceDriver, DeviceEvent, DriverCtx } from './types.js';
+import { cadenceFor, isTelemetryMode, TELEMETRY_MODES, type TelemetryMode, type CadenceProfile } from './telemetryProfiles.js';
+
+/** The /telemetry/config DTO both surfaces serve: the current mode, its resolved cadence, and the
+ *  full mode list. Cumulative-counter-free — traffic rides the SSE `traffic` event + /diag. */
+export interface TelemetryConfigDto { mode: TelemetryMode; effective: CadenceProfile; modes: readonly TelemetryMode[]; }
 
 const DESCRIPTOR_BY_MODEL: Record<number, { capabilities: Record<string, unknown> }> = {
   0x01: AXEFXGEN1_DESCRIPTOR as never,
@@ -68,6 +73,10 @@ const GEN3_VIRTUAL_EFFECTS: readonly { eid: number; slug: string; name: string }
 ];
 // gen-3 grid shunt effect-id base (shunt eids = 1024+); the AM4's linear chain has no shunts.
 const GEN3_SHUNT_BASE = 1024;
+
+// Per-transport-instance idempotency flag for #instrumentTransport (double-wrapping would double-count
+// the fn-0x1F echo guard and silently break front-panel edit reflection).
+const INSTRUMENTED = Symbol('forgefx.transport.instrumented');
 
 /** One selectable connection as the deps' lister reports it (serial + MIDI, Fractal flagged) —
  *  structurally identical to transport/connection.ts's ConnInfo, re-declared here so the core stays
@@ -154,9 +163,34 @@ export class DeviceRegistry {
   #active: DeviceDriver | null = null;
   // One driver instance per model byte (grid caches etc. survive re-detects of the same unit).
   #drivers = new Map<number, DeviceDriver>();
-  #ctx: DriverCtx = { transport: () => this.transport(), emit: (e) => this.#emit(e) };
+  #ctx: DriverCtx = { transport: () => this.transport(), emit: (e) => this.#emit(e), getCadence: () => this.#cadence() };
 
   get profile() { return this.#prof; }
+
+  // ── telemetry cadence mode (in-memory; resets to the balanced default on restart) ──
+  #telemetryMode: TelemetryMode = 'balanced';
+  /** The cadence bundle for the CURRENT mode + the ACTIVE driver's model family (falls back to the
+   *  detected/provisional model, then generic). Resolved AT CALL TIME so a mode switch applies on the
+   *  next reschedule of every loop without touching timers directly. */
+  #cadence(): CadenceProfile {
+    const mid = this.#active?.modelId ?? (this.#modelId >= 0 ? this.#modelId : null);
+    return cadenceFor(mid, this.#telemetryMode);
+  }
+  /** GET /telemetry/config payload. */
+  getTelemetryConfig(): TelemetryConfigDto {
+    return { mode: this.#telemetryMode, effective: this.#cadence(), modes: TELEMETRY_MODES };
+  }
+  /** Set the cadence mode (PUT /telemetry/config). Validates, stores in-memory, and emits a
+   *  `telemetryConfig` event so every live UI reflects it. Throws on an unknown mode (the route maps
+   *  that to 400). Returns the fresh DTO. */
+  setTelemetryMode(mode: string): TelemetryConfigDto {
+    if (!isTelemetryMode(mode)) throw new Error(`unknown telemetry mode '${mode}'`);
+    this.#telemetryMode = mode;
+    this.#emit({ type: 'telemetryConfig', mode });
+    return this.getTelemetryConfig();
+  }
+  /** The accepted mode set — the route uses it to 400 an unknown value before calling the setter. */
+  telemetryModes(): readonly TelemetryMode[] { return TELEMETRY_MODES; }
 
   /** Driver factory: model byte → per-device driver over the shared transport. */
   #driverFor(modelId: number): DeviceDriver | null {
@@ -203,6 +237,13 @@ export class DeviceRegistry {
     this.#drivers.set(modelId, d);
   }
 
+  /** TEST-ONLY: route-driven (non-supervisor) requests currently in flight — the value the supervisor
+   *  yields on (FORGEFX-28). Production never calls this. */
+  __interactiveInFlightForTest(): number { return this.#interactiveInFlight(); }
+  /** TEST-ONLY: re-run transport instrumentation to prove it is idempotent (a second wrap must be a
+   *  no-op — double-wrapping would double-count the fn-0x1F echo guard and break edit reflection). */
+  __instrumentTransportForTest(t: Transport): void { this.#instrumentTransport(t); }
+
   /** Map a manual profile-override key to a model byte. Gen-3 keys resolve via profileForKey; AM4 has no
    *  gen-3 profile (it uses the separate am4 codec) so it maps to its model byte directly. -1 = unknown. */
   #forcedModelId(key: string): number {
@@ -223,9 +264,10 @@ export class DeviceRegistry {
     this.#startMeters(); // a listener is present → stream CPU + audio meters (gen-3 only)
     this.#startEditWatch(); // …and poll for front-panel edits on devices that don't push them (AM4 + FM3)
     this.#startEditPush(); // …and listen for gen-3's unsolicited front-panel state-broadcast bursts
+    this.#startTraffic(); // …and stream ~1×/s device-link traffic counters
     return () => {
       this.#subscribers.delete(fn);
-      if (this.#subscribers.size === 0) { this.#stopMeters(); this.#stopEditWatch(); this.#stopEditPush(); }
+      if (this.#subscribers.size === 0) { this.#stopMeters(); this.#stopEditWatch(); this.#stopEditPush(); this.#stopTraffic(); }
     };
   }
   /** Broadcast a shared-config change to every live UI (SSE + remote relay). Called by the store route on
@@ -263,7 +305,7 @@ export class DeviceRegistry {
         if (!conn) throw new Error('No Fractal device found on any serial or MIDI port. Connect the unit, quit other editors, or pick it under Connection.');
         const t = this.#deps.openConn(conn);
         await t.open();
-        this.#instrumentRequestCounting(t); // so the edit-push listener can tell a poll reply from a front-panel burst
+        this.#instrumentTransport(t); // echo-guard + traffic counters + interactive-request tracking
         this.#transport = t;
         return t;
       })().catch((e) => {
@@ -306,6 +348,10 @@ export class DeviceRegistry {
       resolved,
       transportOpen: !!this.#transport?.isOpen,
       transportLabel: this.#transport?.label ?? null,
+      // Cumulative device-link traffic since the connection was instrumented (matches the SSE `traffic`
+      // event's counters); telemetryMode surfaces the active cadence mode + its currently-active loops.
+      telemetryMode: this.#telemetryMode,
+      traffic: { ...this.#traffic, since: this.#trafficSince, loops: this.#activeLoops() },
       listError
     };
   }
@@ -404,6 +450,10 @@ export class DeviceRegistry {
       hasScenes: !!c.has_scenes, sceneCount: c.scene_count ?? 0,
       hasChannels: !!c.has_channels, channelNames: c.channel_names ?? [], channelBlocks: c.channel_blocks ?? [],
       ...(this.#extendedCaps(mid) ?? {}),
+      // Registry-level cadence-mode control (GET/PUT /telemetry/config) — advertised on every device so
+      // Axis can surface the control unconditionally. Placed before supportsSave so the pretty-printed
+      // caps diff stays additive-only (see #capabilitiesDto's ordering contract).
+      telemetryControl: true,
       supportsSave: !!c.supports_save
     };
   }
@@ -552,12 +602,22 @@ export class DeviceRegistry {
   // so we run an asymmetric envelope follower (fast attack / slow release) for a natural meter feel.
   #mDb = [-40, -40, -40, -40]; // [out1L, out1R, out2L, out2R]
   #meterStep = 0; // round-robin index over the 4 meters (+ a CPU read) — one small read per tick
+  #lastMeterTs = 0; // wall-clock of the last meter smoothing pass — the envelope follower scales by actual dt
   #lastSceneIdx: number | null = null; // last device-reported scene — front-panel scene-change watch
   #lastChannels: Map<number, number> | null = null; // last device-reported active channel per eid — channel-change watch
   static METER_FLOOR = -40; // display floor (matches FM3-Edit's Preset Leveling page)
   static METER_CEIL = 6; // meters run above 0 dB into clip (live-verified peaks to +5.8 dB)
-  static METER_ATTACK = 0.7; // fraction of the gap closed when the level rises (snappy)
-  static METER_RELEASE = 0.35; // …when it falls (natural meter fall-off; updates are frequent now)
+  // Envelope-follower gap fractions, CALIBRATED FOR A 60 ms TICK (the historical meter cadence).
+  // #meterFactor() rescales them to the actual elapsed dt so the ballistics hold at 100/400 ms ticks
+  // (balanced/reduced) instead of getting sluggish.
+  static METER_ATTACK = 0.7; // fraction of the gap closed when the level rises (snappy) @ 60 ms
+  static METER_RELEASE = 0.35; // …when it falls (natural meter fall-off) @ 60 ms
+  /** Rescale a 60 ms-calibrated envelope fraction to the actual elapsed dt (exponential time-constant),
+   *  so meters keep their attack/release feel at any meter tick cadence. Clamped to a sane dt window. */
+  static #meterFactor(base60: number, dtMs: number): number {
+    const scale = Math.min(8, Math.max(0.25, dtMs / 60));
+    return 1 - Math.pow(1 - base60, scale);
+  }
 
   // Tuner: FM3-Edit opens the tuner page (fn 0x12 sub 0x1e) then POLLS fn 0x01 sub 0x19 field 0x02,
   // whose value field (float32 @ off 12) is the detected fundamental in Hz. We replicate that and
@@ -569,27 +629,30 @@ export class DeviceRegistry {
     // Drivers whose tuner isn't a gen-3 tuner-page poll (AM4 polls block 0x0023) resolve a full
     // reading themselves via readTuner(); everyone else uses the built-in gen-3 fn 0x01 poll.
     try {
-      if (d.readTuner) {
-        const r = await d.readTuner();
-        if (r) this.#emit({ type: 'tuner', freq: Math.round(r.freq * 100) / 100, note: r.note, octave: r.octave, cents: r.cents });
-      } else {
-        const dev = await this.transport();
-        const frames = await dev.request(buildTunerPoll(d.modelId), {
-          timeoutMs: 300,
-          quietMs: 35,
-          match: (fs) => fs.some((f) => isTunerResponse(f))
-        });
-        const f = frames.find((x) => isTunerResponse(x));
-        if (f) {
-          const freq = parseTunerFreqHz(f);
-          this.#emit({ type: 'tuner', freq: Math.round(freq * 100) / 100, ...(freqToNote(freq) ?? {}) });
+      await this.#supervised(async () => {
+        if (d.readTuner) {
+          const r = await d.readTuner();
+          if (r) this.#emit({ type: 'tuner', freq: Math.round(r.freq * 100) / 100, note: r.note, octave: r.octave, cents: r.cents });
+        } else {
+          const dev = await this.transport();
+          const frames = await dev.request(buildTunerPoll(d.modelId), {
+            timeoutMs: 300,
+            quietMs: 35,
+            match: (fs) => fs.some((f) => isTunerResponse(f))
+          });
+          const f = frames.find((x) => isTunerResponse(x));
+          if (f) {
+            const freq = parseTunerFreqHz(f);
+            this.#emit({ type: 'tuner', freq: Math.round(freq * 100) / 100, ...(freqToNote(freq) ?? {}) });
+          }
         }
-      }
+      });
     } catch {
       /* transient — keep polling */
     }
-    // Four short reads per AM4 update → a touch slower than the single gen-3 read (55 ms).
-    if (this.#tunerTimer) this.#tunerTimer = setTimeout(() => this.#pollTuner(), d.readTuner ? 100 : 55);
+    // Cadence is family-fixed + mode-independent (gen-3 55 ms; AM4's four short reads → 100 ms), resolved
+    // at reschedule time so it tracks the detected model.
+    if (this.#tunerTimer) this.#tunerTimer = setTimeout(() => this.#pollTuner(), this.#cadence().tunerMs);
   }
 
   async setTuner(on: boolean) {
@@ -623,7 +686,7 @@ export class DeviceRegistry {
   #startMeters() {
     if (this.#metersTimer) return;
     if (this.#active && !this.#active.capabilities.telemetry.outputMeters) return; // no gen-3 meter frames on this device
-    this.#metersTimer = setTimeout(() => this.#pollMeters(), 120);
+    this.#metersTimer = setTimeout(() => this.#pollMeters(), this.#cadence().meterTickMs); // primer at the mode's meter tick
   }
   #stopMeters() {
     if (this.#metersTimer) clearTimeout(this.#metersTimer);
@@ -641,14 +704,33 @@ export class DeviceRegistry {
       return;
     }
     if (!d.capabilities.telemetry.outputMeters) { this.#stopMeters(); return; }
+    // Resolve the CURRENT-mode cadence once per tick (a mode switch applies from the next reschedule).
+    const cad = this.#cadence();
+    // YIELD (FORGEFX-28): while a route-driven request is in flight (or queued behind one), SKIP this
+    // tick's device I/O but keep the cadence — so a live edit never waits behind the meter round-robin.
+    // A starvation guard forces the poll through after MAX_SKIPS consecutive skips so the front-panel
+    // scene/channel watches never fully starve under sustained UI traffic.
+    if (this.#interactiveInFlight() > 0 && this.#meterSkips < DeviceRegistry.MAX_SKIPS) {
+      this.#meterSkips++;
+      if (this.#metersTimer) this.#metersTimer = setTimeout(() => this.#pollMeters(), cad.meterTickMs);
+      return;
+    }
+    this.#meterSkips = 0;
     let slow = false;
     try {
       const dev = await this.transport();
       // A slow link — a generic MIDI interface into 5-pin DIN (≈31.25 kbaud) — can't carry meter polling
-      // without inflating every other request to seconds, so SKIP it there (a cheap 2 s re-check resumes it
+      // without inflating every other request to seconds, so SKIP it there (a cheap re-check resumes it
       // instantly on a fast link). Fast USB-MIDI (Axe-Fx III / FM9) and USB-CDC serial are NOT slow.
       slow = dev.slow;
-      if (!slow) {
+      if (!slow) await this.#supervised(async () => {
+        // Envelope-follower dt: keep the meter ballistics constant in wall-clock terms across the
+        // per-mode tick cadences (60/100/400 ms) by scaling the 60 ms-calibrated fractions to elapsed dt.
+        const now = Date.now();
+        const dt = this.#lastMeterTs ? now - this.#lastMeterTs : cad.meterTickMs;
+        this.#lastMeterTs = now;
+        const aUp = DeviceRegistry.#meterFactor(DeviceRegistry.METER_ATTACK, dt);
+        const aDn = DeviceRegistry.#meterFactor(DeviceRegistry.METER_RELEASE, dt);
         // Read ALL 4 output meters back-to-back each tick (tiny 23-byte reads — this is exactly what
         // FM3-Edit's leveling page does; NOT the many-block sweep that stutters audio) so every bar
         // refreshes every tick, not once per round-robin → smooth, not choppy.
@@ -659,13 +741,13 @@ export class DeviceRegistry {
           if (f) {
             const raw = meterRmsToDb(parseOutputMeterRms(f), DeviceRegistry.METER_FLOOR, DeviceRegistry.METER_CEIL);
             const prev = this.#mDb[i]!;
-            const a = raw > prev ? DeviceRegistry.METER_ATTACK : DeviceRegistry.METER_RELEASE;
+            const a = raw > prev ? aUp : aDn;
             this.#mDb[i] = prev + a * (raw - prev);
           }
         }
         this.#emit({ type: 'meters', out1L: this.#mDb[0]!, out1R: this.#mDb[1]!, out2L: this.#mDb[2]!, out2R: this.#mDb[3]! });
-        // CPU is a heavy 590-byte read → poll it only occasionally (every ~8th tick), off the meter path.
-        if (this.#meterStep % 8 === 0) {
+        // CPU is a heavy 590-byte read → poll it only occasionally (every Nth tick), off the meter path.
+        if (this.#meterStep % cad.cpuEveryNTicks === 0) {
           const frames = await dev.request(buildCpuPoll(d.modelId), { timeoutMs: 400, quietMs: 25, match: (fs) => fs.some((f) => isCpuResponse(f)) });
           const f = frames.find((x) => isCpuResponse(x));
           if (f) this.#emit({ type: 'cpu', percent: cpuPercentFromRaw(parseCpuRawLoad(f)) });
@@ -676,7 +758,7 @@ export class DeviceRegistry {
         // Poll the tiny fn 0x13 status dump on the meter round-robin (offset 2) and emit `blockState`
         // on any block's active-channel delta → Axis re-reads only live scene/block state. First read
         // only primes the baseline (no event).
-        if (this.#meterStep % 8 === 2 && d.getActiveChannels) {
+        if (this.#meterStep % cad.channelEveryNTicks === 2 && d.getActiveChannels) {
           const chans = await d.getActiveChannels();
           if (chans.size > 0) {
             let moved = false;
@@ -694,19 +776,19 @@ export class DeviceRegistry {
         // fn 0x0C scene GET on the CPU cadence, offset half a cycle so the two heavier reads never
         // share a tick. Emits the SAME `scene` event the setScene write path emits, so clients need
         // no new wiring. First read only primes the baseline (no event).
-        if (this.#meterStep++ % 8 === 4 && d.getScene) {
+        if (this.#meterStep++ % cad.sceneEveryNTicks === 4 && d.getScene) {
           const { index } = await d.getScene();
           if (Number.isInteger(index) && index >= 0) {
             if (this.#lastSceneIdx !== null && index !== this.#lastSceneIdx) this.#emit({ type: 'scene', index });
             this.#lastSceneIdx = index;
           }
         }
-      }
+      });
     } catch {
       /* transient — keep polling */
     }
-    // short gap after the 4 reads → ~8–10 full meter refreshes/sec
-    if (this.#metersTimer) this.#metersTimer = setTimeout(() => this.#pollMeters(), slow ? 2000 : 60);
+    // reschedule at the mode's meter tick (or the slow-link cadence)
+    if (this.#metersTimer) this.#metersTimer = setTimeout(() => this.#pollMeters(), slow ? cad.meterSlowMs : cad.meterTickMs);
   }
 
   // ── device-edit watch (poll): catch front-panel edits on devices that DON'T push them (AM4 + FM3) ──
@@ -720,7 +802,7 @@ export class DeviceRegistry {
   #startEditWatch() {
     if (this.#editWatchTimer) return;
     if (this.#active && !this.#active.capabilities.deviceEditWatch) return; // active device doesn't need it
-    this.#editWatchTimer = setTimeout(() => this.#pollEditWatch(), 1500);
+    this.#editWatchTimer = setTimeout(() => this.#pollEditWatch(), this.#cadence().editWatchMs);
   }
   #stopEditWatch() {
     if (this.#editWatchTimer) clearTimeout(this.#editWatchTimer);
@@ -733,18 +815,27 @@ export class DeviceRegistry {
     // before detect() runs (mirrors #pollMeters' unknown-device guard).
     if (!d) { this.#editWatchTimer = setTimeout(() => this.#pollEditWatch(), 1000); return; }
     if (!d.capabilities.deviceEditWatch || !d.readDeviceEditState) { this.#stopEditWatch(); return; }
+    const cad = this.#cadence();
+    // YIELD (FORGEFX-28): skip this tick's poll (keep the cadence) while a route-driven request is in
+    // flight, with the same MAX_SKIPS starvation guard as the meter loop.
+    if (this.#interactiveInFlight() > 0 && this.#editWatchSkips < DeviceRegistry.MAX_SKIPS) {
+      this.#editWatchSkips++;
+      if (this.#editWatchTimer) this.#editWatchTimer = setTimeout(() => this.#pollEditWatch(), cad.editWatchMs);
+      return;
+    }
+    this.#editWatchSkips = 0;
     let slow = false;
     try {
       const dev = await this.transport();
       slow = dev.slow; // a generic 5-pin DIN adapter can't carry the extra poll — back off (see #pollMeters)
-      if (!slow) {
-        const r = await d.readDeviceEditState();
+      if (!slow) await this.#supervised(async () => {
+        const r = await d.readDeviceEditState!();
         if (r.changed) this.#emit({ type: 'changed', scope: 'preset' });
-      }
+      });
     } catch {
       /* transient — keep polling */
     }
-    if (this.#editWatchTimer) this.#editWatchTimer = setTimeout(() => this.#pollEditWatch(), slow ? 4000 : 1500);
+    if (this.#editWatchTimer) this.#editWatchTimer = setTimeout(() => this.#pollEditWatch(), slow ? cad.editWatchSlowMs : cad.editWatchMs);
   }
 
   // ── gen-3 device-edit PUSH: reflect front-panel / editor edits the unit broadcasts unsolicited ──
@@ -763,16 +854,97 @@ export class DeviceRegistry {
   #burst: number[][] | null = null;
   #burstTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** Wrap a freshly-opened transport so each in-flight fn-0x1F bulk-read bumps #pendingBulkReads (the
-   *  edit-push echo guard). Only fn-0x1F is counted (bytes[5]===0x1f); every other request is passed
-   *  through untouched. Idempotent per transport instance; harmless for non-push devices. */
-  #instrumentRequestCounting(t: Transport) {
+  // ── traffic counters (FORGEFX-27) + interactive-request tracking (FORGEFX-28) ──
+  // Cumulative since the connection was instrumented; survive across reconnects (each new transport
+  // re-instruments and keeps counting into the same totals). Emitted ~1×/s over SSE + folded into /diag.
+  #traffic = { txMsgs: 0, txBytes: 0, rxMsgs: 0, rxBytes: 0 };
+  #trafficSince = Date.now();
+  // ALL requests currently awaiting a reply (route-driven AND supervisor polls); #supervisorInFlight is
+  // the subset the telemetry supervisor itself issued (wrapped in #supervised). interactive = the
+  // difference → the supervisor yields to genuine route traffic without counting its own polls (28).
+  #inFlightRequests = 0;
+  #supervisorInFlight = 0;
+
+  /** Wrap a freshly-opened transport with: (1) the edit-push ECHO GUARD — each in-flight fn-0x1F
+   *  bulk-read (bytes[5]===0x1f) bumps #pendingBulkReads so the edit-push listener drops our own poll
+   *  replies; (2) TX traffic counting on every outgoing frame (send/sendQueued/sendPaced/request);
+   *  (3) ONE persistent onFrame handler for RX counting; (4) an all-requests in-flight counter for the
+   *  interactive-yield logic. IDEMPOTENT per transport instance (a Symbol flag) so a re-wrap is a
+   *  no-op — double-wrapping would double-count the echo guard and silently break edit reflection. */
+  #instrumentTransport(t: Transport) {
+    const inst = t as Transport & { [INSTRUMENTED]?: boolean };
+    if (inst[INSTRUMENTED]) return; // already wrapped — never double-wrap (breaks the echo guard)
+    inst[INSTRUMENTED] = true;
+
+    const countTx = (bytes: readonly number[]) => { this.#traffic.txMsgs++; this.#traffic.txBytes += bytes.length; };
+
     const origRequest = t.request.bind(t);
     t.request = (bytes, opts) => {
-      if (bytes[5] !== 0x1f) return origRequest(bytes, opts); // not a bulk read → can't elicit a 0x74 burst
-      this.#pendingBulkReads++;
-      return origRequest(bytes, opts).finally(() => { this.#pendingBulkReads = Math.max(0, this.#pendingBulkReads - 1); });
+      countTx(bytes);
+      this.#inFlightRequests++;
+      const bulk = bytes[5] === 0x1f; // only a bulk read can elicit a 0x74 burst → echo guard counts it
+      if (bulk) this.#pendingBulkReads++;
+      return origRequest(bytes, opts).finally(() => {
+        this.#inFlightRequests = Math.max(0, this.#inFlightRequests - 1);
+        if (bulk) this.#pendingBulkReads = Math.max(0, this.#pendingBulkReads - 1);
+      });
     };
+    const origSend = t.send.bind(t);
+    t.send = (bytes) => { countTx(bytes); return origSend(bytes); };
+    const origSendQueued = t.sendQueued.bind(t);
+    t.sendQueued = (bytes, settleMs) => { countTx(bytes); return origSendQueued(bytes, settleMs); };
+    if (t.sendPaced) {
+      const origSendPaced = t.sendPaced.bind(t);
+      t.sendPaced = (bytes, chunk, delayMs) => { countTx(bytes); return origSendPaced(bytes, chunk, delayMs); };
+    }
+    // RX: one persistent handler for the transport's life (additive — coexists with request() waiters
+    // and the edit-push listener, which register their own onFrame handlers).
+    t.onFrame((frame) => { this.#traffic.rxMsgs++; this.#traffic.rxBytes += frame.length; });
+  }
+
+  /** Run a supervisor-issued device call while marking it so it doesn't register as INTERACTIVE traffic
+   *  (both meters and edit-watch poll concurrently — without this, one loop's request would make the
+   *  other yield). */
+  async #supervised<T>(fn: () => Promise<T>): Promise<T> {
+    this.#supervisorInFlight++;
+    try { return await fn(); }
+    finally { this.#supervisorInFlight = Math.max(0, this.#supervisorInFlight - 1); }
+  }
+  /** Route-driven (non-supervisor) requests currently in flight — the supervisor yields to these. */
+  #interactiveInFlight(): number { return Math.max(0, this.#inFlightRequests - this.#supervisorInFlight); }
+
+  // Consecutive skips per yielding loop — a starvation guard forces a poll after MAX_SKIPS so a busy
+  // UI never fully starves the front-panel watches.
+  static MAX_SKIPS = 3;
+  #meterSkips = 0;
+  #editWatchSkips = 0;
+
+  // ── traffic emitter: ~1×/s while ≥1 SSE client is listening; only emits when a counter moved ──
+  #trafficTimer: ReturnType<typeof setInterval> | null = null;
+  #lastTrafficEmit = { txMsgs: 0, txBytes: 0, rxMsgs: 0, rxBytes: 0 };
+  #startTraffic() {
+    if (this.#trafficTimer) return;
+    this.#trafficTimer = setInterval(() => this.#emitTraffic(), 1000);
+  }
+  #stopTraffic() {
+    if (this.#trafficTimer) clearInterval(this.#trafficTimer);
+    this.#trafficTimer = null;
+  }
+  #emitTraffic() {
+    const t = this.#traffic;
+    const p = this.#lastTrafficEmit;
+    if (t.txMsgs === p.txMsgs && t.txBytes === p.txBytes && t.rxMsgs === p.rxMsgs && t.rxBytes === p.rxBytes) return; // no change → stay quiet
+    this.#lastTrafficEmit = { ...t };
+    this.#emit({ type: 'traffic', ...t, since: this.#trafficSince, loops: this.#activeLoops() });
+  }
+  /** The currently-live supervisor loops, derived from which timers/listeners are active. */
+  #activeLoops(): string[] {
+    const l: string[] = [];
+    if (this.#metersTimer) l.push('meters');
+    if (this.#editWatchTimer) l.push('editWatch');
+    if (this.#tunerTimer) l.push('tuner');
+    if (this.#editPushUnsub) l.push('editPush');
+    return l;
   }
 
   #startEditPush() {

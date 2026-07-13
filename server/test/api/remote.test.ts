@@ -27,6 +27,8 @@ const ALLOWED: [string, string][] = [
   ['POST', '/tuner'],
   ['POST', '/mod/bind'],
   ['PUT', '/device/param'],
+  ['GET', '/telemetry/config'],  // read relays broadly
+  ['PUT', '/telemetry/config'],  // benign cadence-mode control (no device data moves)
   // deprecated aliases stay relayable during the window
   ['PUT', '/am4/param'],
   ['POST', '/am4/bypass'],

@@ -4,13 +4,14 @@
 import { buildGetPatchDump, nibbleSplit, GEN1_GRID_ROWS, GEN1_GRID_COLS } from 'forgefx-midi/gen1';
 import { createGen1Driver } from '../../src/drivers/gen1.js';
 import type { DriverCtx, DeviceEvent } from '../../src/drivers/types.js';
+import { cadenceFor } from '../../src/drivers/telemetryProfiles.js';
 import { MockTransport, assert, assertEqual } from '../helpers/mock.js';
 
 export const GEN1_CASE_COUNT = 8;
 
 function makeDriver(): { driver: ReturnType<typeof createGen1Driver>; mock: MockTransport } {
   const mock = new MockTransport('midi', 'Axe-Fx Ultra');
-  const ctx: DriverCtx = { transport: async () => mock, emit: (_e: DeviceEvent) => {} };
+  const ctx: DriverCtx = { transport: async () => mock, emit: (_e: DeviceEvent) => {}, getCadence: () => cadenceFor(null, 'balanced') };
   return { driver: createGen1Driver(ctx), mock };
 }
 

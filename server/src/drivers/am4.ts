@@ -257,7 +257,17 @@ class Am4Driver implements DeviceDriver {
   // Brief TTL cache of the last full getPreset dump: a grid render + several blockParams reads on one
   // page load then reuse ONE ~500 ms atomic read (mirrors the gen-3 driver's #gridCache pattern).
   #presetCache: { snap: PresetSnapshot; at: number } | null = null;
-  static #PRESET_TTL_MS = 500;
+  // Cache TTLs are DERIVED from the active cadence (0.8×editWatchMs, clamped ≥500) rather than a fixed
+  // 500 ms — so one edit-watch tick never does a redundant double struct read, and a /telemetry/config
+  // mode switch keeps every cache coherent (getCadence resolves at call time against the active model
+  // byte). editWatchMs is 1500/2000/4000 (perf/balanced/reduced) ⇒ TTL 1200/1600/3200, always < the
+  // tick so each tick still re-reads once, but the two reads WITHIN a tick coalesce.
+  #cacheTtlMs(): number { return Math.max(500, Math.round(0.8 * this.#ctx.getCadence().editWatchMs)); }
+  // Injectable clock (test seam): the cache TTLs + the edit-watch rehash budget read it, so the
+  // time-gated dump decisions can be driven deterministically. Defaults to Date.now in production.
+  #now: () => number = () => Date.now();
+  /** TEST-ONLY (FORGEFX-25 edit-watch tests): inject the clock the cache TTLs + rehash budget read. */
+  __setClockForTest(fn: () => number): void { this.#now = fn; }
   // Active-channel tracking (eid/pidLow → channel idx 0..3). Two sources keep it current:
   //   1) DEVICE read — #refreshActiveChannels reads the real active channel from register 0x07DD (byte
   //      50; decoded FORGEFXMID-16/18 from Channels.pcapng). The channel-SELECT register 0x07D2 is
@@ -290,19 +300,19 @@ class Am4Driver implements DeviceDriver {
   /** ONE atomic getPreset dump of the active buffer via the VERIFIED reader, cached briefly (TTL) so a
    *  grid + block-param page load reuses a single ~500 ms read. Serialized behind #withReader. */
   async readPreset(): Promise<PresetSnapshot | null> {
-    const now = Date.now();
-    if (this.#presetCache && now - this.#presetCache.at < Am4Driver.#PRESET_TTL_MS) return this.#presetCache.snap;
+    const now = this.#now();
+    if (this.#presetCache && now - this.#presetCache.at < this.#cacheTtlMs()) return this.#presetCache.snap;
     return this.#withReader(async () => {
       // Re-check the cache inside the lock — a call we queued behind may have just filled it.
-      const t = Date.now();
-      if (this.#presetCache && t - this.#presetCache.at < Am4Driver.#PRESET_TTL_MS) return this.#presetCache.snap;
+      const t = this.#now();
+      if (this.#presetCache && t - this.#presetCache.at < this.#cacheTtlMs()) return this.#presetCache.snap;
       this.#lastTransport = await this.#openTransport();
       try {
         // Read ALL four channels from the single fn-0x1F dump (no extra round-trips): the active channel
         // can't be read from the device (0x07d2 is unreadable), so we slice the tracked channel ourselves
         // in #slotParamValues rather than trust getPreset's channel-A fallback.
         const snap = await this.#reader.getPreset!(this.#dispatchCtx(), { include_channel_state: true });
-        this.#presetCache = { snap, at: Date.now() };
+        this.#presetCache = { snap, at: this.#now() };
         // Resolve the REAL active channel per placed block from the device (0x07DD) so placedBlocks /
         // blockParams slice the channel the UNIT is actually on — not the channel-A fallback. #readStructure
         // (TTL-cached, and it clears #activeChannel on a preset/scene context change) gives the placed pidLows.
@@ -321,12 +331,12 @@ class Am4Driver implements DeviceDriver {
   // /preset/blocks (+ presetRef polls), each of which needs the same fn-0x1F structure — the beta
   // log showed every load doing back-to-back identical struct reads. Invalidated on writes.
   #structCache: { s: { slots: Am4Slot[]; name: string; scene: number; location: number }; at: number } | null = null;
-  static #STRUCT_TTL_MS = 500;
+  // (struct TTL is now the shared cadence-derived #cacheTtlMs — see the note on #presetCache.)
 
   /** One atomic fn-0x1F read of the preset structure → the 4 slots' block types + preset name +
    *  scene + current stored location. TTL-cached (see #structCache). */
   async #readStructure(): Promise<{ slots: Am4Slot[]; name: string; scene: number; location: number } | null> {
-    if (this.#structCache && Date.now() - this.#structCache.at < Am4Driver.#STRUCT_TTL_MS) return this.#structCache.s;
+    if (this.#structCache && this.#now() - this.#structCache.at < this.#cacheTtlMs()) return this.#structCache.s;
     const dev = await this.#openTransport();
     const read = buildReadParam({ pidLow: BLOCK_SLOT_PID_LOW, pidHigh: 0x0000 }, ATOMIC_READ_TYPE);
     try {
@@ -360,7 +370,7 @@ class Am4Driver implements DeviceDriver {
       // unreadable), so falling back to channel A is the safe default until the user re-selects.
       const sig = `${s.location}:${s.scene}`;
       if (sig !== this.#ctxSig) { this.#ctxSig = sig; this.#activeChannel.clear(); }
-      this.#structCache = { s, at: Date.now() };
+      this.#structCache = { s, at: this.#now() };
       return s;
     } catch {
       return null;
@@ -378,26 +388,44 @@ class Am4Driver implements DeviceDriver {
 
   // ── Device-edit watch: catch front-panel / AM4-Edit edits the unit does NOT push (HW-107) ─────────
   // The registry supervisor polls readDeviceEditState() (capability deviceEditWatch) while an SSE client
-  // is listening. Two-stage detector:
-  //   1) cheap gate — the device-true "edited" bit (GET_PATCH byte[21]&0x04): set on ANY working-buffer
-  //      edit, cleared on save. It STAYS set across successive edits, so the bit alone can't distinguish
-  //      knob-A from a later knob-B while already dirty.
-  //   2) content fingerprint — when dirty, hash the placed blocks' fn-0x1F param arrays (channel-A
-  //      quarter). A change in the bit OR the hash ⇒ a device-originated edit.
-  // Feedback-loop suppression: every LOCAL write calls #invalidate() → #selfEditPending, so the next tick
-  // adopts the new state as baseline WITHOUT emitting (our writes already emit their own events).
+  // is listening. TRANSITION-GATED (FORGEFX-25 — fixes the audio dropouts a user hit): the old detector
+  // ran a full fn-0x1F GET_ALL_PARAMS dump of EVERY placed block on EVERY tick while the edited bit was
+  // latched (~3.3 KB/s sustained), and serializing those multi-frame dumps audibly glitched the AM4's
+  // audio path. AM4-Edit at idle only polls the small 0x7DD register — it never dumps. So we now split
+  // the tick into a CHEAP steady-state path and a GATED heavy path:
+  //
+  //   Every tick (cheap, always): readActiveBufferEditedBit (one GET_PATCH read — we NEVER hash that
+  //     frame: bytes 29/30/31/236 free-run) + the struct read (scene/location) + #refreshActiveChannels
+  //     (0x7DD per placed block). ZERO fn-0x1F dumps here.
+  //   fn-0x1F hash dumps (#hashPlacedParams) ONLY when:
+  //     • edited bit false→true (and not self-edit): emit `changed` IMMEDIATELY (before the slow hash),
+  //       then hash once to seed the successive-edit baseline (skipped when rehashing is disabled).
+  //     • bit stays latched: re-hash at most every ctx.getCadence().editRehashMs (3000 perf / 5000
+  //       balanced / 0 = DISABLED in reduced — then edits reflect on save/scene/channel only). A hash
+  //       diff ⇒ `changed` + new baseline.
+  //     • edited bit true→false (device-side save): emit `changed` (name/location may have changed) and
+  //       reset the hash baseline cheaply — no dump.
+  //   #selfEditPending (our own write dirtied the buffer): silent re-seed, no `changed`; the seed hash
+  //     follows the rehash budget (only seeds when rehashing is enabled) so the baseline stays consistent
+  //     and the NEXT front-panel edit is still detected.
+  //
+  // #lastHashAt is the wall-clock (via #now) of the last dump so the rehash budget is enforceable. All
+  // `changed` reloads still funnel to Axis exactly as before — the false→true case emits directly (for
+  // latency) and returns changed:false to avoid a double emit; channel/save/rehash ride the return value
+  // (the registry emits `changed{scope:'preset'}` on true), and scene rides its own `scene` event.
   //
   // ASSUMPTION (implement-now, verify-after — needs a hardware capture): two zero-edit fn-0x1F reads
-  // return byte-identical value arrays (the fn-0x1F payload is stable — unlike the ~238-byte GET_PATCH
-  // frame whose bytes 29/30/31/236 free-run, and the preset dump which drifts ~20% on a no-op re-dump).
-  // If a block's array drifts on a no-op re-read, exclude its drifting indices in #hashPlacedParams. A
-  // false positive only costs a redundant reload; it never misses a real edit.
+  // return byte-identical value arrays (the fn-0x1F payload is stable). A false positive only costs a
+  // redundant reload; it never misses a real edit.
   #deviceEditBaseline: { edited: boolean; hash: string; scene: number; channels: string } | null = null;
   #selfEditPending = false;
+  #lastHashAt = 0; // #now() of the last #hashPlacedParams dump — gates the rehash budget
 
   /** One device-edit watch tick. Returns `{changed:true}` when a DEVICE-originated (front-panel /
-   *  AM4-Edit) edit happened since the last baseline. Silent no-op right after our own writes and on
-   *  read failure (never churns the UI on a transient timeout). Serialized behind #withReader. */
+   *  AM4-Edit) edit needs the registry to emit a reload; the latency-sensitive false→true case emits
+   *  `changed` itself and returns false. Silent right after our own writes and on read failure (never
+   *  churns the UI on a transient timeout). Transition-gated — see the block comment above. Serialized
+   *  behind #withReader. */
   async readDeviceEditState(): Promise<{ changed: boolean }> {
     return this.#withReader(async () => {
       this.#lastTransport = await this.#openTransport();
@@ -408,35 +436,61 @@ class Am4Driver implements DeviceDriver {
       } catch {
         return { changed: false }; // device busy / timeout — keep the last baseline, don't reload
       }
-      const hash = edited ? await this.#hashPlacedParams(conn) : '';
-      // Scene index is read UNCONDITIONALLY (a footswitch scene change does NOT set the edited bit —
-      // it's not a working-buffer edit), so the edited-gate above would miss it. Cheap: the structure
-      // is TTL-cached and #hashPlacedParams already warmed it when dirty. (#STRUCT_TTL 500ms <
-      // edit-watch cadence 1500ms, so each tick re-reads fresh.)
+      // ── CHEAP, EVERY TICK ── struct (scene/location) + per-block active channel (0x7DD). No fn-0x1F
+      // dumps here: the heavy #hashPlacedParams runs ONLY on the gated transitions below.
       const struct = await this.#readStructure();
       const scene = struct?.scene ?? 0;
-      // Read each placed block's REAL active channel (0x07DD). A front-panel channel switch does NOT
-      // reliably set the working-buffer edited bit and leaves the channel-A hash unchanged, so without
-      // this it would go undetected. #refreshActiveChannels also updates #activeChannel, so the reload
-      // this triggers reports the channel the unit actually switched to.
       const placed = (struct?.slots ?? []).filter((sl) => sl.pidLow !== 0 && sl.blockType !== 'none').map((sl) => sl.pidLow);
       const channels = await this.#refreshActiveChannels(placed);
+
+      const rehashMs = this.#ctx.getCadence().editRehashMs; // 0 (reduced) = never dump on the latched path
       const base = this.#deviceEditBaseline;
-      // First run, or our own write just dirtied the buffer → adopt as baseline and emit nothing.
+
+      // First run, or our own write just dirtied the buffer → adopt as baseline and emit nothing. Seed a
+      // hash ONLY when the buffer is dirty AND rehashing is enabled — otherwise there is nothing to
+      // compare against later, so the dump would be wasted. After a self-edit this keeps the baseline
+      // consistent so the NEXT front-panel edit is still detected (correctness first).
       if (base === null || this.#selfEditPending) {
         this.#selfEditPending = false;
+        let hash = '';
+        if (edited && rehashMs > 0) { hash = await this.#hashPlacedParams(conn); this.#lastHashAt = this.#now(); }
         this.#deviceEditBaseline = { edited, hash, scene, channels };
         return { changed: false };
       }
+
       // Front-panel scene change (footswitch): emit a `scene` event (same shape gen-3 emits) so Axis
-      // moves the badge AND reloads the per-scene grid/params. Separate from the edit `changed` signal.
+      // moves the badge AND reloads the per-scene grid/params. Separate from the edit `changed` signal,
+      // and cheap — struct-derived, no dump.
       if (scene !== base.scene) this.#ctx.emit({ type: 'scene', index: scene });
-      // A front-panel channel switch (channels sig changed) is a device-originated edit → reload so the
-      // new active channel's params/type surface. #invalidate() on our own writes seeds the baseline
-      // (via #selfEditPending) so AXIS-initiated switches don't double-fire here.
-      const changed = edited !== base.edited || hash !== base.hash || channels !== base.channels;
+
+      let emittedChanged = false;                    // true once we've emitted `changed` directly this tick
+      let wantChanged = channels !== base.channels;  // a front-panel channel switch is device-originated
+      let hash = base.hash;
+
+      if (edited && !base.edited) {
+        // false→true: emit `changed` IMMEDIATELY (before the slow hash) so the reload is not gated on the
+        // dump, THEN hash once to seed the successive-edit baseline (only when rehashing is enabled).
+        this.#ctx.emit({ type: 'changed', scope: 'preset' });
+        emittedChanged = true;
+        if (rehashMs > 0) { hash = await this.#hashPlacedParams(conn); this.#lastHashAt = this.#now(); }
+        else hash = '';
+      } else if (!edited && base.edited) {
+        // true→false (device-side save): name/location may have changed → reload; reset the hash baseline
+        // cheaply (nothing dirty to fingerprint — no dump).
+        hash = '';
+        wantChanged = true;
+      } else if (edited && base.edited && rehashMs > 0 && this.#now() - this.#lastHashAt >= rehashMs) {
+        // Bit stays latched and the rehash budget elapsed: re-fingerprint the placed blocks. A diff means
+        // the front panel moved a param while already dirty → reload + adopt the new baseline.
+        const fresh = await this.#hashPlacedParams(conn);
+        this.#lastHashAt = this.#now();
+        if (fresh !== base.hash) { hash = fresh; wantChanged = true; }
+      }
+
       this.#deviceEditBaseline = { edited, hash, scene, channels };
-      return { changed };
+      // A `changed` already emitted directly (false→true) is NOT re-signalled via the return value —
+      // that would double-fire the registry's emit.
+      return { changed: wantChanged && !emittedChanged };
     });
   }
 

@@ -126,8 +126,12 @@ async function buildHappyPath(): Promise<void> {
   const unsub = registry.subscribe((e) => events.push(e)); // also spins up the meter supervisor (FM3)
   try {
     const fakeWalk = async (_t: unknown, opts: LiveWalkOptions): Promise<CacheRecord[]> => {
-      // FORGEFX-32 regression: the walk MUST be paced — 0 ms query flooding freezes FM3 hardware.
+      // FORGEFX-32 regression: the walk MUST be paced — 0 ms query flooding freezes FM3 hardware —
+      // and MUST stay inside the hardware-validated envelope: block breathers + 7-bit params only
+      // (the 14-bit body[5] space was never live-swept on a real unit).
       assertEqual(opts.interQueryMs, 3, 'walk opts carry the hardware-proven 3 ms inter-query pacing');
+      assertEqual(opts.blockPauseMs, 150, 'walk opts carry the 150 ms inter-block breather');
+      assertEqual(opts.maxParamId, 127, 'walk opts stay inside the 7-bit param envelope');
       opts.onProgress?.({ phase: 'block-start', block: 0, blockIndex: 0, blockCount: 2, records: 0, enumLabels: 0, queries: 0 });
       opts.onProgress?.({ phase: 'block-done', block: 0, blockIndex: 1, blockCount: 2, records: expectedRecords, enumLabels: 0, queries: 4 });
       opts.onProgress?.({ phase: 'done', blockIndex: 2, blockCount: 2, records: expectedRecords, enumLabels: 0, queries: 4 });

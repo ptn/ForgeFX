@@ -36,7 +36,8 @@ const CAPS: DriverCapabilities = {
   fcLiveRead: false,
   modBind: true,
   cabIrs: true,
-  supportsSave: true
+  supportsSave: true,
+  selfDescribe: false // fake driver: keeps POST /device/cache/build on the 501 gated path
 };
 
 /** Deterministic fake FM3 driver — a rich (but not full) optional-method surface so the matrix hits
@@ -132,6 +133,12 @@ const ROWS: Row[] = [
   // capability-gated 501s (the fake implements neither)
   { name: '501 locations scan', method: 'GET', url: '/preset/locations' },
   { name: '501 firmware validate', method: 'POST', url: '/firmware/validate', body: { bytes: [1, 2, 3] } },
+  // device cache (four twins) — the fake FM3 has selfDescribe:false + no firmware, so status is empty,
+  // build is 501-gated, cancel is idempotent, delete finds nothing. No state mutation → order-safe.
+  { name: 'device cache status', method: 'GET', url: '/device/cache' },
+  { name: 'device cache build (501)', method: 'POST', url: '/device/cache/build', body: {} },
+  { name: 'device cache cancel', method: 'POST', url: '/device/cache/cancel' },
+  { name: 'device cache delete', method: 'DELETE', url: '/device/cache' },
   // version control (row order matters: backup first, listing after)
   { name: 'backup preset (dedup twin)', method: 'POST', url: '/backup/preset/5' },
   { name: 'versions', method: 'GET', url: '/versions' },

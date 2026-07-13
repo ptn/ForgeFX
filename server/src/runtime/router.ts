@@ -17,6 +17,7 @@
 import type { DeviceRegistry } from '../drivers/registryCore.js';
 import type { DeviceEvent } from '../drivers/types.js';
 import * as backups from '../services/backups.js';
+import * as deviceCache from '../services/deviceCache.js';
 import { blockHelpBySlug, helpIndex } from '../help.js';
 import { createUnifiedHandlers } from './handlers.js';
 import { putStoreDoc } from './services.js';
@@ -126,6 +127,16 @@ export function createRouter(deps: RuntimeDeps): {
   });
   // auto-detect the connected Fractal unit (FM3/FM9/Axe-Fx/…) via the fn 0x00 handshake
   on('GET', '/device/detect', () => registry.detect());
+
+  // ── device cache (on-connect self-describe build; capability selfDescribe) ──
+  on('GET', '/device/cache', () => deviceCache.cacheStatus(store, registry));
+  on('POST', '/device/cache/build', async (c) => {
+    const r = await deviceCache.startCacheBuild(store, registry, { force: !!(c.body as { force?: boolean } | undefined)?.force });
+    c.reply.code(r.code);
+    return r.body;
+  });
+  on('POST', '/device/cache/cancel', () => deviceCache.cancelCacheBuild(registry));
+  on('DELETE', '/device/cache', () => deviceCache.deleteCache(store, registry));
   // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — refresh lets a driver merge live per-device banks.
   on('GET', '/cab/irs', async (c) => {
     if (c.query.get('refresh') === '1') {

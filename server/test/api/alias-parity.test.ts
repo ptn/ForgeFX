@@ -25,7 +25,8 @@ const AM4_CAPS: DriverCapabilities = {
   fcLiveRead: false,
   modBind: false,
   cabIrs: false,
-  supportsSave: true
+  supportsSave: true,
+  selfDescribe: false
 };
 
 type FakeAm4 = DeviceDriver & {

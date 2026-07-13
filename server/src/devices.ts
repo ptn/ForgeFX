@@ -1,6 +1,7 @@
 // Per-device profile: everything that differs between gen-3 units (model byte, grid size, param
 // catalog, ranges, rosters, enum labels). The gen-3 effect codec itself is shared — only the data
 // changes — so the device client picks a profile by the detected model and is otherwise generic.
+import type { BuiltCache } from 'forgefx-midi/cache';
 import {
   FM3_RANGES,
   FM3_PARAMS_BY_FAMILY,
@@ -401,6 +402,11 @@ export interface DeviceProfile {
 // Every gen-3 device now ships its enum vocabulary FAMILY-shaped in forgefx-midi
 // (family → paramId → labels[], mined complete from each editor's own
 // effectDefinitions cache) — FM9/III are uniform with FM3. Shared helpers:
+// TODO(lineage): these read-roster names carry no manufacturer/basedOn. forgefx-midi/shared exposes
+// runLineageLookup(), but it is AM4-block-name-oriented (fuzzy score over LINEAGE_BLOCKS) and needs a
+// (block_type, name) ask this generic helper has no family context for — so lineage is left null here.
+// The device-cache path (runtimeProfileFrom below) DOES preserve lineage: it overlays the static
+// roster's manufacturer/basedOn onto the device-true cache names.
 const recToRoster = (r: Record<number, string>): TypeModel[] => {
   const out: TypeModel[] = [];
   for (const [k, name] of Object.entries(r)) out[Number(k)] = { value: Number(k), name, manufacturer: null, basedOn: null };
@@ -565,3 +571,52 @@ export const PROFILES: Record<number, DeviceProfile> = {
 export const DEFAULT_PROFILE: DeviceProfile = PROFILES[0x11]!;
 export const profileForModel = (model: number): DeviceProfile => PROFILES[model] ?? DEFAULT_PROFILE;
 export const profileForKey = (key: string): DeviceProfile | undefined => Object.values(PROFILES).find((p) => p.key === key);
+
+/**
+ * Overlay a device-cache-derived `BuiltCache` (from the on-connect self-describe walk) onto a static
+ * gen-3 profile: DEVICE data wins where the cache has it, the static profile supplies everything else.
+ *   • rosterFor — the family's device-true model list from `built.rosters` (keyed by catalog family,
+ *     mapped from slug via SLUG_FAMILY), with the STATIC roster's manufacturer/basedOn LINEAGE
+ *     overlaid by value (the cache carries names only); families the walk didn't map fall back to static.
+ *   • enumLabelsFor — `built.enumOverrides` first, else static.
+ *   • ranges / rangeSections — the cache's per-family entries merged OVER the static ones.
+ *   • cabIrs — the cache's banks when non-empty, else static.
+ * The model byte, grid dims, instanceLimits, params, layouts, FC/Mod/monitor models, and write mode
+ * all stay from the static profile (the walk doesn't recover them). Pure — returns a fresh profile.
+ */
+export function runtimeProfileFrom(built: BuiltCache, staticProfile: DeviceProfile): DeviceProfile {
+  const builtRosters = built.rosters ?? {};
+  const builtEnums = (built.enumOverrides ?? {}) as Record<string, Record<string, string[]>>;
+  const builtCabIrs = built.cabIrs ?? {};
+
+  // ranges: static per-family maps, then the cache's rows merged over them (device-true wins).
+  const mergedRanges: Ranges = {};
+  for (const [fam, rows] of Object.entries(staticProfile.ranges)) mergedRanges[fam] = { ...rows };
+  for (const [fam, rows] of Object.entries(built.ranges ?? {})) mergedRanges[fam] = { ...(mergedRanges[fam] ?? {}), ...(rows as Record<number, RangeDef>) };
+
+  // rangeSections: same static-then-cache merge (per family).
+  const mergedSections: RangeSections = { ...staticProfile.rangeSections };
+  for (const [fam, meta] of Object.entries(built.rangeSections ?? {})) mergedSections[fam] = meta as unknown as RangeSections[string];
+
+  return {
+    ...staticProfile,
+    ranges: mergedRanges,
+    rangeSections: mergedSections,
+    rosterFor(slug: string): TypeModel[] {
+      const fam = SLUG_FAMILY[slug.toLowerCase()];
+      const cacheRoster = fam ? builtRosters[fam] : undefined;
+      if (!cacheRoster?.length) return staticProfile.rosterFor(slug); // walk didn't map this family → static
+      const byValue = new Map(staticProfile.rosterFor(slug).map((t) => [t.value, t]));
+      return cacheRoster.map((t) => {
+        const s = byValue.get(t.value);
+        return { value: t.value, name: t.name, manufacturer: t.manufacturer ?? s?.manufacturer ?? null, basedOn: t.basedOn ?? s?.basedOn ?? null };
+      });
+    },
+    enumLabelsFor(family: string, paramId: number): string[] | undefined {
+      return builtEnums[family]?.[String(paramId)] ?? staticProfile.enumLabelsFor(family, paramId);
+    },
+    cabIrs(): Record<string, string[]> {
+      return Object.keys(builtCabIrs).length > 0 ? builtCabIrs : staticProfile.cabIrs();
+    }
+  };
+}

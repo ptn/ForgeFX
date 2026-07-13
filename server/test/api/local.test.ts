@@ -31,7 +31,8 @@ const CAPS: DriverCapabilities = {
   fcLiveRead: false,
   modBind: false,
   cabIrs: false,
-  supportsSave: true
+  supportsSave: true,
+  selfDescribe: false
 } as DriverCapabilities;
 
 /** Minimal fake FM3 driver: grid stub + a deterministic offline decoder ("P<tag>" from byte 6). */

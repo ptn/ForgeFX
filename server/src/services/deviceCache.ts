@@ -61,17 +61,28 @@ export function paramsForModel(model: number): DeviceParam[] {
  *  FM3 hardware (observed on the first real-device run, FORGEFX-32). 3 ms is the hardware-proven value
  *  the capture tooling has always used between fn 0x01 queries. */
 const WALK_PACE_MS = 3;
+/** Breather between blocks, in ms — the hardware-proven sweep always paused between blocks; a
+ *  continuous 128-block stream without let-up contributed to the FORGEFX-32 wedge. */
+const WALK_BLOCK_PAUSE_MS = 150;
+/** The runtime walk stays inside the hardware-validated envelope: params 0..127 only. The 14-bit
+ *  param space (body[5] set) was never live-swept on a real unit — enabling it is a separate,
+ *  HW-gated task, not a default. */
+const WALK_MAX_PARAM_ID = 127;
 
 /** Adapt the registry's shared Transport to the codec's minimal LiveTransport: one query → the first
- *  matching Fractal reply frame (same fn as the query — cache queries are fn 0x01, so the fn-0x1F
- *  edit-push echo guard never counts them), or null on timeout. */
+ *  matching Fractal reply frame, or null on timeout. Matching requires the fn AND the echoed view +
+ *  param-low bytes (reply inner[0]/inner[4] at frame[6]/frame[10] mirror the query's) so a stale
+ *  fn-0x01 frame from an earlier query can never be paired with the wrong one — under a sustained
+ *  query stream that desync turns a transient slowdown into a wedge (FORGEFX-32). */
 function adaptRequest(transport: Transport, query: Uint8Array): Promise<Uint8Array | null> {
   const bytes = Array.from(query);
   const fn = bytes[5];
+  const isEcho = (f: readonly number[]): boolean =>
+    isFractalHeaderFrame(f) && f[5] === fn && f[6] === bytes[6] && f[10] === bytes[10];
   return transport
-    .request(bytes, { timeoutMs: 1000, quietMs: 20, match: (fs) => fs.some((f) => isFractalHeaderFrame(f) && f[5] === fn) })
+    .request(bytes, { timeoutMs: 1000, quietMs: 20, match: (fs) => fs.some((f) => isEcho(f)) })
     .then((frames) => {
-      const hit = frames.find((f) => isFractalHeaderFrame(f) && f[5] === fn);
+      const hit = frames.find((f) => isEcho(f));
       return hit ? Uint8Array.from(hit) : null;
     });
 }
@@ -88,6 +99,8 @@ async function runBuild(store: Store, registry: DeviceRegistry, job: CacheJob, w
     const walkOpts: LiveWalkOptions = {
       model,
       interQueryMs: WALK_PACE_MS,
+      blockPauseMs: WALK_BLOCK_PAUSE_MS,
+      maxParamId: WALK_MAX_PARAM_ID,
       signal: controller.signal,
       onProgress: (p) => {
         if (controller.signal.aborted) return;

@@ -57,6 +57,11 @@ export function paramsForModel(model: number): DeviceParam[] {
   }
 }
 
+/** Inter-query pacing for the self-describe walk, in ms. NEVER 0: full-speed query flooding freezes
+ *  FM3 hardware (observed on the first real-device run, FORGEFX-32). 3 ms is the hardware-proven value
+ *  the capture tooling has always used between fn 0x01 queries. */
+const WALK_PACE_MS = 3;
+
 /** Adapt the registry's shared Transport to the codec's minimal LiveTransport: one query → the first
  *  matching Fractal reply frame (same fn as the query — cache queries are fn 0x01, so the fn-0x1F
  *  edit-push echo guard never counts them), or null on timeout. */
@@ -82,6 +87,7 @@ async function runBuild(store: Store, registry: DeviceRegistry, job: CacheJob, w
     const adapter: LiveTransport = { request: (q) => adaptRequest(transport, q) };
     const walkOpts: LiveWalkOptions = {
       model,
+      interQueryMs: WALK_PACE_MS,
       signal: controller.signal,
       onProgress: (p) => {
         if (controller.signal.aborted) return;

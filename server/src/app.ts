@@ -589,7 +589,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     app.get('/cloud/index', async (_req, reply) => { try { return await cloud.cloudIndex(); } catch (e) { reply.code(503); return { error: (e as Error).message }; } });
 
     // ── shared device-definition profiles (THIRD cache source; services/cloudProfiles.ts) ──
-    app.get('/device/cache/cloud', async () => cloudProfiles.cloudCacheCheck(cloud, registry));
+    app.get('/device/cache/cloud', async () => cloudProfiles.cloudCacheCheck(cloud, store.defaultStore, registry));
     app.post('/device/cache/cloud/pull', async (_req, reply) => { const r = await cloudProfiles.cloudCachePull(cloud, store.defaultStore, registry); reply.code(r.code); return r.body; });
     app.post('/device/cache/cloud/publish', async (_req, reply) => { const r = await cloudProfiles.cloudCachePublish(cloud, store.defaultStore, registry); reply.code(r.code); return r.body; });
 

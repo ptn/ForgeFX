@@ -13,6 +13,7 @@ import { FM3_PARAMS } from 'forgefx-midi/gen3/fm3';
 import { FM9_PARAMS } from 'forgefx-midi/gen3/fm9';
 import { PARAMS as AXE3_PARAMS } from 'forgefx-midi/gen3/axe-fx-iii';
 import { isFractalHeaderFrame } from 'forgefx-midi/shared';
+import { AM4_CACHE_PARAMS, AM4_SEEDS } from 'forgefx-midi/am4';
 import { deviceCacheKey, type DeviceRegistry } from '../drivers/registryCore.js';
 import type { Store } from '../runtime/store.js';
 import type { Transport } from '../transport/types.js';
@@ -46,8 +47,7 @@ export interface CacheStatus {
 }
 
 /** Gen-3 param catalog for the walk's section→family voter, by model byte. Only selfDescribe (gen-3
- *  grid) models reach here; FM3 is the defensive default. Shared with the editor-cache import service
- *  (services/editorCacheImport.ts) so both feed buildCache the identical per-model catalog. */
+ *  grid) models reach here; FM3 is the defensive default. */
 export function paramsForModel(model: number): DeviceParam[] {
   switch (model) {
     case 0x12: return FM9_PARAMS as unknown as DeviceParam[];
@@ -55,6 +55,14 @@ export function paramsForModel(model: number): DeviceParam[] {
     case 0x11:
     default: return FM3_PARAMS as unknown as DeviceParam[];
   }
+}
+
+/** Per-model catalog + seed anchors for buildCache. Gen-3 grid models share HW_SEEDS (cache-tag
+ *  space); the AM4 has its own section tags and param model (cacheImport only, no live walk). The
+ *  editor-cache import uses this so every cacheImport-capable model feeds buildCache correctly. */
+export function catalogForModel(model: number): { params: DeviceParam[]; seeds: Record<string, number> } {
+  if (model === 0x15) return { params: AM4_CACHE_PARAMS as unknown as DeviceParam[], seeds: AM4_SEEDS };
+  return { params: paramsForModel(model), seeds: HW_SEEDS };
 }
 
 /** Inter-query pacing for the self-describe walk, in ms. NEVER 0: full-speed query flooding freezes
@@ -139,10 +147,25 @@ function currentKey(registry: DeviceRegistry): string | null {
   return model >= 0 && fw ? deviceCacheKey(model, fw.major, fw.minor) : null;
 }
 
+/** Resolve the cache key for the attached device. When the running firmware is unknown (the fn 0x08
+ *  read is gen-3-only — the AM4 never has one), fall back to the NEWEST stored doc for the model
+ *  (imports persist under the FILE's firmware key), so status/delete/persisted still find the
+ *  profile on firmware-less devices. */
+export function resolveCacheKey(store: Store, registry: DeviceRegistry): string | null {
+  const exact = currentKey(registry);
+  if (exact) return exact;
+  const model = registry.detectedModelId;
+  if (model < 0) return null;
+  const prefix = `${model.toString(16).padStart(2, '0')}_`;
+  const docs = store.listDocs('deviceCaches').filter((d) => d.id.startsWith(prefix));
+  if (docs.length === 0) return null;
+  return docs.sort((a, b) => b.updatedAt - a.updatedAt)[0]!.id;
+}
+
 /** GET /device/cache — current key + existence + live build progress + stored-doc meta. */
 export async function cacheStatus(store: Store, registry: DeviceRegistry): Promise<CacheStatus> {
   await registry.driver(); // ensure detection ran so model/firmware are populated
-  const key = currentKey(registry);
+  const key = resolveCacheKey(store, registry);
   const job = JOBS.get(registry);
   const doc = key ? store.getDoc('deviceCaches', key) : null;
   const exists = !!(doc && !doc.deleted);
@@ -202,7 +225,7 @@ export function cancelCacheBuild(registry: DeviceRegistry): { ok: true } {
 /** DELETE /device/cache — drop the current key's stored doc. */
 export async function deleteCache(store: Store, registry: DeviceRegistry): Promise<{ ok: true; deleted: boolean }> {
   await registry.driver(); // ensure detection ran so the key resolves
-  const key = currentKey(registry);
+  const key = resolveCacheKey(store, registry);
   if (!key) return { ok: true, deleted: false };
   const doc = store.getDoc('deviceCaches', key);
   if (!doc || doc.deleted) return { ok: true, deleted: false };

@@ -9,6 +9,7 @@
 // Browser-safe: registry/store/cloud are type-only or structural imports; the fetch work lives in
 // runtime/cloud.ts (itself browser-safe). check-browser-safe.ts enforces it.
 import { deviceCacheKey, type DeviceRegistry } from '../drivers/registryCore.js';
+import { resolveCacheKey } from './deviceCache.js';
 import type { Store } from '../runtime/store.js';
 import type { ImportResult } from './editorCacheImport.js';
 
@@ -23,21 +24,28 @@ export interface DeviceProfileCloud {
  *  hundreds-of-KB) profile. Keyed per registry, invalidated when the device key changes. */
 const LAST_CHECK = new WeakMap<DeviceRegistry, { key: string; row: NonNullable<Awaited<ReturnType<DeviceProfileCloud['deviceProfileGet']>>> }>();
 
-/** The attached device's (model, canonical firmware string, cache key), or null until detection +
- *  firmware read populate them. Cloud rows are keyed by the SAME major.minor the local store keys on. */
-async function deviceIdentity(registry: DeviceRegistry): Promise<{ model: number; firmware: string; key: string } | null> {
+/** The attached device's (model, canonical firmware string, cache key), or null until detection
+ *  populates them. Cloud rows are keyed by the SAME major.minor the local store keys on. Devices
+ *  without a firmware read (AM4 — fn 0x08 is gen-3 only) derive their identity from the newest
+ *  persisted doc's key: imports store under the FILE's firmware, so publish/check work after the
+ *  first import even though the registry itself never learns a version. */
+async function deviceIdentity(store: Store, registry: DeviceRegistry): Promise<{ model: number; firmware: string; key: string } | null> {
   await registry.driver(); // ensure detection ran
   const model = registry.detectedModelId;
+  if (model < 0) return null;
   const fw = registry.firmwareInfo();
-  if (model < 0 || !fw) return null;
-  return { model, firmware: `${fw.major}.${fw.minor}`, key: deviceCacheKey(model, fw.major, fw.minor) };
+  if (fw) return { model, firmware: `${fw.major}.${fw.minor}`, key: deviceCacheKey(model, fw.major, fw.minor) };
+  const key = resolveCacheKey(store, registry);
+  const m = key?.match(/^[0-9a-f]{1,2}_(\d+)p(\d+)$/);
+  if (!key || !m) return null;
+  return { model, firmware: `${Number(m[1])}.${Number(m[2])}`, key };
 }
 
 /** GET /device/cache/cloud — is a shared profile available for the attached device+firmware? Fetches
  *  (and caches) the row so a following pull is instant. `enabled:false` when cloud is off entirely. */
-export async function cloudCacheCheck(cloud: DeviceProfileCloud | null, registry: DeviceRegistry): Promise<{ enabled: boolean; available: boolean; meta?: { source: string; recordCount: number | null; createdAt: string; contentHash: string } }> {
+export async function cloudCacheCheck(cloud: DeviceProfileCloud | null, store: Store, registry: DeviceRegistry): Promise<{ enabled: boolean; available: boolean; meta?: { source: string; recordCount: number | null; createdAt: string; contentHash: string } }> {
   if (!cloud) return { enabled: false, available: false };
-  const id = await deviceIdentity(registry);
+  const id = await deviceIdentity(store, registry);
   if (!id) return { enabled: true, available: false };
   const row = await cloud.deviceProfileGet(id.model, id.firmware);
   if (!row) return { enabled: true, available: false };
@@ -53,7 +61,7 @@ export async function cloudCachePull(cloud: DeviceProfileCloud | null, store: St
   if (!cloud) return { code: 503, body: { error: 'cloud disabled' } };
   const caps = registry.activeCapabilities();
   if (!caps?.cacheImport) return { code: 501, body: { error: 'unsupported', capability: 'cacheImport' } };
-  const id = await deviceIdentity(registry);
+  const id = await deviceIdentity(store, registry);
   if (!id) return { code: 503, body: { error: 'no device detected' } };
 
   const cached = LAST_CHECK.get(registry);
@@ -76,7 +84,7 @@ export async function cloudCachePull(cloud: DeviceProfileCloud | null, store: St
  *  codec's meta.source vocabulary ('live'|'bytes'), so the uploaded copy is normalized back to it. */
 export async function cloudCachePublish(cloud: DeviceProfileCloud | null, store: Store, registry: DeviceRegistry): Promise<ImportResult> {
   if (!cloud) return { code: 503, body: { error: 'cloud disabled' } };
-  const id = await deviceIdentity(registry);
+  const id = await deviceIdentity(store, registry);
   if (!id) return { code: 503, body: { error: 'no device detected' } };
   const doc = store.getDoc('deviceCaches', id.key);
   const data = doc && !doc.deleted ? (doc.data as { meta?: { source?: string } }) : null;

@@ -11,9 +11,10 @@ import { parseEditorCacheFilename } from '../../src/services/editorCacheImport.j
 import { discoverEditorCaches, type DiscoveryFs } from '../../src/services/editorCacheDiscovery.js';
 import type { BuiltCache, CacheRecord } from 'forgefx-midi/cache';
 import { FM3_PARAMS_BY_FAMILY } from 'forgefx-midi/gen3/fm3';
+import { AM4_CACHE_PARAMS, AM4_SEEDS } from 'forgefx-midi/am4';
 import { MockTransport, handshakeReply, isIdentifyBroadcast, assert, assertEqual } from '../helpers/mock.js';
 
-export const EDITOR_CACHE_IMPORT_CASE_COUNT = 6;
+export const EDITOR_CACHE_IMPORT_CASE_COUNT = 7;
 
 const FM3 = 0x11;
 const KEY = '11_12p0'; // FM3 fw 12.0
@@ -190,14 +191,50 @@ async function modelMismatch(): Promise<void> {
   }
 }
 
-// ── 5. no cacheImport (AM4) → 501 ──
+// ── 5. no cacheImport (gen-2) → 501; AM4 imports happily without a firmware read ──
 async function noCacheImport(): Promise<void> {
-  const { app } = await makeApp(0x15); // AM4 → cacheImport false
+  const { app } = await makeApp(0x07); // Axe-Fx II → cacheImport false
   try {
-    const res = await importReq(app, 'effectDefinitions_15_2p0.cache');
-    assertEqual(res.statusCode, 501, 'AM4 import → 501 unsupported');
+    const res = await importReq(app, 'effectDefinitions_07_11p0.cache');
+    assertEqual(res.statusCode, 501, 'gen-2 import → 501 unsupported');
     assertEqual((res.json() as { capability: string }).capability, 'cacheImport', '501 names the capability');
   } finally {
+    await app.close();
+  }
+}
+
+// ── 5b. AM4 import: no fn 0x08 firmware → file firmware keys the doc, no 409 ──
+function am4CacheBytes(): Uint8Array {
+  // One distinctive range-bearing float per seed family (amp/drive/reverb/delay), straight from
+  // AM4_CACHE_PARAMS so the vote anchors every AM4 seed. Same inverse encoder as the gen-3 fixture.
+  const seeds = Object.entries(AM4_SEEDS) as Array<[string, number]>;
+  const recs: CacheRecord[] = [];
+  for (const [fam, section] of seeds) {
+    const cands = (AM4_CACHE_PARAMS as unknown as { family: string; paramId: number; unit?: string; displayMin?: number; displayMax?: number }[])
+      .filter((p) => p.family === fam && p.unit !== 'enum' && p.displayMin != null && p.displayMax != null && p.displayMin !== p.displayMax)
+      .slice(0, 6);
+    assert(cands.length > 0, `AM4 seed family ${fam} has range-bearing params`);
+    for (const p of cands) recs.push({ kind: 'float', section, offset: 0, id: p.paramId, tc: 0, min: p.displayMin!, max: p.displayMax!, def: 1, step: 0, t1: 0, t2: 0 });
+  }
+  return encodeCache(recs);
+}
+
+async function am4Import(): Promise<void> {
+  store.defaultStore.delDoc('deviceCaches', '15_66p1');
+  const { app } = await makeApp(0x15); // AM4: no firmware reply — fn 0x08 is gen-3 only
+  try {
+    const res = await importReq(app, 'effectDefinitions_15_66p1.cache', false, am4CacheBytes());
+    assertEqual(res.statusCode, 200, 'AM4 import 200 without force (unknown device firmware is not a mismatch)');
+    const body = res.json() as { key: string; firmware: string; source: string };
+    assertEqual(body.key, '15_66p1', 'doc keyed by the FILE firmware');
+    assertEqual(body.source, 'editor-cache', 'source marker');
+
+    // status resolves the doc via the model-prefix fallback (no firmware on the registry)
+    const st = (await app.inject({ method: 'GET', url: '/device/cache' })).json() as { key: string | null; exists: boolean };
+    assertEqual(st.key, '15_66p1', 'status falls back to the newest model-prefixed doc');
+    assertEqual(st.exists, true, 'status exists after AM4 import');
+  } finally {
+    store.defaultStore.delDoc('deviceCaches', '15_66p1');
     await app.close();
   }
 }
@@ -245,5 +282,6 @@ export async function runEditorCacheImportTests(): Promise<void> {
   await firmwareMismatch();
   await modelMismatch();
   await noCacheImport();
+  await am4Import();
   await discovery();
 }

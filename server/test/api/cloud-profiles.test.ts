@@ -60,13 +60,13 @@ function fakeCloud(row: ReturnType<typeof profileRow> | null): DeviceProfileClou
 // ── 1. check: hit + miss ──
 async function checkHitMiss(): Promise<void> {
   const registry = await makeRegistry(FM3, [12, 0]);
-  const hit = await cloudCacheCheck(fakeCloud(profileRow()), registry);
+  const hit = await cloudCacheCheck(fakeCloud(profileRow()), store.defaultStore, registry);
   assertEqual(hit.enabled, true, 'check enabled');
   assertEqual(hit.available, true, 'check available on a row');
   assertEqual(hit.meta?.recordCount, 42, 'check meta recordCount');
-  const miss = await cloudCacheCheck(fakeCloud(null), registry);
+  const miss = await cloudCacheCheck(fakeCloud(null), store.defaultStore, registry);
   assertEqual(miss.available, false, 'check unavailable on no row');
-  const off = await cloudCacheCheck(null, registry);
+  const off = await cloudCacheCheck(null, store.defaultStore, registry);
   assertEqual(off.enabled, false, 'check enabled:false without a cloud service');
 }
 
@@ -76,7 +76,7 @@ async function pullPersists(): Promise<void> {
   const registry = await makeRegistry(FM3, [12, 0]);
   const cloud = fakeCloud(profileRow());
   try {
-    await cloudCacheCheck(cloud, registry); // primes the per-registry row cache
+    await cloudCacheCheck(cloud, store.defaultStore, registry); // primes the per-registry row cache
     const r = await cloudCachePull(cloud, store.defaultStore, registry);
     assertEqual(r.code, 200, 'pull 200');
     const body = r.body as { pulled: boolean; key: string; source: string; contentHash: string };
@@ -102,10 +102,25 @@ async function pullGates(): Promise<void> {
   const fm3 = await makeRegistry(FM3, [12, 0]);
   const none = await cloudCachePull(fakeCloud(null), store.defaultStore, fm3);
   assertEqual(none.code, 404, 'no cloud row → 404');
-  const am4 = await makeRegistry(0x15);
-  const gated = await cloudCachePull(fakeCloud(profileRow()), store.defaultStore, am4);
-  assertEqual(gated.code, 501, 'AM4 pull → 501');
+  const gen2 = await makeRegistry(0x07);
+  const gated = await cloudCachePull(fakeCloud(profileRow()), store.defaultStore, gen2);
+  assertEqual(gated.code, 501, 'gen-2 pull → 501');
   assertEqual((gated.body as { capability: string }).capability, 'cacheImport', '501 names cacheImport');
+
+  // AM4 (cacheImport, but no firmware read and nothing persisted) → 503 no identity
+  const am4 = await makeRegistry(0x15);
+  const noid = await cloudCachePull(fakeCloud(profileRow()), store.defaultStore, am4);
+  assertEqual(noid.code, 503, 'AM4 without persisted doc → 503 (no firmware identity)');
+
+  // ...but once a doc is persisted under the FILE firmware, publish derives the identity from it
+  store.defaultStore.putDoc('deviceCaches', '15_66p1', { ranges: {}, meta: { recordCount: 1, source: 'editor-cache' } });
+  const cloudPub = fakeCloud(null);
+  const pub = await cloudCachePublish(cloudPub, store.defaultStore, am4);
+  assertEqual(pub.code, 201, 'AM4 publish derives identity from the persisted key');
+  const sent = cloudPub.published[0] as { model: number; firmware: string };
+  assertEqual(sent.model, 0x15, 'published model 0x15');
+  assertEqual(sent.firmware, '66.1', 'published firmware from the file key');
+  store.defaultStore.delDoc('deviceCaches', '15_66p1');
 }
 
 // ── 4. publish: source mapping live/editor-cache ──

@@ -11,9 +11,9 @@
 // the codec's cache subpath is itself browser-safe. NO node:/fs VALUE imports — this module is in the
 // runtime router's import graph (the DISK-scanning half lives in the Node-only editorCacheDiscovery.ts,
 // which the router never imports). check-browser-safe.ts enforces it.
-import { buildCache, HW_SEEDS, type BuiltCache } from 'forgefx-midi/cache';
+import { buildCache, type BuiltCache } from 'forgefx-midi/cache';
 import { deviceCacheKey, type DeviceRegistry } from '../drivers/registryCore.js';
-import { paramsForModel } from './deviceCache.js';
+import { catalogForModel, resolveCacheKey } from './deviceCache.js';
 import type { Store } from '../runtime/store.js';
 
 /** Parsed identity of an `effectDefinitions_<modelHex>_<fwMajor>p<fwMinor>.cache` filename. */
@@ -39,10 +39,9 @@ export function parseEditorCacheFilename(name: string): EditorCacheFileInfo | nu
  *  `persisted` flag of GET /device/cache/sources (both twins call it; candidates are added per-twin). */
 export async function isPersisted(store: Store, registry: DeviceRegistry): Promise<boolean> {
   await registry.driver(); // ensure detection ran so model/firmware are populated
-  const model = registry.detectedModelId;
-  const fw = registry.firmwareInfo();
-  if (model < 0 || !fw) return false;
-  const doc = store.getDoc('deviceCaches', deviceCacheKey(model, fw.major, fw.minor));
+  const key = resolveCacheKey(store, registry);
+  if (!key) return false;
+  const doc = store.getDoc('deviceCaches', key);
   return !!(doc && !doc.deleted);
 }
 
@@ -77,17 +76,20 @@ export async function importEditorCache(
 
   const fw = registry.firmwareInfo();
   const fileFw = `${info.fwMajor}.${info.fwMinor}`;
-  // Firmware must match unless forced (a fw-drift import can misdescribe params).
-  if (!opts.force && (!fw || fw.major !== info.fwMajor || fw.minor !== info.fwMinor)) {
-    return { code: 409, body: { error: 'firmware-mismatch', expected: fw?.version ?? null, got: fileFw, overridable: true } };
+  // Firmware must match unless forced (a fw-drift import can misdescribe params). A device whose
+  // running firmware is UNKNOWN (no gen-3 fn 0x08 — e.g. the AM4) has nothing to mismatch against:
+  // accept the file and key the doc by the FILE's firmware.
+  if (!opts.force && fw && (fw.major !== info.fwMajor || fw.minor !== info.fwMinor)) {
+    return { code: 409, body: { error: 'firmware-mismatch', expected: fw.version, got: fileFw, overridable: true } };
   }
 
   let built: BuiltCache;
   try {
+    const catalog = catalogForModel(model);
     built = await buildCache(
       { kind: 'bytes', buf: bytes },
-      paramsForModel(model),
-      HW_SEEDS,
+      catalog.params,
+      catalog.seeds,
       { model, firmware: fileFw, builtAt: new Date().toISOString() },
     );
   } catch (e) {

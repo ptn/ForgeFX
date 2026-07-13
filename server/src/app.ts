@@ -27,6 +27,7 @@ import * as backups from './services/backups.js';
 import * as deviceCache from './services/deviceCache.js';
 import * as editorCacheImport from './services/editorCacheImport.js';
 import * as editorCacheDiscovery from './services/editorCacheDiscovery.js';
+import * as cloudProfiles from './services/cloudProfiles.js';
 import * as store from './store.js';
 import { createUnifiedHandlers } from './runtime/handlers.js';
 import { putStoreDoc } from './runtime/services.js';
@@ -587,6 +588,11 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     app.post<{ Body: { scopes?: { config?: boolean; presets?: boolean } } }>('/cloud/sync', async (req, reply) => { try { return await cloud.sync(req.body?.scopes); } catch (e) { reply.code(503); return { error: (e as Error).message }; } });
     app.get('/cloud/index', async (_req, reply) => { try { return await cloud.cloudIndex(); } catch (e) { reply.code(503); return { error: (e as Error).message }; } });
 
+    // ── shared device-definition profiles (THIRD cache source; services/cloudProfiles.ts) ──
+    app.get('/device/cache/cloud', async () => cloudProfiles.cloudCacheCheck(cloud, registry));
+    app.post('/device/cache/cloud/pull', async (_req, reply) => { const r = await cloudProfiles.cloudCachePull(cloud, store.defaultStore, registry); reply.code(r.code); return r.body; });
+    app.post('/device/cache/cloud/publish', async (_req, reply) => { const r = await cloudProfiles.cloudCachePublish(cloud, store.defaultStore, registry); reply.code(r.code); return r.body; });
+
     // ── Axis Cloud Remote — host agent (off by default; toggled by the Axis UI) ──
     const { RemoteHost } = await import('./remote.js');
     const remoteHost = new RemoteHost(app, () => cloud.remoteSession(), (fn) => registry.subscribe(fn));
@@ -597,6 +603,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   } else {
     app.get('/cloud/status', async () => ({ enabled: false, user: null })); // so Axis can gate its UI without erroring
     app.get('/remote/status', async () => ({ enabled: false, connected: false, userId: null }));
+    app.get('/device/cache/cloud', async () => ({ enabled: false, available: false })); // same non-erroring gate for the defs prompt
   }
 
   // ── telemetry / diagnostics ── status is always served (so Axis gates its UI without erroring). The

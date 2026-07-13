@@ -19,6 +19,7 @@ import type { DeviceEvent } from '../drivers/types.js';
 import * as backups from '../services/backups.js';
 import * as deviceCache from '../services/deviceCache.js';
 import * as editorCacheImport from '../services/editorCacheImport.js';
+import * as cloudProfiles from '../services/cloudProfiles.js';
 import { blockHelpBySlug, helpIndex } from '../help.js';
 import { createUnifiedHandlers } from './handlers.js';
 import { putStoreDoc } from './services.js';
@@ -153,6 +154,19 @@ export function createRouter(deps: RuntimeDeps): {
     c.reply.code(r.code);
     return r.body;
   }, { octet: true });
+  // ── shared device-definition profiles (THIRD cache source; services/cloudProfiles.ts). deps.cloud is
+  //    optional — absent (no cloud in this runtime) degrades to the same non-erroring disabled shape. ──
+  on('GET', '/device/cache/cloud', () => cloudProfiles.cloudCacheCheck(deps.cloud ?? null, registry));
+  on('POST', '/device/cache/cloud/pull', async (c) => {
+    const r = await cloudProfiles.cloudCachePull(deps.cloud ?? null, store, registry);
+    c.reply.code(r.code);
+    return r.body;
+  });
+  on('POST', '/device/cache/cloud/publish', async (c) => {
+    const r = await cloudProfiles.cloudCachePublish(deps.cloud ?? null, store, registry);
+    c.reply.code(r.code);
+    return r.body;
+  });
   // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — refresh lets a driver merge live per-device banks.
   on('GET', '/cab/irs', async (c) => {
     if (c.query.get('refresh') === '1') {

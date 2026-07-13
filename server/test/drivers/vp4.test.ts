@@ -6,13 +6,14 @@ import { buildVp4SetParam, buildVp4SetBypass, buildVp4Save, buildVp4GetStructure
 import { encode14, fractalChecksum, packValueChunked } from 'forgefx-midi/shared';
 import { createVp4Driver } from '../../src/drivers/vp4.js';
 import type { DriverCtx, DeviceEvent } from '../../src/drivers/types.js';
+import { cadenceFor } from '../../src/drivers/telemetryProfiles.js';
 import { MockTransport, assert, assertEqual, hex } from '../helpers/mock.js';
 
 export const VP4_CASE_COUNT = 9;
 
 function makeDriver(): { driver: ReturnType<typeof createVp4Driver>; mock: MockTransport } {
   const mock = new MockTransport('midi', 'VP4');
-  const ctx: DriverCtx = { transport: async () => mock, emit: (_e: DeviceEvent) => {} };
+  const ctx: DriverCtx = { transport: async () => mock, emit: (_e: DeviceEvent) => {}, getCadence: () => cadenceFor(null, 'balanced') };
   return { driver: createVp4Driver(ctx), mock };
 }
 const eqFrame = (a: number[], b: number[], msg: string) => assert(hex(a) === hex(b), `${msg}: got ${hex(a)} want ${hex(b)}`);

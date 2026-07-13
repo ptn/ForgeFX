@@ -32,6 +32,7 @@ export function remoteAllowed(method: string, path: string): boolean {
       /^\/preset\/grid\/cell$/.test(p) ||
       /^\/am4\/param$/.test(p) ||
       /^\/device\/param$/.test(p) || // unified twin of /am4/param (live device/global param edit)
+      p === '/telemetry/config' || // cadence-mode control — a benign perf/UX setting (no device data moves)
       /^\/store\/config\/[^/]+$/.test(p) // shared UI config (layouts/swipe/surface/tags…) — lets remote edits sync back to the host. Config only, never presets/backups.
     );
   if (method === 'POST')
@@ -110,7 +111,9 @@ export class RemoteHost {
     // Bridge CHANGE events → the channel, so the remote UI reflects host/device changes instantly. Only
     // discrete changes (param edits, grid/preset/scene, tempo) — NOT the high-frequency meter/CPU/tuner
     // poll (~8×/s), which would flood the relay. Those live-telemetry streams are a Phase 1.5 item.
-    const RELAYED = new Set(['param', 'changed', 'scene', 'tempo', 'config']);
+    // 'traffic' stays local-only: a 1 Hz stream would break the zero-idle-cost rule below; remote
+    // clients keep mode control (PUT relays) and just lose the live rate readout.
+    const RELAYED = new Set(['param', 'changed', 'scene', 'tempo', 'config', 'telemetryConfig']);
     this.#devUnsub = this.#subscribe((e) => {
       if (!RELAYED.has(e.type)) return;
       // Only bridge events while a remote is actually watching — a remote pulls config + full state at

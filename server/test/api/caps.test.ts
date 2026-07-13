@@ -29,6 +29,7 @@ type Caps = {
   versionStore: boolean;
   deviceParams: boolean;
   virtualEffects: { eid: number; slug: string; name: string }[];
+  telemetryControl: boolean;
   supportsSave: boolean;
 };
 
@@ -71,6 +72,7 @@ function checkGen3Common(caps: Caps, label: string): void {
   assertEqual(caps.deviceParams, false, `${label} deviceParams`);
   assertEqual(caps.virtualEffects.length, 4, `${label} virtualEffects (Setup/Controllers/Modifier/FC)`);
   assertEqual(caps.virtualEffects.map((v) => v.eid).join(','), '1,2,3,199', `${label} virtualEffects eids`);
+  assertEqual(caps.telemetryControl, true, `${label} telemetryControl (registry-level cadence-mode control)`);
 }
 
 async function fm3(): Promise<void> {
@@ -159,6 +161,7 @@ async function am4(): Promise<void> {
     assertEqual(caps.versionStore, false, 'AM4 versionStore');
     assertEqual(caps.deviceParams, true, 'AM4 deviceParams');
     assert(Array.isArray(caps.virtualEffects) && caps.virtualEffects.length === 0, 'AM4 virtualEffects empty');
+    assertEqual(caps.telemetryControl, true, 'AM4 telemetryControl');
     assertEqual(caps.supportsSave, true, 'AM4 supportsSave (curated key intact)');
     // 2026-07-08: HW-009 (amp/drive/reverb/delay only) was superseded — every AM4 block has an
     // independent channel register. hasChannels/channelBlocks aren't in the curated Caps type (Axis
@@ -204,6 +207,8 @@ async function gen1(): Promise<void> {
     assertEqual(caps.versionStore, false, 'gen1 versionStore');
     assertEqual(caps.deviceParams, false, 'gen1 deviceParams');
     assert(Array.isArray(caps.virtualEffects) && caps.virtualEffects.length === 0, 'gen1 virtualEffects empty');
+    // telemetryControl is registry-level (route availability), so it's true even on the read-only gen-1.
+    assertEqual(caps.telemetryControl, true, 'gen1 telemetryControl (registry-level)');
     assertEqual(caps.supportsSave, false, 'gen1 supportsSave');
   } finally {
     await app.close();

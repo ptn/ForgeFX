@@ -13,6 +13,7 @@ import {
 } from 'forgefx-midi/gen2/axe-fx-ii';
 import { createGen2Driver } from '../../src/drivers/gen2.js';
 import type { DriverCtx, DeviceEvent } from '../../src/drivers/types.js';
+import { cadenceFor } from '../../src/drivers/telemetryProfiles.js';
 import { MockTransport, assert, assertEqual, hex } from '../helpers/mock.js';
 
 export const GEN2_CASE_COUNT = 8;
@@ -20,7 +21,7 @@ export const GEN2_CASE_COUNT = 8;
 function makeDriver(): { driver: ReturnType<typeof createGen2Driver>; mock: MockTransport; events: DeviceEvent[] } {
   const mock = new MockTransport('midi', 'Axe-Fx II XL+');
   const events: DeviceEvent[] = [];
-  const ctx: DriverCtx = { transport: async () => mock, emit: (e) => events.push(e) };
+  const ctx: DriverCtx = { transport: async () => mock, emit: (e) => events.push(e), getCadence: () => cadenceFor(null, 'balanced') };
   return { driver: createGen2Driver(ctx), mock, events };
 }
 const eqFrame = (a: number[], b: number[], msg: string) => assert(hex(a) === hex(b), `${msg}: got ${hex(a)} want ${hex(b)}`);

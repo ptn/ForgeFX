@@ -67,6 +67,7 @@ class Vp4Driver implements DeviceDriver {
     // gen-3 self-describe is expected to work over the VP4's shared codec but is hardware-unverified —
     // keep the on-connect cache build off until a VP4 walk is captured, then flip this to true.
     selfDescribe: false,
+    cacheImport: false, // paired with selfDescribe — flip both on once a VP4 walk is captured
     deviceEditPush: false,
     deviceEditWatch: false,
   };

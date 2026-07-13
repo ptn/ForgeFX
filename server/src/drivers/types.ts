@@ -143,6 +143,10 @@ export interface DriverCapabilities {
    *  queries) to build a device-true param/roster/enum cache on connect (capability gate for
    *  POST /device/cache/build). Gen-3 grid units only; false everywhere the walk is unverified. */
   selfDescribe: boolean;
+  /** An official-editor `effectDefinitions_*.cache` file can be IMPORTED as this device's cache
+   *  (capability gate for POST /device/cache/import). The byte source feeds the same buildCache path
+   *  the live walk does, so this tracks selfDescribe (gen-3 grid units); false elsewhere. */
+  cacheImport: boolean;
   /** The device does NOT push front-panel / editor edits, so the registry supervisor should poll the
    *  driver's `readDeviceEditState()` to catch out-of-band edits (AM4 only — HW-107). Absent = no poll. */
   deviceEditWatch?: boolean;

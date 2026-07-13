@@ -461,6 +461,8 @@ export class DeviceRegistry {
       cabIrs: c.cabIrs,
       // On-connect device-cache self-describe build (POST /device/cache/build). Gen-3 grid units only.
       selfDescribe: c.selfDescribe,
+      // Official-editor .cache import (POST /device/cache/import). Tracks selfDescribe (gen-3 grid units).
+      cacheImport: c.cacheImport,
       editorLayouts: c.editorLayouts,
       firmwareValidate: !!d.validateFirmware,
       backupDump: !!d.backupPreset,

@@ -25,6 +25,8 @@ import { join, resolve, extname } from 'node:path';
 import type { DeviceRegistry } from './drivers/registry.js';
 import * as backups from './services/backups.js';
 import * as deviceCache from './services/deviceCache.js';
+import * as editorCacheImport from './services/editorCacheImport.js';
+import * as editorCacheDiscovery from './services/editorCacheDiscovery.js';
 import * as store from './store.js';
 import { createUnifiedHandlers } from './runtime/handlers.js';
 import { putStoreDoc } from './runtime/services.js';
@@ -114,6 +116,35 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   app.post('/device/cache/cancel', () => deviceCache.cancelCacheBuild(registry));
   // Delete the current key's stored cache.
   app.delete('/device/cache', () => deviceCache.deleteCache(store.defaultStore, registry));
+
+  // ── editor-cache import (SECOND cache source: an official-editor effectDefinitions_*.cache file;
+  //    capability cacheImport). See services/editorCacheImport.ts + editorCacheDiscovery.ts. ──
+  // Sources: is a cache already persisted for the attached device + which on-disk editor caches exist.
+  app.get('/device/cache/sources', async () => {
+    const persisted = await editorCacheImport.isPersisted(store.defaultStore, registry);
+    return { persisted, candidates: editorCacheDiscovery.discoverEditorCaches() };
+  });
+  // Import: raw octet-stream of the .cache file + ?name=<filename> (& ?force=1), OR JSON { path } to
+  // read a discovered candidate off disk. 501 no cacheImport, 409 model/firmware mismatch (force skips fw).
+  app.post<{ Body: Buffer | { path?: string }; Querystring: { name?: string; force?: string } }>('/device/cache/import', async (req, reply) => {
+    const force = req.query.force === '1' || req.query.force === 'true';
+    const b = req.body;
+    let bytes: Uint8Array;
+    let name: string;
+    if (b && !Buffer.isBuffer(b) && typeof b.path === 'string' && b.path) {
+      try { const read = editorCacheDiscovery.readCandidateFile(b.path); bytes = read.bytes; name = read.name; }
+      catch (e) { reply.code(400); return { error: 'cannot read path', message: (e as Error).message }; }
+    } else if (Buffer.isBuffer(b)) {
+      const nm = req.query.name;
+      if (!nm) { reply.code(400); return { error: 'missing ?name=<filename> for the uploaded .cache bytes' }; }
+      bytes = new Uint8Array(b); name = nm;
+    } else {
+      reply.code(400); return { error: 'POST the .cache bytes as application/octet-stream with ?name=<filename>, or JSON { path }' };
+    }
+    const r = await editorCacheImport.importEditorCache(registry, store.defaultStore, bytes, { name, force });
+    reply.code(r.code);
+    return r.body;
+  });
 
   // ── unified handlers ──────────────────────────────────────────────────────────────────────────
   // Each capability-gated handler that a /am4/* alias folds into is a named function from

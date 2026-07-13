@@ -46,8 +46,9 @@ export interface CacheStatus {
 }
 
 /** Gen-3 param catalog for the walk's section→family voter, by model byte. Only selfDescribe (gen-3
- *  grid) models reach here; FM3 is the defensive default. */
-function paramsForModel(model: number): DeviceParam[] {
+ *  grid) models reach here; FM3 is the defensive default. Shared with the editor-cache import service
+ *  (services/editorCacheImport.ts) so both feed buildCache the identical per-model catalog. */
+export function paramsForModel(model: number): DeviceParam[] {
   switch (model) {
     case 0x12: return FM9_PARAMS as unknown as DeviceParam[];
     case 0x10: return AXE3_PARAMS as unknown as DeviceParam[];

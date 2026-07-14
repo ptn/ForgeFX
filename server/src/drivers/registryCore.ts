@@ -465,6 +465,9 @@ export class DeviceRegistry {
       cacheImport: c.cacheImport,
       editorLayouts: c.editorLayouts,
       firmwareValidate: !!d.validateFirmware,
+      // Cross-device preset conversion (POST /preset/convert with no source): the current preset can be
+      // dumped + lifted into the converter IR. Derived from DriverCapabilities so the DTO can't drift.
+      presetConvert: c.presetConvert,
       backupDump: !!d.backupPreset,
       restoreDump: !!d.restorePreset,
       versionStore: !!d.dumpRaw && !!d.loadPresetBytes,

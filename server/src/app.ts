@@ -24,6 +24,7 @@ import { existsSync, statSync, createReadStream } from 'node:fs';
 import { join, resolve, extname } from 'node:path';
 import type { DeviceRegistry } from './drivers/registry.js';
 import * as backups from './services/backups.js';
+import * as convert from './services/convert.js';
 import * as deviceCache from './services/deviceCache.js';
 import * as editorCacheImport from './services/editorCacheImport.js';
 import * as editorCacheDiscovery from './services/editorCacheDiscovery.js';
@@ -259,6 +260,32 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     const bytes = b && Array.isArray(b.bytes) ? b.bytes : null;
     if (!bytes || !bytes.length) { reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream, or JSON {bytes:number[]}' }; }
     return decodeH(reply, Uint8Array.from(bytes));
+  });
+
+  // Cross-device preset conversion. `source.syx` (base64) → OFFLINE decode of the uploaded dump
+  // (gen-3 + AM4, model-byte dispatched; touches no device). `source` omitted → the CONNECTED device's
+  // current preset, capability-gated (501 when the active driver's `presetConvert` is false). 400 for
+  // an unknown target or an undecodable dump; the codec engine's per-decision events + severity summary
+  // ride the 200 body. All codec calls live in services/convert.ts.
+  app.post<{ Body: { targetDevice?: string; source?: { syx?: string } } }>('/preset/convert', async (req, reply) => {
+    const targetDevice = req.body?.targetDevice;
+    if (!convert.isConverterDeviceId(targetDevice)) {
+      reply.code(400);
+      return { error: 'unknown targetDevice', targetDevice: targetDevice ?? null, supported: convert.SUPPORTED_TARGETS };
+    }
+    const syxB64 = req.body?.source?.syx;
+    try {
+      if (typeof syxB64 === 'string' && syxB64.length > 0) {
+        return convert.convertFromSyx(new Uint8Array(Buffer.from(syxB64, 'base64')), targetDevice);
+      }
+      const d = await driver();
+      if (!d.capabilities.presetConvert) return unsupported(reply, 'presetConvert');
+      return await convert.convertFromDriver(d, targetDevice);
+    } catch (e) {
+      const err = e as { statusCode?: number; message?: string };
+      reply.code(err.statusCode ?? 503);
+      return { error: err.message ?? 'conversion failed' };
+    }
   });
 
   app.get('/preset/grid', async (_req, reply) => gridH(reply));

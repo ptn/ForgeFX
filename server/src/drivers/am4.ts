@@ -223,6 +223,7 @@ class Am4Driver implements DeviceDriver {
     scenes: 4,
     channels: true, // 2026-07-08: every block has an independent A/B/C/D channel register (see setChannel)
     presetDump: false, // AM4 backups run their own verbatim dump path (/am4/preset/backup), not the gen-3 one
+    presetConvert: true, // partial lift (name + scenes + amp block per-channel params) via the AM4 dump decode
     blockParamDecode: false,
     telemetry: { tuner: true, outputMeters: false, cpu: false }, // tuner via block-0x0023 live-poll (readTuner); no gen-3 meter/CPU frames
     fcModel: false,

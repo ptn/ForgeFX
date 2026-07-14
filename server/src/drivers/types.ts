@@ -119,6 +119,11 @@ export interface DriverCapabilities {
   channels: boolean;
   /** Gen-3 preset dump read (summaries, params, grid-from-dump, backups). */
   presetDump: boolean;
+  /** The connected device's CURRENT preset can be dumped + lifted into the cross-device converter IR
+   *  (POST /preset/convert with no `source`). True for gen-3 (full lift) / VP4 (skeleton, via its
+   *  structure blob) / AM4 (partial). False where no liftable current-preset decode is reachable
+   *  (gen-2's preset binary is opaque through the codec's public exports; gen-1 has no lift adapter). */
+  presetConvert: boolean;
   /** Full per-block param decode from the preset body (FM3 only today). */
   blockParamDecode: boolean;
   /** Gen-3 live telemetry polls the supervisor may run against this device. */

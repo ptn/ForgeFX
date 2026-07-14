@@ -56,6 +56,7 @@ class Vp4Driver implements DeviceDriver {
     scenes: 4,
     channels: false, // A-D exist but channel-switch writes are undecoded; reads use channel A only
     presetDump: false,
+    presetConvert: true, // skeleton lift (name + scenes + 4-slot chain identity) via readStructure()
     blockParamDecode: false,
     telemetry: { tuner: false, outputMeters: false, cpu: false },
     fcModel: false,

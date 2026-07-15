@@ -16,6 +16,7 @@ const FM3_SYX_B64 = FM3_FIXTURE.toString('base64');
 
 interface ConvertBody {
   source: { device: string; name: string; decodeDepth: string };
+  sourcePreset: { sourceDevice: string; blocks: unknown[]; routing: { gridCells?: unknown[] } };
   target: { sourceDevice: string; meta?: { convertedTo?: string } };
   events: { kind: string }[];
   summary: { total: number; info: number; warn: number; loss: number };
@@ -58,6 +59,13 @@ async function offline(): Promise<void> {
     assertEqual(fm9.summary.total, 0, 'FM3→FM9 summary.total 0');
     assertEqual(fm9.target.meta?.convertedTo, 'fm9', 'FM3→FM9 meta.convertedTo');
     checkSummary(fm9, 'FM3→FM9');
+    // decoded SOURCE preset rides along so the UI can render the source grid (gen-3 → gridCells present)
+    assertEqual(fm9.sourcePreset.sourceDevice, 'fm3', 'FM3→FM9 sourcePreset.sourceDevice');
+    assert(fm9.sourcePreset.blocks.length > 0, 'FM3→FM9 sourcePreset carries decoded blocks');
+    assert(
+      Array.isArray(fm9.sourcePreset.routing.gridCells) && fm9.sourcePreset.routing.gridCells.length > 0,
+      'FM3→FM9 sourcePreset carries routing.gridCells (gen-3 grid source)',
+    );
 
     // undecodable / unsupported source family → 400
     const junkB64 = Buffer.from([0xf0, 0x00, 0x01, 0x74, 0x99, 0x00, 0xf7]).toString('base64');

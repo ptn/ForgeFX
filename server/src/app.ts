@@ -288,6 +288,47 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     }
   });
 
+  // Author a target-device preset `.syx` from a converted preset, edit-in-place on a caller-supplied FM3
+  // BASE template. `source.syx` (base64) → OFFLINE source; omit `source` → the CONNECTED device's current
+  // preset (capability-gated). `base.syx` (base64) is REQUIRED and MUST be an FM3 dump. FM3 targets only
+  // (501 otherwise). 400 for an unknown target / missing base / non-FM3 base / undecodable dump. NOTE:
+  // the returned bytes are FILE-level valid only — a hardware load test on a real FM3 is still required.
+  app.post<{ Body: { targetDevice?: string; source?: { syx?: string }; base?: { syx?: string }; name?: string; slot?: number } }>(
+    '/preset/convert/export',
+    async (req, reply) => {
+      const targetDevice = req.body?.targetDevice;
+      if (!convert.isConverterDeviceId(targetDevice)) {
+        reply.code(400);
+        return { error: 'unknown targetDevice', targetDevice: targetDevice ?? null, supported: convert.SUPPORTED_TARGETS };
+      }
+      const baseB64 = req.body?.base?.syx;
+      if (typeof baseB64 !== 'string' || baseB64.length === 0) {
+        reply.code(400);
+        return { error: 'base.syx (base64 FM3 preset dump) is required' };
+      }
+      const syxB64 = req.body?.source?.syx;
+      try {
+        const baseSyx = new Uint8Array(Buffer.from(baseB64, 'base64'));
+        if (typeof syxB64 === 'string' && syxB64.length > 0) {
+          return await convert.exportConvertedSyx({
+            targetDevice,
+            sourceSyx: new Uint8Array(Buffer.from(syxB64, 'base64')),
+            baseSyx,
+            name: req.body?.name,
+            slot: req.body?.slot,
+          });
+        }
+        const d = await driver();
+        if (!d.capabilities.presetConvert) return unsupported(reply, 'presetConvert');
+        return await convert.exportConvertedSyx({ targetDevice, driver: d, baseSyx, name: req.body?.name, slot: req.body?.slot });
+      } catch (e) {
+        const err = e as { statusCode?: number; message?: string };
+        reply.code(err.statusCode ?? 503);
+        return { error: err.message ?? 'export failed' };
+      }
+    },
+  );
+
   app.get('/preset/grid', async (_req, reply) => gridH(reply));
   app.get<{ Params: { n: string } }>('/presets/:n/grid', async (_req, reply) => gridH(reply));
   app.get('/preset/blocks', async (_req, reply) => blocksH(reply));

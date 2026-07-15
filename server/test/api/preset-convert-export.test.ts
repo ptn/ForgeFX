@@ -9,7 +9,7 @@ import { decodeGen3PresetDump, readBlockParamsForModel } from 'forgefx-midi/devi
 import { buildTestApp } from '../helpers/api.js';
 import { assert, assertEqual } from '../helpers/mock.js';
 
-export const PRESET_CONVERT_EXPORT_CASE_COUNT = 9;
+export const PRESET_CONVERT_EXPORT_CASE_COUNT = 11;
 
 const FM3_FIXTURE = readFileSync(fileURLToPath(new URL('../fixtures/preset-convert/fm3-preset-5.syx', import.meta.url)));
 const FM3_SYX_B64 = FM3_FIXTURE.toString('base64');
@@ -38,6 +38,8 @@ interface ExportBody {
   written: AuthoredBlockRecord[];
   skipped: Array<{ reason: string }>;
   name: string;
+  validation: { ok: boolean; issues: string[] };
+  fidelity: { sourceBlocks: number; landedBlocks: number; droppedForNoBaseBlock: number };
 }
 
 /** Decode an FM3 `.syx` and index the generic per-block param raws by grid effect id → paramId → raw
@@ -73,6 +75,18 @@ async function happyPath(): Promise<void> {
     assert(Array.isArray(b.syx) && b.syx.length > 0, 'export returns non-empty syx bytes');
     assertEqual(b.name, EXPORT_NAME, 'export echoes the written name');
     assert(Array.isArray(b.written), 'export returns a written[] report');
+
+    // ── END-TO-END VALIDATION GATE: the authored output passed our own decoder ──────────────────
+    assertEqual(b.validation.ok, true, `authored output validated ok (issues: ${b.validation.issues.join('; ')})`);
+    assertEqual(b.validation.issues.length, 0, 'validated output carries no issues');
+    // ── FIDELITY report is present and internally consistent ────────────────────────────────────
+    assert(b.fidelity.landedBlocks > 0, 'fidelity: blocks landed');
+    assert(b.fidelity.sourceBlocks >= b.fidelity.landedBlocks, 'fidelity: sourceBlocks >= landedBlocks');
+    assert(b.fidelity.droppedForNoBaseBlock >= 0, 'fidelity: droppedForNoBaseBlock is non-negative');
+    assert(
+      b.fidelity.landedBlocks + b.fidelity.droppedForNoBaseBlock <= b.fidelity.sourceBlocks,
+      'fidelity: landed + dropped-for-no-base never exceeds sourceBlocks',
+    );
 
     // Round-trip: the authored bytes must decode back with a valid CRC and the name we wrote.
     const decoded = decodeGen3PresetDump(Uint8Array.from(b.syx), 0x11);
@@ -221,6 +235,30 @@ async function nonFm3Base(): Promise<void> {
   }
 }
 
+// ── validation gate: a BASE that sniffs as FM3 (0x11) but is CORRUPT is refused → 400 ──
+// This is the real-world failure: the caller's base template is a bad device backup. The model-byte sniff
+// passes (still 0x11), but our own decoder finds the body incoherent, so we refuse BEFORE authoring garbage.
+async function corruptBase(): Promise<void> {
+  const { app } = await buildTestApp(0x11);
+  try {
+    // Keep the F0…model-byte header intact (sniff still sees 0x11), corrupt the compressed body mid-dump.
+    const corrupt = Buffer.from(FM3_FIXTURE);
+    const mid = Math.floor(corrupt.length / 2);
+    for (let i = 0; i < 64; i++) corrupt[mid + i] = 0x00;
+    const res = await app.inject({
+      method: 'POST',
+      url: '/preset/convert/export',
+      payload: { targetDevice: 'fm3', source: { syx: FM3_SYX_B64 }, base: { syx: corrupt.toString('base64') } },
+    });
+    assertEqual(res.statusCode, 400, 'corrupt (but 0x11-sniffing) base → 400 from the validation gate');
+    const b = res.json() as { error: string };
+    assert(/base template is not a valid FM3 preset/.test(b.error), '400 error explains the base is not valid');
+    assert(/corrupt/.test(b.error), '400 error hints the device backup may be corrupt');
+  } finally {
+    await app.close();
+  }
+}
+
 // ── missing base → 400 (base is required) ──
 async function missingBase(): Promise<void> {
   const { app } = await buildTestApp(0x11);
@@ -242,5 +280,6 @@ export async function runPresetConvertExportTests(): Promise<void> {
   await crossSourceToFm3(AXE3_SYX_B64, 'Axe-Fx III');
   await nonFm3Target();
   await nonFm3Base();
+  await corruptBase();
   await missingBase();
 }

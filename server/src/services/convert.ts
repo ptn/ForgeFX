@@ -9,6 +9,7 @@
 import {
   decodeGen3PresetDump,
   authorGen3PresetFromIR,
+  validateGen3Preset,
   MODEL_FM3,
   type IrAuthorPreset,
   type AuthoredBlockRecord,
@@ -171,6 +172,13 @@ export interface ExportConvertedSyxResult {
   skipped: AuthoredSkip[];
   /** The preset name written into the header. */
   name: string;
+  /** END-TO-END VALIDATION GATE result for the AUTHORED output, decoded back with our own codec. On a
+   *  200 this is always `ok:true` (a failing authored preset is refused with 422, never returned). */
+  validation: { ok: boolean; issues: string[] };
+  /** Edit-in-place FIDELITY: how many converted source blocks actually LANDED vs were DROPPED because the
+   *  base template lacked a matching block (edit-in-place can only rewrite blocks the base already has — it
+   *  never adds blocks). Lets the UI warn "exported N of M blocks — the base lacked the rest". */
+  fidelity: { sourceBlocks: number; landedBlocks: number; droppedForNoBaseBlock: number };
 }
 
 /** The FM3 SysEx model byte — the ONLY target authoring supports today. */
@@ -246,6 +254,18 @@ export async function exportConvertedSyx(opts: {
     throw new ConvertError(400, 'the base template must be an FM3 preset');
   }
 
+  // GATE 1 — validate the BASE before authoring. Edit-in-place faithfully preserves whatever is in the
+  // base, so a corrupt device backup as base yields a corrupt export. Refuse up front (decoded with our
+  // own codec — no hardware needed) rather than authoring garbage onto garbage.
+  const baseValidation = validateGen3Preset(baseSyx, MODEL_FM3);
+  if (!baseValidation.ok) {
+    throw new ConvertError(
+      400,
+      `base template is not a valid FM3 preset: ${baseValidation.issues.join('; ')}. ` +
+        'Pick a different base preset (your device backup may be corrupt).',
+    );
+  }
+
   // Resolve + lift the SOURCE (any liftable family): offline upload or the connected device's preset.
   let source: ConverterPreset;
   if (sourceSyx && sourceSyx.length > 0) {
@@ -260,10 +280,28 @@ export async function exportConvertedSyx(opts: {
   const ir = converterToAuthorIr(target, name);
   const result = authorGen3PresetFromIR(baseSyx, ir, MODEL_FM3);
 
+  // GATE 2 — validate the AUTHORED OUTPUT before returning. A write that produced an incoherent preset
+  // (bad CRC, garbage block/type, undecodable scene name) is refused with 422 — we NEVER hand back bytes
+  // that fail our own decode.
+  const outValidation = validateGen3Preset(result.syx, MODEL_FM3);
+  if (!outValidation.ok) {
+    throw new ConvertError(422, `authored preset failed validation: ${outValidation.issues.join('; ')}`);
+  }
+
+  // FIDELITY — edit-in-place can only rewrite blocks the base already has; IR blocks with no matching base
+  // block are dropped (recorded in `skipped` with a "no base block" reason by the codec author).
+  const sourceBlocks = ir.blocks?.length ?? 0;
+  const landedBlocks = result.written.length;
+  const droppedForNoBaseBlock = result.skipped.filter((s) =>
+    s.reason.startsWith('no base block for family'),
+  ).length;
+
   return {
     syx: Array.from(result.syx),
     written: result.written,
     skipped: result.skipped,
     name: result.nameWritten ?? ir.name ?? '',
+    validation: { ok: outValidation.ok, issues: outValidation.issues },
+    fidelity: { sourceBlocks, landedBlocks, droppedForNoBaseBlock },
   };
 }

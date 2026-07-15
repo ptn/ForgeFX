@@ -8,12 +8,12 @@
 // and probed by check-browser-safe.ts).
 import {
   decodeGen3PresetDump,
-  authorGen3PresetFromIR,
+  authorGen3PresetFromIRFull,
+  defaultScaffoldSyx,
   validateGen3Preset,
   MODEL_FM3,
-  type IrAuthorPreset,
-  type AuthoredBlockRecord,
-  type AuthoredSkip,
+  type SynthPreset,
+  type SynthSkip,
 } from 'forgefx-midi/devices/gen3';
 import { decodeAm4PresetDumpBytes } from 'forgefx-midi/devices/am4';
 import {
@@ -163,73 +163,64 @@ async function liftCurrentPreset(driver: DeviceDriver): Promise<ConverterPreset>
 /** The response DTO POST /preset/convert/export serves on 200. `syx` is a FILE-level-valid FM3 preset
  *  dump (valid CRC, decodes back to the written values) — this is NOT a proof of DEVICE acceptance; a
  *  hardware load test on a real FM3 is still required before trusting an authored preset. */
+/** One block that was synthesized into the authored output chain (a template clone overlaid with the
+ *  converted block's type + params). Joined with the converted IR so the UI/report can name its family. */
+export interface LandedBlockRecord {
+  blockKey: string;
+  family: string;
+  displayName: string;
+  instance: number;
+  eid: number;
+  /** Type ordinal written (absent when the family carries no swappable type, e.g. Cab). */
+  typeWritten?: number;
+  params: { paramId: number; channel: number; raw: number }[];
+}
+
 export interface ExportConvertedSyxResult {
   /** The authored FM3 preset `.syx` bytes (a plain number[] so it serializes cleanly over JSON). */
   syx: number[];
-  /** Blocks (and their params/type) that landed in the output. */
-  written: AuthoredBlockRecord[];
-  /** IR blocks/params that had no base match and were skipped (never synthesized). */
-  skipped: AuthoredSkip[];
+  /** Blocks synthesized into the output (template clone + type/param overlay). */
+  written: LandedBlockRecord[];
+  /** IR blocks/params that could not be synthesized (no harvested FM3 template, no type-location rule,
+   *  or a param that failed to encode) — reported, never guessed onto a wrong address. */
+  skipped: { blockKey?: string; family?: string; reason: string }[];
   /** The preset name written into the header. */
   name: string;
   /** END-TO-END VALIDATION GATE result for the AUTHORED output, decoded back with our own codec. On a
    *  200 this is always `ok:true` (a failing authored preset is refused with 422, never returned). */
   validation: { ok: boolean; issues: string[] };
-  /** Edit-in-place FIDELITY: how many converted source blocks actually LANDED vs were DROPPED because the
-   *  base template lacked a matching block (edit-in-place can only rewrite blocks the base already has — it
-   *  never adds blocks). Lets the UI warn "exported N of M blocks — the base lacked the rest". */
-  fidelity: { sourceBlocks: number; landedBlocks: number; droppedForNoBaseBlock: number };
+  /** FULL-SYNTHESIS FIDELITY: how many converted source blocks LANDED in the freshly-synthesized body vs
+   *  were DROPPED because their family has no harvested FM3 template yet. Synthesis reproduces the whole
+   *  block chain from the IR — it is NOT bounded by any base's block set. Lets the UI report
+   *  "exported N of M blocks — K families have no FM3 template yet". */
+  fidelity: { sourceBlocks: number; landedBlocks: number; droppedNoTemplate: number };
 }
 
 /** The FM3 SysEx model byte — the ONLY target authoring supports today. */
 const FM3_MODEL_BYTE = 0x11;
 
 /**
- * Map a (converted) `ConverterPreset` onto the codec's permissive `IrAuthorPreset` shape.
+ * Author a target-device `.syx` from a converted preset by FULL-BODY SYNTHESIS — the whole FM3 body
+ * (scene names + grid + block chain) is synthesized fresh from the converted IR onto a clean FM3 scaffold,
+ * NOT edited in place on a caller base. Lifts the source (offline `sourceSyx` OR the connected `driver`'s
+ * current preset) → converts to `targetDevice` → hands the converted `ConverterPreset` (structurally the
+ * codec's `SynthPreset`) to the FM3-calibrated `authorGen3PresetFromIRFull`.
  *
- * Fidelity: the converted target IR's `paramId` is now ALWAYS the TARGET (FM3) device's address — the
- * conversion engine re-resolves each param's id to the target device via its concept key (gen-3 paramIds
- * are device-specific, so the same param name maps to a different id on FM3 vs FM9 vs III). That makes the
- * carried `paramId` a valid FM3 address for EVERY source, not just FM3-originated presets, so we forward it
- * for all sources and the FM3 author writes the param VALUE directly by id — the high-fidelity path. A param
- * the engine could not map to an FM3 concept carries NO id (its concept has no FM3 equivalent); we still pass
- * its `nativeName` as a last resort, but the concept-registry stripped form does not resolve in the author's
- * catalog lookup, so those params are reported skipped — never guessed onto a wrong address. Value source
- * priority in the author is `normalized` → range-inverted `value` → raw `value`, so both are carried;
- * `normalized = raw/65534` reproduces the exact stored raw.
- */
-function converterToAuthorIr(preset: ConverterPreset, name?: string): IrAuthorPreset {
-  return {
-    name: name ?? preset.name,
-    blocks: preset.blocks.map((b) => ({
-      family: b.family,
-      typeValue: b.typeValue,
-      // Amp per-channel target: the converted block's scene-0 active channel, when the source exposed one.
-      channel: b.channels?.perScene?.[0],
-      params: b.params.map((p) => ({
-        ...(Number.isInteger(p.paramId) ? { paramId: p.paramId } : {}),
-        nativeName: p.nativeName,
-        normalized: p.normalized,
-        value: p.value,
-        min: p.min,
-        max: p.max,
-        log: p.log,
-      })),
-    })),
-  };
-}
-
-/**
- * Author a target-device `.syx` from a converted preset, by EDIT-IN-PLACE on a caller-supplied BASE dump.
- * Lifts the source (offline `sourceSyx` OR the connected `driver`'s current preset) → converts to
- * `targetDevice` → maps the converted `ConverterPreset` to the codec's `IrAuthorPreset` → authors onto the
- * base dump via the FM3-calibrated `authorGen3PresetFromIR`.
+ * The converted IR's `paramId` is ALWAYS the TARGET (FM3) device's address — the conversion engine
+ * re-resolves each param's id to FM3 via its concept key (gen-3 paramIds are device-specific), so the
+ * synthesizer writes every mapped param's value directly by id. A param the engine could not map to an FM3
+ * concept carries NO id and is reported skipped — never guessed onto a wrong address.
  *
- * SCOPE: FM3 (model 0x11) targets ONLY — every other target throws `ConvertError(501)`. The base template
- * MUST itself be an FM3 preset dump (else `ConvertError(400)`). See `authorGen3PresetFromIR`'s header for
- * the full safety model: file-level validity does NOT prove device acceptance (hardware load test still
- * required). `slot` is accepted for forward-compatibility but not yet applied — the authored dump keeps the
- * base template's preset location.
+ * BASE OVERRIDE: `base` is OPTIONAL. When omitted, the codec's bundled default FM3 scaffold is used — no
+ * caller-supplied preset is needed. When supplied AND a valid FM3 dump, it is used as the scaffold instead
+ * (its raw-patch header, modifier/scene-controller prelude and trailing region are carried; its scene
+ * names, grid and block chain are replaced from the IR). A supplied non-FM3 or invalid base is refused (400).
+ *
+ * SCOPE: FM3 (model 0x11) targets ONLY — every other target throws `ConvertError(501)`. HONESTY: synthesis
+ * reproduces the conversion faithfully for families with a harvested FM3 template; families without one are
+ * dropped + reported. Input/Output params, amp channels B/C/D, Cab IR, modifiers and the trailing region are
+ * scaffold-carried (not per-conversion). File-level validity does NOT prove DEVICE acceptance — a hardware
+ * load test on a real FM3 is still required. `slot` is accepted for forward-compatibility but not yet applied.
  */
 export async function exportConvertedSyx(opts: {
   targetDevice: string;
@@ -237,33 +228,36 @@ export async function exportConvertedSyx(opts: {
   sourceSyx?: Uint8Array;
   /** CONNECTED source: the active driver whose current preset is dumped + lifted (used when no `sourceSyx`). */
   driver?: DeviceDriver;
-  /** The FM3 base template `.syx` the converted preset is authored ONTO (edit-in-place). Required. */
-  baseSyx: Uint8Array;
+  /** OPTIONAL FM3 base override used as the synthesis scaffold. Omit to use the bundled default scaffold. */
+  base?: Uint8Array;
   name?: string;
   slot?: number;
 }): Promise<ExportConvertedSyxResult> {
-  const { targetDevice, sourceSyx, driver, baseSyx, name } = opts;
+  const { targetDevice, sourceSyx, driver, base, name } = opts;
 
   // Target guard — FM3 only for now (FM9 / III / AM4 / VP4 authoring is uncalibrated; refused upstream).
   if (targetDevice !== 'fm3') {
     throw new ConvertError(501, 'offline .syx export is only available for FM3 targets right now');
   }
-  // Base guard — the template must be an FM3 preset dump (model byte 0x11), or the FM3-calibrated write
-  // model would land plausible-but-wrong bytes on a foreign body.
-  if (sniffModelByte(baseSyx) !== FM3_MODEL_BYTE) {
-    throw new ConvertError(400, 'the base template must be an FM3 preset');
-  }
 
-  // GATE 1 — validate the BASE before authoring. Edit-in-place faithfully preserves whatever is in the
-  // base, so a corrupt device backup as base yields a corrupt export. Refuse up front (decoded with our
-  // own codec — no hardware needed) rather than authoring garbage onto garbage.
-  const baseValidation = validateGen3Preset(baseSyx, MODEL_FM3);
-  if (!baseValidation.ok) {
-    throw new ConvertError(
-      400,
-      `base template is not a valid FM3 preset: ${baseValidation.issues.join('; ')}. ` +
-        'Pick a different base preset (your device backup may be corrupt).',
-    );
+  // Resolve the SCAFFOLD: an optional caller base override (must be a valid FM3 dump) or the codec's bundled
+  // default FM3 scaffold. Base pre-validation applies ONLY when a base override is supplied.
+  let scaffold: Uint8Array;
+  if (base && base.length > 0) {
+    if (sniffModelByte(base) !== FM3_MODEL_BYTE) {
+      throw new ConvertError(400, 'the base override must be an FM3 preset');
+    }
+    const baseValidation = validateGen3Preset(base, MODEL_FM3);
+    if (!baseValidation.ok) {
+      throw new ConvertError(
+        400,
+        `base override is not a valid FM3 preset: ${baseValidation.issues.join('; ')}. ` +
+          'Omit the base to use the bundled default scaffold, or pick a different one.',
+      );
+    }
+    scaffold = base;
+  } else {
+    scaffold = defaultScaffoldSyx();
   }
 
   // Resolve + lift the SOURCE (any liftable family): offline upload or the connected device's preset.
@@ -275,12 +269,14 @@ export async function exportConvertedSyx(opts: {
     source = await liftCurrentPreset(driver);
   }
 
-  // Convert into the FM3 target IR, then author onto the base dump.
+  // Convert into the FM3 target IR, then SYNTHESIZE the whole body from it onto the scaffold. The converted
+  // `ConverterPreset` is structurally a `SynthPreset` (name, sceneNames, blocks-with-target-paramId, grid).
   const { target } = convertPreset(source, 'fm3');
-  const ir = converterToAuthorIr(target, name);
-  const result = authorGen3PresetFromIR(baseSyx, ir, MODEL_FM3);
+  const ir: SynthPreset = target;
+  const effectiveName = name?.trim() || target.name;
+  const result = authorGen3PresetFromIRFull(scaffold, { ...ir, name: effectiveName }, MODEL_FM3);
 
-  // GATE 2 — validate the AUTHORED OUTPUT before returning. A write that produced an incoherent preset
+  // GATE — validate the AUTHORED OUTPUT before returning. A synthesis that produced an incoherent preset
   // (bad CRC, garbage block/type, undecodable scene name) is refused with 422 — we NEVER hand back bytes
   // that fail our own decode.
   const outValidation = validateGen3Preset(result.syx, MODEL_FM3);
@@ -288,20 +284,40 @@ export async function exportConvertedSyx(opts: {
     throw new ConvertError(422, `authored preset failed validation: ${outValidation.issues.join('; ')}`);
   }
 
-  // FIDELITY — edit-in-place can only rewrite blocks the base already has; IR blocks with no matching base
-  // block are dropped (recorded in `skipped` with a "no base block" reason by the codec author).
-  const sourceBlocks = ir.blocks?.length ?? 0;
-  const landedBlocks = result.written.length;
-  const droppedForNoBaseBlock = result.skipped.filter((s) =>
-    s.reason.startsWith('no base block for family'),
+  // Join the synthesized placed blocks back to the converted IR (by stable key) so the report names the
+  // family/instance the UI shows.
+  const byKey = new Map(target.blocks.map((b) => [b.key, b] as const));
+  const written: LandedBlockRecord[] = result.blocks.map((pb) => {
+    const src = byKey.get(pb.key);
+    return {
+      blockKey: pb.key,
+      family: src?.family ?? '',
+      displayName: pb.displayName,
+      instance: src?.instance ?? 0,
+      eid: pb.eid,
+      ...(pb.typeWritten != null ? { typeWritten: pb.typeWritten } : {}),
+      params: pb.params,
+    };
+  });
+
+  // FIDELITY — full synthesis reproduces the ENTIRE block chain from the IR (not bounded by any base's
+  // blocks). The only drops are families whose FM3 template has not been harvested yet.
+  const sourceBlocks = target.blocks.length;
+  const landedBlocks = result.blocks.length;
+  const droppedNoTemplate = result.skipped.filter((s: SynthSkip) =>
+    s.reason.startsWith('no harvested template'),
   ).length;
 
   return {
     syx: Array.from(result.syx),
-    written: result.written,
-    skipped: result.skipped,
-    name: result.nameWritten ?? ir.name ?? '',
+    written,
+    skipped: result.skipped.map((s) => ({
+      ...(s.key != null ? { blockKey: s.key } : {}),
+      ...(s.family != null ? { family: s.family } : {}),
+      reason: s.reason,
+    })),
+    name: result.nameWritten ?? effectiveName ?? '',
     validation: { ok: outValidation.ok, issues: outValidation.issues },
-    fidelity: { sourceBlocks, landedBlocks, droppedForNoBaseBlock },
+    fidelity: { sourceBlocks, landedBlocks, droppedNoTemplate },
   };
 }

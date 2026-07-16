@@ -24,6 +24,8 @@ import { existsSync, statSync, createReadStream } from 'node:fs';
 import { join, resolve, extname } from 'node:path';
 import type { DeviceRegistry } from './drivers/registry.js';
 import * as backups from './services/backups.js';
+import * as convert from './services/convert.js';
+import type { ConverterPreset } from 'forgefx-midi/convert';
 import * as deviceCache from './services/deviceCache.js';
 import * as editorCacheImport from './services/editorCacheImport.js';
 import * as editorCacheDiscovery from './services/editorCacheDiscovery.js';
@@ -260,6 +262,85 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     if (!bytes || !bytes.length) { reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream, or JSON {bytes:number[]}' }; }
     return decodeH(reply, Uint8Array.from(bytes));
   });
+
+  // Cross-device preset conversion. `source.syx` (base64) → OFFLINE decode of the uploaded dump
+  // (gen-3 + AM4, model-byte dispatched; touches no device). `source` omitted → the CONNECTED device's
+  // current preset, capability-gated (501 when the active driver's `presetConvert` is false). 400 for
+  // an unknown target or an undecodable dump; the codec engine's per-decision events + severity summary
+  // ride the 200 body. All codec calls live in services/convert.ts.
+  app.post<{ Body: { targetDevice?: string; source?: { syx?: string } } }>('/preset/convert', async (req, reply) => {
+    const targetDevice = req.body?.targetDevice;
+    if (!convert.isConverterDeviceId(targetDevice)) {
+      reply.code(400);
+      return { error: 'unknown targetDevice', targetDevice: targetDevice ?? null, supported: convert.SUPPORTED_TARGETS };
+    }
+    const syxB64 = req.body?.source?.syx;
+    try {
+      if (typeof syxB64 === 'string' && syxB64.length > 0) {
+        return convert.convertFromSyx(new Uint8Array(Buffer.from(syxB64, 'base64')), targetDevice);
+      }
+      const d = await driver();
+      if (!d.capabilities.presetConvert) return unsupported(reply, 'presetConvert');
+      return await convert.convertFromDriver(d, targetDevice);
+    } catch (e) {
+      const err = e as { statusCode?: number; message?: string };
+      reply.code(err.statusCode ?? 503);
+      return { error: err.message ?? 'conversion failed' };
+    }
+  });
+
+  // Author a target-device preset `.syx` from a converted preset by FULL-BODY SYNTHESIS onto the codec's
+  // bundled default FM3 scaffold. `source.syx` (base64) → OFFLINE source; omit `source` → the CONNECTED
+  // device's current preset (capability-gated). `base.syx` (base64) is OPTIONAL — when supplied it must be a
+  // valid FM3 dump and is used as the scaffold override (400 otherwise); when omitted the bundled scaffold is
+  // used so NO base is needed. FM3 targets only (501 otherwise). NOTE: the returned bytes are FILE-level
+  // valid only — a hardware load test on a real FM3 is still required.
+  app.post<{ Body: { targetDevice?: string; preset?: ConverterPreset; source?: { syx?: string }; base?: { syx?: string }; name?: string; slot?: number } }>(
+    '/preset/convert/export',
+    async (req, reply) => {
+      const targetDevice = req.body?.targetDevice;
+      if (!convert.isConverterDeviceId(targetDevice)) {
+        reply.code(400);
+        return { error: 'unknown targetDevice', targetDevice: targetDevice ?? null, supported: convert.SUPPORTED_TARGETS };
+      }
+      const baseB64 = req.body?.base?.syx;
+      const base =
+        typeof baseB64 === 'string' && baseB64.length > 0
+          ? new Uint8Array(Buffer.from(baseB64, 'base64'))
+          : undefined;
+      const editedPreset = req.body?.preset;
+      const syxB64 = req.body?.source?.syx;
+      try {
+        // PREFERRED: an edited converter IR from the UI — author it DIRECTLY so the user's grid
+        // routing/cables + block/param edits are carried verbatim (no re-convert from source).
+        if (editedPreset && Array.isArray(editedPreset.blocks)) {
+          return await convert.exportConvertedSyx({
+            targetDevice,
+            preset: editedPreset,
+            base,
+            name: req.body?.name,
+            slot: req.body?.slot,
+          });
+        }
+        if (typeof syxB64 === 'string' && syxB64.length > 0) {
+          return await convert.exportConvertedSyx({
+            targetDevice,
+            sourceSyx: new Uint8Array(Buffer.from(syxB64, 'base64')),
+            base,
+            name: req.body?.name,
+            slot: req.body?.slot,
+          });
+        }
+        const d = await driver();
+        if (!d.capabilities.presetConvert) return unsupported(reply, 'presetConvert');
+        return await convert.exportConvertedSyx({ targetDevice, driver: d, base, name: req.body?.name, slot: req.body?.slot });
+      } catch (e) {
+        const err = e as { statusCode?: number; message?: string };
+        reply.code(err.statusCode ?? 503);
+        return { error: err.message ?? 'export failed' };
+      }
+    },
+  );
 
   app.get('/preset/grid', async (_req, reply) => gridH(reply));
   app.get<{ Params: { n: string } }>('/presets/:n/grid', async (_req, reply) => gridH(reply));

@@ -173,6 +173,7 @@ class Gen3Driver implements DeviceDriver {
       scenes: 8,
       channels: true,
       presetDump: true,
+      presetConvert: true, // full gen-3 lift (routing grid + per-scene block state + amp knobs)
       blockParamDecode: profile.model === 0x11, // per-block body decode is FM3-only today
       telemetry: { tuner: true, outputMeters: true, cpu: true },
       fcModel: !!profile.fcModel,

@@ -13,7 +13,7 @@ import { decodeGen3PresetDump, readBlockParamsForModel } from 'forgefx-midi/devi
 import { buildTestApp } from '../helpers/api.js';
 import { assert, assertEqual } from '../helpers/mock.js';
 
-export const PRESET_CONVERT_EXPORT_CASE_COUNT = 7;
+export const PRESET_CONVERT_EXPORT_CASE_COUNT = 8;
 
 const FM3_FIXTURE = readFileSync(fileURLToPath(new URL('../fixtures/preset-convert/fm3-preset-5.syx', import.meta.url)));
 const FM3_SYX_B64 = FM3_FIXTURE.toString('base64');
@@ -264,6 +264,40 @@ async function corruptBaseOverride(): Promise<void> {
   }
 }
 
+/** EDITED-IR path: an edited converter preset (POST body `preset`) is authored DIRECTLY — its grid
+ *  routing/cables are carried verbatim, NOT re-converted from a source. Draws a distinctive [0,2] cable
+ *  on the converted FM9→FM3 IR's placed cells and asserts it round-trips into the exported .syx grid. */
+async function editedPresetCarriesRouting(): Promise<void> {
+  const { app } = await buildTestApp(0x11);
+  try {
+    // 1. Convert FM9→FM3 to get the target IR (its grid cells now carry series route flags).
+    const conv = await app.inject({ method: 'POST', url: '/preset/convert', payload: { targetDevice: 'fm3', source: { syx: FM9_SYX_B64 } } });
+    assertEqual(conv.statusCode, 200, 'edited-IR: convert 200');
+    const target = conv.json().target as { routing: { gridCells: Array<{ col: number; row: number; blockKey?: string; routeFlag?: number; fromRows?: number[] }> } };
+    const editable = target.routing.gridCells.filter((c) => c.col > 0 && c.blockKey);
+    assert(editable.length > 0, 'edited-IR: target has mid-chain cells to wire');
+    // 2. Draw a distinctive cable on every mid-chain cell: fed from rows 0 AND 2 (route_flag 0b101).
+    for (const c of editable) { c.routeFlag = 0b101; c.fromRows = [0, 2]; }
+
+    // 3. Export from the EDITED preset (no source re-convert).
+    const res = await app.inject({ method: 'POST', url: '/preset/convert/export', payload: { targetDevice: 'fm3', preset: target, name: 'Routed' } });
+    assertEqual(res.statusCode, 200, 'edited-IR: export 200');
+    const body = res.json() as ExportBody;
+    assert(body.validation.ok, 'edited-IR: authored preset valid');
+    assertEqual(body.name, 'Routed', 'edited-IR: name carried');
+
+    // 4. Decode the output and confirm the drawn [0,2] cable round-tripped into the grid.
+    const decoded = decodeGen3PresetDump(new Uint8Array(body.syx), 0x11);
+    const cells = decoded.grid ?? [];
+    const nonZero = cells.filter((c) => (c.from_rows?.length ?? 0) > 0);
+    assert(nonZero.length > 0, 'edited-IR: exported grid carries route flags (not a bare chain)');
+    const hasDrawn = cells.some((c) => JSON.stringify([...(c.from_rows ?? [])].sort((a, b) => a - b)) === JSON.stringify([0, 2]));
+    assert(hasDrawn, 'edited-IR: the drawn [0,2] cable round-tripped into the export');
+  } finally {
+    await app.close();
+  }
+}
+
 export async function runPresetConvertExportTests(): Promise<void> {
   await happyPathNoBase();
   await baseOverride();
@@ -272,4 +306,5 @@ export async function runPresetConvertExportTests(): Promise<void> {
   await nonFm3Target();
   await nonFm3BaseOverride();
   await corruptBaseOverride();
+  await editedPresetCarriesRouting();
 }

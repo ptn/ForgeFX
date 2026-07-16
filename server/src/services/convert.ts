@@ -224,16 +224,20 @@ const FM3_MODEL_BYTE = 0x11;
  */
 export async function exportConvertedSyx(opts: {
   targetDevice: string;
-  /** OFFLINE source: a raw uploaded preset `.syx` (gen-3 / AM4). Omit to use the connected device. */
+  /** EDITED IR (preferred): the caller's edited converter preset — carries the user's grid
+   *  routing/cables + block/param edits verbatim. When supplied it is authored DIRECTLY (no
+   *  re-lift, no re-convert), so nothing the user drew in the editor is discarded. */
+  preset?: ConverterPreset;
+  /** OFFLINE source: a raw uploaded preset `.syx` (gen-3 / AM4). Used when no edited `preset`. */
   sourceSyx?: Uint8Array;
-  /** CONNECTED source: the active driver whose current preset is dumped + lifted (used when no `sourceSyx`). */
+  /** CONNECTED source: the active driver whose current preset is dumped + lifted (fallback). */
   driver?: DeviceDriver;
   /** OPTIONAL FM3 base override used as the synthesis scaffold. Omit to use the bundled default scaffold. */
   base?: Uint8Array;
   name?: string;
   slot?: number;
 }): Promise<ExportConvertedSyxResult> {
-  const { targetDevice, sourceSyx, driver, base, name } = opts;
+  const { targetDevice, preset, sourceSyx, driver, base, name } = opts;
 
   // Target guard — FM3 only for now (FM9 / III / AM4 / VP4 authoring is uncalibrated; refused upstream).
   if (targetDevice !== 'fm3') {
@@ -260,20 +264,31 @@ export async function exportConvertedSyx(opts: {
     scaffold = defaultScaffoldSyx();
   }
 
-  // Resolve + lift the SOURCE (any liftable family): offline upload or the connected device's preset.
-  let source: ConverterPreset;
-  if (sourceSyx && sourceSyx.length > 0) {
-    source = liftFromSyx(sourceSyx);
+  // Resolve the IR to author from. PREFERRED: the caller's EDITED converter preset — author it
+  // DIRECTLY so the user's grid routing/cables and block/param edits are carried verbatim (no
+  // re-lift/re-convert, which would discard them). FALLBACK: lift the source (offline upload or the
+  // connected device) and convert to the FM3 target IR. Either way the IR is structurally a
+  // `SynthPreset` (name, sceneNames, blocks-with-target-paramId, routing.gridCells w/ routeFlag).
+  let ir: SynthPreset;
+  let irBlocks: ConverterPreset['blocks'];
+  if (preset) {
+    ir = preset as unknown as SynthPreset;
+    irBlocks = preset.blocks;
   } else {
-    if (!driver) throw new ConvertError(400, 'no source: supply source.syx or connect a device');
-    source = await liftCurrentPreset(driver);
+    let source: ConverterPreset;
+    if (sourceSyx && sourceSyx.length > 0) {
+      source = liftFromSyx(sourceSyx);
+    } else {
+      if (!driver) throw new ConvertError(400, 'no source: supply an edited preset, source.syx, or connect a device');
+      source = await liftCurrentPreset(driver);
+    }
+    const converted = convertPreset(source, 'fm3');
+    ir = converted.target;
+    irBlocks = converted.target.blocks;
   }
 
-  // Convert into the FM3 target IR, then SYNTHESIZE the whole body from it onto the scaffold. The converted
-  // `ConverterPreset` is structurally a `SynthPreset` (name, sceneNames, blocks-with-target-paramId, grid).
-  const { target } = convertPreset(source, 'fm3');
-  const ir: SynthPreset = target;
-  const effectiveName = name?.trim() || target.name;
+  // SYNTHESIZE the whole body from the IR onto the scaffold.
+  const effectiveName = name?.trim() || ir.name || '';
   const result = authorGen3PresetFromIRFull(scaffold, { ...ir, name: effectiveName }, MODEL_FM3);
 
   // GATE — validate the AUTHORED OUTPUT before returning. A synthesis that produced an incoherent preset
@@ -286,7 +301,7 @@ export async function exportConvertedSyx(opts: {
 
   // Join the synthesized placed blocks back to the converted IR (by stable key) so the report names the
   // family/instance the UI shows.
-  const byKey = new Map(target.blocks.map((b) => [b.key, b] as const));
+  const byKey = new Map(irBlocks.map((b) => [b.key, b] as const));
   const written: LandedBlockRecord[] = result.blocks.map((pb) => {
     const src = byKey.get(pb.key);
     return {
@@ -302,10 +317,10 @@ export async function exportConvertedSyx(opts: {
 
   // FIDELITY — full synthesis reproduces the ENTIRE block chain from the IR (not bounded by any base's
   // blocks). The only drops are families whose FM3 template has not been harvested yet.
-  const sourceBlocks = target.blocks.length;
+  const sourceBlocks = irBlocks.length;
   const landedBlocks = result.blocks.length;
   const droppedNoTemplate = result.skipped.filter((s: SynthSkip) =>
-    s.reason.startsWith('no harvested template'),
+    s.reason.startsWith('no harvested template') || s.reason.startsWith('no template or geometry'),
   ).length;
 
   return {

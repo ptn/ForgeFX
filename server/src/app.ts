@@ -25,6 +25,7 @@ import { join, resolve, extname } from 'node:path';
 import type { DeviceRegistry } from './drivers/registry.js';
 import * as backups from './services/backups.js';
 import * as convert from './services/convert.js';
+import type { ConverterPreset } from 'forgefx-midi/convert';
 import * as deviceCache from './services/deviceCache.js';
 import * as editorCacheImport from './services/editorCacheImport.js';
 import * as editorCacheDiscovery from './services/editorCacheDiscovery.js';
@@ -294,7 +295,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   // valid FM3 dump and is used as the scaffold override (400 otherwise); when omitted the bundled scaffold is
   // used so NO base is needed. FM3 targets only (501 otherwise). NOTE: the returned bytes are FILE-level
   // valid only — a hardware load test on a real FM3 is still required.
-  app.post<{ Body: { targetDevice?: string; source?: { syx?: string }; base?: { syx?: string }; name?: string; slot?: number } }>(
+  app.post<{ Body: { targetDevice?: string; preset?: ConverterPreset; source?: { syx?: string }; base?: { syx?: string }; name?: string; slot?: number } }>(
     '/preset/convert/export',
     async (req, reply) => {
       const targetDevice = req.body?.targetDevice;
@@ -307,8 +308,20 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
         typeof baseB64 === 'string' && baseB64.length > 0
           ? new Uint8Array(Buffer.from(baseB64, 'base64'))
           : undefined;
+      const editedPreset = req.body?.preset;
       const syxB64 = req.body?.source?.syx;
       try {
+        // PREFERRED: an edited converter IR from the UI — author it DIRECTLY so the user's grid
+        // routing/cables + block/param edits are carried verbatim (no re-convert from source).
+        if (editedPreset && Array.isArray(editedPreset.blocks)) {
+          return await convert.exportConvertedSyx({
+            targetDevice,
+            preset: editedPreset,
+            base,
+            name: req.body?.name,
+            slot: req.body?.slot,
+          });
+        }
         if (typeof syxB64 === 'string' && syxB64.length > 0) {
           return await convert.exportConvertedSyx({
             targetDevice,

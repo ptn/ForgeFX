@@ -208,18 +208,27 @@ async function crossSourceToFm3(sourceB64: string, label: string): Promise<void>
   }
 }
 
-// ── target guard: only FM3 is supported → 501 for any other target ──
-async function nonFm3Target(): Promise<void> {
+// ── target guard: gen-3 (FM3/FM9/Axe-Fx III) synthesize; AM4/VP4 stay 501 ──
+async function targetGuard(): Promise<void> {
   const { app } = await buildTestApp(0x11);
   try {
+    // FM9 IS a supported gen-3 target now: FM3 source → FM9 target authors a valid preset (200).
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/preset/convert/export',
+      payload: { targetDevice: 'fm9', source: { syx: FM3_SYX_B64 }, name: EXPORT_NAME },
+    });
+    assertEqual(ok.statusCode, 200, 'FM9 gen-3 target authors → 200');
+
+    // AM4 has no harvested synthesis templates → still refused with 501.
     const res = await app.inject({
       method: 'POST',
       url: '/preset/convert/export',
-      payload: { targetDevice: 'fm9', source: { syx: FM3_SYX_B64 } },
+      payload: { targetDevice: 'am4', source: { syx: FM3_SYX_B64 } },
     });
-    assertEqual(res.statusCode, 501, 'non-FM3 target → 501');
+    assertEqual(res.statusCode, 501, 'AM4 target → 501 (no synthesis templates)');
     const b = res.json() as { error: string };
-    assert(/FM3/.test(b.error), '501 error mentions FM3-only');
+    assert(/am4|FM3\/FM9\/Axe-Fx III/.test(b.error), '501 error names the supported gen-3 targets');
   } finally {
     await app.close();
   }
@@ -238,7 +247,7 @@ async function nonFm3BaseOverride(): Promise<void> {
     });
     assertEqual(res.statusCode, 400, 'non-FM3 base override → 400');
     const b = res.json() as { error: string };
-    assert(/base override must be an FM3 preset/.test(b.error), '400 error names the FM3-base-override requirement');
+    assert(/base override must be a(n)? FM3 preset/.test(b.error), '400 error names the FM3-base-override requirement');
   } finally {
     await app.close();
   }
@@ -303,7 +312,7 @@ export async function runPresetConvertExportTests(): Promise<void> {
   await baseOverride();
   await crossSourceToFm3(FM9_SYX_B64, 'FM9');
   await crossSourceToFm3(AXE3_SYX_B64, 'Axe-Fx III');
-  await nonFm3Target();
+  await targetGuard();
   await nonFm3BaseOverride();
   await corruptBaseOverride();
   await editedPresetCarriesRouting();

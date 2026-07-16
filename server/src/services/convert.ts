@@ -10,8 +10,11 @@ import {
   decodeGen3PresetDump,
   authorGen3PresetFromIRFull,
   defaultScaffoldSyx,
+  hasSynthModel,
   validateGen3Preset,
   MODEL_FM3,
+  MODEL_FM9,
+  MODEL_AXE_FX_III,
   type SynthPreset,
   type SynthSkip,
 } from 'forgefx-midi/devices/gen3';
@@ -62,6 +65,18 @@ const GEN3_DEVICE_BY_MODEL: Readonly<Record<number, Gen3DeviceId>> = {
   0x10: 'axe-fx-iii',
   0x11: 'fm3',
   0x12: 'fm9',
+};
+/** gen-3 device id → SysEx envelope model byte (inverse of GEN3_DEVICE_BY_MODEL). */
+const GEN3_MODEL_BY_DEVICE: Readonly<Record<Gen3DeviceId, number>> = {
+  'axe-fx-iii': MODEL_AXE_FX_III,
+  fm3: MODEL_FM3,
+  fm9: MODEL_FM9,
+};
+/** Display name per gen-3 target, for honest error/validation messages. */
+const GEN3_DEVICE_NAME: Readonly<Record<Gen3DeviceId, string>> = {
+  'axe-fx-iii': 'Axe-Fx III',
+  fm3: 'FM3',
+  fm9: 'FM9',
 };
 const AM4_MODEL_BYTE = 0x15;
 const VP4_MODEL_BYTE = 0x14;
@@ -196,8 +211,10 @@ export interface ExportConvertedSyxResult {
   fidelity: { sourceBlocks: number; landedBlocks: number; droppedNoTemplate: number };
 }
 
-/** The FM3 SysEx model byte — the ONLY target authoring supports today. */
-const FM3_MODEL_BYTE = 0x11;
+/** True when `d` is a gen-3 device id the authoring path can synthesize for. */
+function isGen3Target(d: string): d is Gen3DeviceId {
+  return d === 'fm3' || d === 'fm9' || d === 'axe-fx-iii';
+}
 
 /**
  * Author a target-device `.syx` from a converted preset by FULL-BODY SYNTHESIS — the whole FM3 body
@@ -239,29 +256,32 @@ export async function exportConvertedSyx(opts: {
 }): Promise<ExportConvertedSyxResult> {
   const { targetDevice, preset, sourceSyx, driver, base, name } = opts;
 
-  // Target guard — FM3 only for now (FM9 / III / AM4 / VP4 authoring is uncalibrated; refused upstream).
-  if (targetDevice !== 'fm3') {
-    throw new ConvertError(501, 'offline .syx export is only available for FM3 targets right now');
+  // Target guard — gen-3 devices with a calibrated synthesis model (FM3/FM9/Axe-Fx III). AM4/VP4 have
+  // no harvested block templates, so their authoring stays refused (501) until FORGEFXMID-45.
+  if (!isGen3Target(targetDevice) || !hasSynthModel(GEN3_MODEL_BY_DEVICE[targetDevice])) {
+    throw new ConvertError(501, `offline .syx export is not available for ${targetDevice} targets yet (FM3/FM9/Axe-Fx III only)`);
   }
+  const modelId = GEN3_MODEL_BY_DEVICE[targetDevice];
+  const deviceName = GEN3_DEVICE_NAME[targetDevice];
 
-  // Resolve the SCAFFOLD: an optional caller base override (must be a valid FM3 dump) or the codec's bundled
-  // default FM3 scaffold. Base pre-validation applies ONLY when a base override is supplied.
+  // Resolve the SCAFFOLD: an optional caller base override (must be a valid dump of the SAME target device)
+  // or the codec's bundled default scaffold for that device. Base pre-validation applies ONLY when supplied.
   let scaffold: Uint8Array;
   if (base && base.length > 0) {
-    if (sniffModelByte(base) !== FM3_MODEL_BYTE) {
-      throw new ConvertError(400, 'the base override must be an FM3 preset');
+    if (sniffModelByte(base) !== modelId) {
+      throw new ConvertError(400, `the base override must be a ${deviceName} preset`);
     }
-    const baseValidation = validateGen3Preset(base, MODEL_FM3);
+    const baseValidation = validateGen3Preset(base, modelId);
     if (!baseValidation.ok) {
       throw new ConvertError(
         400,
-        `base override is not a valid FM3 preset: ${baseValidation.issues.join('; ')}. ` +
+        `base override is not a valid ${deviceName} preset: ${baseValidation.issues.join('; ')}. ` +
           'Omit the base to use the bundled default scaffold, or pick a different one.',
       );
     }
     scaffold = base;
   } else {
-    scaffold = defaultScaffoldSyx();
+    scaffold = defaultScaffoldSyx(modelId);
   }
 
   // Resolve the IR to author from. PREFERRED: the caller's EDITED converter preset — author it
@@ -282,19 +302,19 @@ export async function exportConvertedSyx(opts: {
       if (!driver) throw new ConvertError(400, 'no source: supply an edited preset, source.syx, or connect a device');
       source = await liftCurrentPreset(driver);
     }
-    const converted = convertPreset(source, 'fm3');
+    const converted = convertPreset(source, targetDevice);
     ir = converted.target;
     irBlocks = converted.target.blocks;
   }
 
   // SYNTHESIZE the whole body from the IR onto the scaffold.
   const effectiveName = name?.trim() || ir.name || '';
-  const result = authorGen3PresetFromIRFull(scaffold, { ...ir, name: effectiveName }, MODEL_FM3);
+  const result = authorGen3PresetFromIRFull(scaffold, { ...ir, name: effectiveName }, modelId);
 
   // GATE — validate the AUTHORED OUTPUT before returning. A synthesis that produced an incoherent preset
   // (bad CRC, garbage block/type, undecodable scene name) is refused with 422 — we NEVER hand back bytes
   // that fail our own decode.
-  const outValidation = validateGen3Preset(result.syx, MODEL_FM3);
+  const outValidation = validateGen3Preset(result.syx, modelId);
   if (!outValidation.ok) {
     // Permanent operational diagnostic: a 422 here means synthesis produced an incoherent preset.
     // The IR shape (block/cell counts, placed eids, skip reasons, a grid sample) is what pins the

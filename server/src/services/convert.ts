@@ -296,6 +296,21 @@ export async function exportConvertedSyx(opts: {
   // that fail our own decode.
   const outValidation = validateGen3Preset(result.syx, MODEL_FM3);
   if (!outValidation.ok) {
+    // Permanent operational diagnostic: a 422 here means synthesis produced an incoherent preset.
+    // The IR shape (block/cell counts, placed eids, skip reasons, a grid sample) is what pins the
+    // cause (e.g. FORGEFXMID-43: cross-device cells with undefined effectId collapsing onto one block).
+    // eslint-disable-next-line no-console
+    console.error('[convert/export] 422 authored preset failed validation', {
+      issues: outValidation.issues,
+      irBlocks: ir.blocks?.length,
+      irGridCells: ir.routing?.gridCells?.length,
+      irSceneNames: ir.sceneNames?.length ?? 0,
+      placed: result.blocks.length,
+      placedEids: result.blocks.map((b) => b.eid),
+      skipped: result.skipped.length,
+      skipReasons: [...new Set(result.skipped.map((s) => s.reason))],
+      gridSample: (ir.routing?.gridCells ?? []).slice(0, 20).map((c: { row: number; col: number; effectId?: number; routeFlag?: number; blockKey?: string; isShunt?: boolean }) => ({ r: c.row, c: c.col, eid: c.effectId, rf: c.routeFlag, k: c.blockKey, sh: c.isShunt })),
+    });
     throw new ConvertError(422, `authored preset failed validation: ${outValidation.issues.join('; ')}`);
   }
 

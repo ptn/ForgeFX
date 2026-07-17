@@ -496,3 +496,8 @@ server/scripts/*-from-cache.ts
 
 # local docker-build staging copy of the sibling codec repo (see Dockerfile header)
 /forgefx-midi/
+
+# Claude Code local config (private: Plane MCP, personal settings)
+.mcp.json
+CLAUDE.local.md
+.claude/settings.local.json

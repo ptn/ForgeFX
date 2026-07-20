@@ -1078,14 +1078,28 @@ class Gen3Driver implements DeviceDriver {
   }
 
   /** Map a raw 0..65534 wire value to {value, norm, unit, min, max, log} via the device-true FM3 range.
-   * Taper from typecode: middle nibble 4/5 = log10 (e.g. freq cuts), else linear. */
+   * Taper: a device-true explicit `range.taper` ('log'→log10; 'linear'|'flat'|'custom'→linear) wins;
+   * absent it falls back to the typecode heuristic (middle nibble 4/5 = log10, e.g. freq cuts, else linear). */
   #display(family: string | undefined, paramId: number, raw: number): { value: number; norm: number; unit?: string; min?: number; max?: number; log?: boolean } {
     const norm = clamp01(raw / 65534);
     const range = family ? this.#prof.ranges[family]?.[paramId] : undefined;
     if (range && range.kind === 'float' && Number.isFinite(range.displayMin) && Number.isFinite(range.displayMax) && range.displayMin !== range.displayMax) {
       try {
-        const taperNib = (range.typecode >> 4) & 0xf;
-        const log = (taperNib === 4 || taperNib === 5) && range.displayMin > 0;
+        // Taper (log vs linear). A device-true explicit taper from the capture catalog WINS over the
+        // typecode-nibble heuristic: 'log' → log sweep; 'linear' | 'flat' | 'custom' → linear. A
+        // 'custom' taper's `taperPoints` are NOT applied on the wire yet, so custom is served linear
+        // for now (the Axis side documents the same). A log sweep still requires a positive range —
+        // wireToDisplay throws on log10 with displayMin<=0 — the same guard the nibble heuristic uses.
+        // When NO explicit taper is present, fall back to the unchanged typecode-nibble heuristic.
+        // `range.taper` reads device-true from a static-catalog row today, and reads the same field once
+        // walk-built RangeDefs carry it (parallel WP) — no rework needed here either way.
+        let log: boolean;
+        if (range.taper) {
+          log = range.taper === 'log' && range.displayMin > 0;
+        } else {
+          const taperNib = (range.typecode >> 4) & 0xf;
+          log = (taperNib === 4 || taperNib === 5) && range.displayMin > 0;
+        }
         const v = wireToDisplay(raw, { displayMin: range.displayMin, displayMax: range.displayMax, displayScale: log ? 'log10' : 'linear' });
         // Prefer the DEVICE-TRUE unit captured by the live-walk (RangeDef.unit, view 0x00)
         // over the AM4-name-overlay catalog code; fall back to the overlay when absent

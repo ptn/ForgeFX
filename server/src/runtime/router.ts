@@ -133,7 +133,8 @@ export function createRouter(deps: RuntimeDeps): {
   // ── device cache (on-connect self-describe build; capability selfDescribe) ──
   on('GET', '/device/cache', () => deviceCache.cacheStatus(store, registry));
   on('POST', '/device/cache/build', async (c) => {
-    const r = await deviceCache.startCacheBuild(store, registry, { force: !!(c.body as { force?: boolean } | undefined)?.force });
+    const body = c.body as { force?: boolean; mode?: 'read-only' | 'full' } | undefined;
+    const r = await deviceCache.startCacheBuild(store, registry, { force: !!body?.force, mode: body?.mode });
     c.reply.code(r.code);
     return r.body;
   });

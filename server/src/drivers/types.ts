@@ -152,6 +152,12 @@ export interface DriverCapabilities {
    *  (capability gate for POST /device/cache/import). The byte source feeds the same buildCache path
    *  the live walk does, so this tracks selfDescribe (gen-3 grid units); false elsewhere. */
   cacheImport: boolean;
+  /** The device can run the codec's FULL-mode self-describe walk (`mode:'full'`): the read-only sweep
+   *  PLUS a per-float taper sweep that WRITES a normalized value, reads the display back, then restores
+   *  the original (capability gate for POST /device/cache/build with `mode:'full'`). True ONLY for the
+   *  CaptureRig-proven gen-3 trio (Axe-Fx III 0x10 / FM3 0x11 / FM9 0x12); false everywhere the write
+   *  sweep is unverified — notably VP4 (the factory-reset incident: its writes stay allowlist-gated). */
+  fullCapture: boolean;
   /** The device does NOT push front-panel / editor edits, so the registry supervisor should poll the
    *  driver's `readDeviceEditState()` to catch out-of-band edits (AM4 only — HW-107). Absent = no poll. */
   deviceEditWatch?: boolean;
@@ -247,6 +253,11 @@ export interface DeviceDriver {
   cable?(srcRow: number, srcCol: number, destRow: number, connect: boolean): Promise<{ ok: boolean }>;
   /** Switch the active preset. `code` is ADDITIVE (AM4 bank-letter location code, e.g. "C02"). */
   selectPreset?(n: number): Promise<{ ok: boolean; code?: string }>;
+  /** Re-select the CURRENT preset to reload it from flash — the non-destructive safety net the codec's
+   *  FULL-mode self-describe walk runs after every block whose params it swept, discarding any lingering
+   *  sweep write. Reuses the driver's current-preset ref + preset-select machinery; no new wire bytes.
+   *  Implemented by gen-3 (capability fullCapture); absent elsewhere. */
+  reloadPreset?(): Promise<void>;
   /** Store the edit buffer to slot n. `location`/`code` are ADDITIVE (AM4). */
   store?(n: number): Promise<{ ok: boolean; location?: number; code?: string }>;
   loadPresetBytes?(syx: Uint8Array): Promise<{ ok: boolean }>;

@@ -81,6 +81,7 @@ class Gen2Driver implements DeviceDriver {
     supportsSave: true,
     selfDescribe: false, // gen-2 has no gen-3 self-describe walk (params come from the fn 0x1F dump)
     cacheImport: false, // no gen-3 editor .cache grammar for gen-2
+    fullCapture: false, // no self-describe walk at all → no write-sweep full capture
     deviceEditPush: false,
     deviceEditWatch: false,
   };

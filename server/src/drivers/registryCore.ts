@@ -463,6 +463,10 @@ export class DeviceRegistry {
       selfDescribe: c.selfDescribe,
       // Official-editor .cache import (POST /device/cache/import). Tracks selfDescribe (gen-3 grid units).
       cacheImport: c.cacheImport,
+      // FULL-mode self-describe write-sweep (POST /device/cache/build with mode:'full'). True only for the
+      // CaptureRig-proven gen-3 trio (III/FM3/FM9); false on VP4/AM4/gen-1/gen-2. Derived from the driver
+      // cap so the DTO can't drift. Inserted after cacheImport (additive-only ordering — see #capabilitiesDto).
+      fullCapture: c.fullCapture,
       editorLayouts: c.editorLayouts,
       firmwareValidate: !!d.validateFirmware,
       // Cross-device preset conversion (POST /preset/convert with no source): the current preset can be

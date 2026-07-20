@@ -69,6 +69,10 @@ class Vp4Driver implements DeviceDriver {
     // keep the on-connect cache build off until a VP4 walk is captured, then flip this to true.
     selfDescribe: false,
     cacheImport: false, // paired with selfDescribe — flip both on once a VP4 walk is captured
+    // FULL-mode walk WRITES to sweep tapers. The VP4's write path is community-beta / allowlist-gated
+    // (the factory-reset incident that keeps selfDescribe off), so full capture stays OFF — never
+    // sweep-write an unverified unit. Flip on only after a hardware-captured VP4 walk.
+    fullCapture: false,
     deviceEditPush: false,
     deviceEditWatch: false,
   };

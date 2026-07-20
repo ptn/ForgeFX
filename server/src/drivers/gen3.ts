@@ -187,6 +187,9 @@ class Gen3Driver implements DeviceDriver {
       selfDescribe: true,
       // Same buildCache path as the live walk → an official-editor .cache file can be imported too.
       cacheImport: true,
+      // FULL-mode self-describe (write-sweep taper capture) is CaptureRig-proven on the trio the rig
+      // sweeps: Axe-Fx III (0x10) / FM3 (0x11) / FM9 (0x12). Gated to those model bytes explicitly.
+      fullCapture: profile.model === 0x10 || profile.model === 0x11 || profile.model === 0x12,
       // Device-edit reflection splits by whether the unit PUSHES front-panel edits:
       //  • FM9 / Axe-Fx III / VP4 push an unsolicited 0x74/0x75/0x76 burst → registry LISTENS (deviceEditPush).
       //  • FM3 (0x11) proven NOT to push (tap 2026-07-04: a front-panel knob emitted zero unsolicited
@@ -1343,6 +1346,13 @@ class Gen3Driver implements DeviceDriver {
     const r = await this.#write(this.#codec.buildSwitchPresetSysEx(n));
     this.#emit({ type: 'changed', scope: 'preset' });
     return r;
+  }
+  /** Reload the CURRENT preset from flash by re-selecting it — the FULL-mode self-describe walk's
+   *  non-destructive per-block safety net. Reuses presetRef() (current number) + selectPreset() (the
+   *  wire builder), so no new preset-switch bytes are minted here. No-op when no preset is resolvable. */
+  async reloadPreset(): Promise<void> {
+    const { number } = await this.presetRef();
+    if (number >= 0) await this.selectPreset(number);
   }
   async store(n: number) {
     return this.#write(this.#codec.buildStorePreset(n));

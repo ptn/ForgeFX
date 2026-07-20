@@ -187,6 +187,9 @@ class Gen3Driver implements DeviceDriver {
       selfDescribe: true,
       // Same buildCache path as the live walk → an official-editor .cache file can be imported too.
       cacheImport: true,
+      // FULL-mode self-describe (write-sweep taper capture) is CaptureRig-proven on the trio the rig
+      // sweeps: Axe-Fx III (0x10) / FM3 (0x11) / FM9 (0x12). Gated to those model bytes explicitly.
+      fullCapture: profile.model === 0x10 || profile.model === 0x11 || profile.model === 0x12,
       // Device-edit reflection splits by whether the unit PUSHES front-panel edits:
       //  • FM9 / Axe-Fx III / VP4 push an unsolicited 0x74/0x75/0x76 burst → registry LISTENS (deviceEditPush).
       //  • FM3 (0x11) proven NOT to push (tap 2026-07-04: a front-panel knob emitted zero unsolicited
@@ -1078,14 +1081,28 @@ class Gen3Driver implements DeviceDriver {
   }
 
   /** Map a raw 0..65534 wire value to {value, norm, unit, min, max, log} via the device-true FM3 range.
-   * Taper from typecode: middle nibble 4/5 = log10 (e.g. freq cuts), else linear. */
+   * Taper: a device-true explicit `range.taper` ('log'→log10; 'linear'|'flat'|'custom'→linear) wins;
+   * absent it falls back to the typecode heuristic (middle nibble 4/5 = log10, e.g. freq cuts, else linear). */
   #display(family: string | undefined, paramId: number, raw: number): { value: number; norm: number; unit?: string; min?: number; max?: number; log?: boolean } {
     const norm = clamp01(raw / 65534);
     const range = family ? this.#prof.ranges[family]?.[paramId] : undefined;
     if (range && range.kind === 'float' && Number.isFinite(range.displayMin) && Number.isFinite(range.displayMax) && range.displayMin !== range.displayMax) {
       try {
-        const taperNib = (range.typecode >> 4) & 0xf;
-        const log = (taperNib === 4 || taperNib === 5) && range.displayMin > 0;
+        // Taper (log vs linear). A device-true explicit taper from the capture catalog WINS over the
+        // typecode-nibble heuristic: 'log' → log sweep; 'linear' | 'flat' | 'custom' → linear. A
+        // 'custom' taper's `taperPoints` are NOT applied on the wire yet, so custom is served linear
+        // for now (the Axis side documents the same). A log sweep still requires a positive range —
+        // wireToDisplay throws on log10 with displayMin<=0 — the same guard the nibble heuristic uses.
+        // When NO explicit taper is present, fall back to the unchanged typecode-nibble heuristic.
+        // `range.taper` reads device-true from a static-catalog row today, and reads the same field once
+        // walk-built RangeDefs carry it (parallel WP) — no rework needed here either way.
+        let log: boolean;
+        if (range.taper) {
+          log = range.taper === 'log' && range.displayMin > 0;
+        } else {
+          const taperNib = (range.typecode >> 4) & 0xf;
+          log = (taperNib === 4 || taperNib === 5) && range.displayMin > 0;
+        }
         const v = wireToDisplay(raw, { displayMin: range.displayMin, displayMax: range.displayMax, displayScale: log ? 'log10' : 'linear' });
         // Prefer the DEVICE-TRUE unit captured by the live-walk (RangeDef.unit, view 0x00)
         // over the AM4-name-overlay catalog code; fall back to the overlay when absent
@@ -1329,6 +1346,13 @@ class Gen3Driver implements DeviceDriver {
     const r = await this.#write(this.#codec.buildSwitchPresetSysEx(n));
     this.#emit({ type: 'changed', scope: 'preset' });
     return r;
+  }
+  /** Reload the CURRENT preset from flash by re-selecting it — the FULL-mode self-describe walk's
+   *  non-destructive per-block safety net. Reuses presetRef() (current number) + selectPreset() (the
+   *  wire builder), so no new preset-switch bytes are minted here. No-op when no preset is resolvable. */
+  async reloadPreset(): Promise<void> {
+    const { number } = await this.presetRef();
+    if (number >= 0) await this.selectPreset(number);
   }
   async store(n: number) {
     return this.#write(this.#codec.buildStorePreset(n));

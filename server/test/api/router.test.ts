@@ -37,7 +37,9 @@ const CAPS: DriverCapabilities = {
   modBind: true,
   cabIrs: true,
   supportsSave: true,
-  selfDescribe: false // fake driver: keeps POST /device/cache/build on the 501 gated path
+  selfDescribe: false, // fake driver: keeps POST /device/cache/build on the 501 gated path
+  cacheImport: false,
+  fullCapture: false // no self-describe → no full-mode write-sweep
 };
 
 /** Deterministic fake FM3 driver — a rich (but not full) optional-method surface so the matrix hits

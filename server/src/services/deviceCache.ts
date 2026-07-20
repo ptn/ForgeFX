@@ -8,7 +8,7 @@
 // Browser-safe: the store + registry are type-only imports (a browser runtime supplies its own), and
 // the codec's cache subpath is itself browser-safe. NO node:/fastify/transport VALUE imports — this
 // module is in the runtime router's import graph (check-browser-safe.ts enforces it).
-import { buildCache, HW_SEEDS, liveWalk, type BuiltCache, type CacheRecord, type DeviceParam, type LiveTransport, type LiveWalkOptions } from 'forgefx-midi/cache';
+import { buildCache, HW_SEEDS, liveWalk, type BuiltCache, type CacheRecord, type DeviceParam, type LiveTransport, type LiveWalkOptions, type LiveWalkWriteHooks } from 'forgefx-midi/cache';
 import { FM3_PARAMS } from 'forgefx-midi/gen3/fm3';
 import { FM9_PARAMS } from 'forgefx-midi/gen3/fm9';
 import { PARAMS as AXE3_PARAMS } from 'forgefx-midi/gen3/axe-fx-iii';
@@ -22,10 +22,15 @@ import type { Transport } from '../transport/types.js';
  *  wire frames. Must resolve to the decoded `CacheRecord[]` `buildCache` consumes. */
 export type WalkImpl = (transport: LiveTransport, opts: LiveWalkOptions) => Promise<CacheRecord[]>;
 
+/** Build mode: 'read-only' is the HW-proven default sweep; 'full' adds the CaptureRig-parity write-sweep
+ *  that recovers per-float knob tapers (requires the fullCapture capability + write hooks). */
+export type BuildMode = 'read-only' | 'full';
+
 interface CacheJob {
   key: string;
   model: number;
   firmware: string;
+  mode: BuildMode;
   controller: AbortController;
   progress: { done: number; total: number; phase: 'walking' | 'building' };
   promise: Promise<void>;
@@ -72,26 +77,37 @@ const WALK_PACE_MS = 3;
 /** Breather between blocks, in ms — the hardware-proven sweep always paused between blocks; a
  *  continuous 128-block stream without let-up contributed to the FORGEFX-32 wedge. */
 const WALK_BLOCK_PAUSE_MS = 150;
-/** The runtime walk stays inside the hardware-validated envelope: params 0..127 only. The 14-bit
- *  param space (body[5] set) was never live-swept on a real unit — enabling it is a separate,
- *  HW-gated task, not a default. */
+/** READ-ONLY walk param ceiling: params 0..127 only. This default sweep is HARDWARE-PROVEN byte-for-byte
+ *  — the 14-bit param space (body[5] set, id > 127) was never live-swept read-only on a real unit, so the
+ *  read-only build stays inside the validated envelope. Keep this at 127; the read-only cache must remain
+ *  byte-identical to the shipped HW-verified walk. */
 const WALK_MAX_PARAM_ID = 127;
+/** FULL-mode walk param ceiling: the codec's full 14-bit param space (2^14 − 1). Full capture is the
+ *  CaptureRig-parity write-sweep, and the rig sweeps the whole 14-bit id range to reach sparse high-id
+ *  (id > 127) records; the codec bounds this walk itself (filler / absent-run / block-probe guards end
+ *  each block long before 16383), so lifting the host cap here just removes an artificial floor and lets
+ *  those guards do the real bounding. Full mode is model-gated (fullCapture) so it never runs unverified. */
+const WALK_MAX_PARAM_ID_FULL = 16383;
 
 /** Adapt the registry's shared Transport to the codec's minimal LiveTransport: one query → the first
- *  matching Fractal reply frame, or null on timeout. Matching requires the fn AND the echoed view +
- *  param-low bytes (reply inner[0]/inner[4] at frame[6]/frame[10] mirror the query's) so a stale
- *  fn-0x01 frame from an earlier query can never be paired with the wrong one — under a sustained
- *  query stream that desync turns a transient slowdown into a wedge (FORGEFX-32). */
-function adaptRequest(transport: Transport, query: Uint8Array): Promise<Uint8Array | null> {
+ *  matching Fractal reply frame, or null on timeout. The matcher mirrors the CaptureRig's HW-proven
+ *  `sd_query` (fas-re tools/live/capture_v2.py): a reply matches only when it echoes the query's
+ *  view (inner[0] = f[6]), BLOCK-HIGH (inner[3] = f[9]), PARAM-LOW (inner[4] = f[10]) and PARAM-HIGH
+ *  (inner[5] = f[11]). The device does NOT echo block-LOW — its inner[2] is a constant (0x01), so the
+ *  old code's `f[8] === query-block-low` check compared a constant against the block byte and could never
+ *  match a high-block reply (inner[2]=0x01 ≠ block-low), letting a stale fn-0x01 frame from an earlier
+ *  high-block/high-param query latch onto the wrong one — under a sustained query stream that desync
+ *  turns a transient slowdown into a wedge (FORGEFX-32). Matching block-high + both param halves is the
+ *  rig-proven fix. EXPORTED for the reply-matcher unit test. */
+export function adaptRequest(transport: Transport, query: Uint8Array): Promise<Uint8Array | null> {
   const bytes = Array.from(query);
   const fn = bytes[5];
-  // Match the fn AND every echoed address byte: view f[6], block-lo f[8] + block-hi
-  // f[9] (effectId>=128), param-lo f[10] + param-hi f[11] (id>127). Matching only
-  // view+param-lo (the old code) can pair a high-block/high-param query with a stale
-  // reply for a different block/param — a desync that turns a slowdown into a wedge.
   const isEcho = (f: readonly number[]): boolean =>
-    isFractalHeaderFrame(f) && f[5] === fn && f[6] === bytes[6]
-    && f[8] === bytes[8] && f[9] === bytes[9] && f[10] === bytes[10] && f[11] === bytes[11];
+    isFractalHeaderFrame(f) && f[5] === fn
+    && f[6] === bytes[6]    // inner[0] — view echo
+    && f[9] === bytes[9]    // inner[3] — block-HIGH echo (reaches effectId>=128)
+    && f[10] === bytes[10]  // inner[4] — param-LOW echo
+    && f[11] === bytes[11]; // inner[5] — param-HIGH echo (id>127)
   return transport
     .request(bytes, { timeoutMs: 1000, quietMs: 20, match: (fs) => fs.some((f) => isEcho(f)) })
     .then((frames) => {
@@ -103,17 +119,32 @@ function adaptRequest(transport: Transport, query: Uint8Array): Promise<Uint8Arr
 /** The detached build task: pause telemetry, walk → build → persist → swap profile, emit terminal
  *  event, resume telemetry. Never rejects (all outcomes are emitted, not thrown). */
 async function runBuild(store: Store, registry: DeviceRegistry, job: CacheJob, walkImpl: WalkImpl): Promise<void> {
-  const { key, model, firmware, controller } = job;
+  const { key, model, firmware, mode, controller } = job;
+  const full = mode === 'full';
   const resume = registry.pauseTelemetry(); // synchronous — telemetry is off before the first await
   registry.emitEvent({ type: 'cacheBuild', phase: 'walking', done: 0, total: 0, key, model, firmware });
   try {
     const transport = await registry.transport();
     const adapter: LiveTransport = { request: (q) => adaptRequest(transport, q) };
+    // FULL mode writes: the codec BUILDS the continuous-SET frame and hands us finished bytes → we just
+    // put them on the wire via the transport's serialized raw send (the same sendQueued gen-3 writes use,
+    // so a SET never injects mid-read). reloadPreset re-selects the CURRENT preset through the gen-3
+    // driver (fullCapture gates full mode to gen-3, so reloadPreset is present). Telemetry is already
+    // paused around the whole build, so these writes are the only device traffic besides the walk queries.
+    let write: LiveWalkWriteHooks | undefined;
+    if (full) {
+      const driver = await registry.driver();
+      write = {
+        send: (frame) => transport.sendQueued(Array.from(frame)),
+        reloadPreset: () => driver.reloadPreset?.() ?? Promise.resolve()
+      };
+    }
     const walkOpts: LiveWalkOptions = {
       model,
+      ...(full ? { mode: 'full' as const, write } : {}),
       interQueryMs: WALK_PACE_MS,
       blockPauseMs: WALK_BLOCK_PAUSE_MS,
-      maxParamId: WALK_MAX_PARAM_ID,
+      maxParamId: full ? WALK_MAX_PARAM_ID_FULL : WALK_MAX_PARAM_ID,
       signal: controller.signal,
       onProgress: (p) => {
         if (controller.signal.aborted) return;
@@ -193,11 +224,16 @@ export async function cacheStatus(store: Store, registry: DeviceRegistry): Promi
 }
 
 /** POST /device/cache/build — start a background build (or report already-built / gated). Returns
- *  immediately; the build runs detached. `walkImpl` is a test seam (defaults to the codec's liveWalk). */
-export async function startCacheBuild(store: Store, registry: DeviceRegistry, opts?: { force?: boolean; walkImpl?: WalkImpl }): Promise<StartResult> {
+ *  immediately; the build runs detached. `mode` (default 'read-only') selects the HW-proven read-only
+ *  sweep or the fullCapture-gated write-sweep. `walkImpl` is a test seam (defaults to the codec's liveWalk). */
+export async function startCacheBuild(store: Store, registry: DeviceRegistry, opts?: { force?: boolean; mode?: BuildMode; walkImpl?: WalkImpl }): Promise<StartResult> {
   await registry.driver(); // ensure detection ran
   const caps = registry.activeCapabilities();
   if (!caps?.selfDescribe) return { code: 501, body: { error: 'unsupported', capability: 'selfDescribe' } };
+  const mode: BuildMode = opts?.mode === 'full' ? 'full' : 'read-only';
+  // FULL-mode write-sweep is gated on the CaptureRig-proven fullCapture cap (gen-3 trio only). Mirror the
+  // selfDescribe 501 shape so Axis handles both gates identically.
+  if (mode === 'full' && !caps.fullCapture) return { code: 501, body: { error: 'unsupported', capability: 'fullCapture' } };
   const model = registry.detectedModelId;
   const fw = registry.firmwareInfo();
   if (model < 0 || !fw) return { code: 503, body: { error: 'no device detected or firmware unknown' } };
@@ -209,7 +245,7 @@ export async function startCacheBuild(store: Store, registry: DeviceRegistry, op
     return { code: 200, body: { ok: true, already: true } };
   }
   const job: CacheJob = {
-    key, model, firmware: fw.version,
+    key, model, firmware: fw.version, mode,
     controller: new AbortController(),
     progress: { done: 0, total: 0, phase: 'walking' },
     promise: Promise.resolve()

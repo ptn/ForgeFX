@@ -53,6 +53,7 @@ export async function runVp4Tests(): Promise<void> {
     assertEqual(c.gridEdit, false, 'vp4 no gridEdit');
     assertEqual(c.supportsSave, true, 'vp4 supportsSave');
     assertEqual(c.telemetry.outputMeters, false, 'vp4 no output meters');
+    assertEqual(c.fullCapture, false, 'vp4 no full capture (write-sweep gated — factory-reset incident)');
     assertEqual(driver.modelId, 0x14, 'vp4 modelId');
     assertEqual(driver.key, 'vp4', 'vp4 key');
   }

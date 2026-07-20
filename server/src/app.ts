@@ -110,8 +110,8 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   // Status: current key + existence + live build progress + stored-doc meta.
   app.get('/device/cache', () => deviceCache.cacheStatus(store.defaultStore, registry));
   // Start a background build (501 no selfDescribe, 503 no device/firmware, 409 already building).
-  app.post<{ Body: { force?: boolean } }>('/device/cache/build', async (req, reply) => {
-    const r = await deviceCache.startCacheBuild(store.defaultStore, registry, { force: req.body?.force });
+  app.post<{ Body: { force?: boolean; mode?: 'read-only' | 'full' } }>('/device/cache/build', async (req, reply) => {
+    const r = await deviceCache.startCacheBuild(store.defaultStore, registry, { force: req.body?.force, mode: req.body?.mode });
     reply.code(r.code);
     return r.body;
   });

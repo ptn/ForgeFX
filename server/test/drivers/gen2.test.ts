@@ -40,6 +40,7 @@ export async function runGen2Tests(): Promise<void> {
     assertEqual(c.channels, true, 'gen2 channels');
     assertEqual(c.gridEdit, true, 'gen2 gridEdit');
     assertEqual(c.telemetry.tuner, false, 'gen2 no tuner telemetry');
+    assertEqual(c.fullCapture, false, 'gen2 no full capture (no gen-3 self-describe walk)');
     assertEqual(driver.modelId, 0x07, 'gen2 modelId');
     assertEqual(driver.key, 'axe2', 'gen2 key');
   }

@@ -234,6 +234,7 @@ class Am4Driver implements DeviceDriver {
     supportsSave: true,
     selfDescribe: false, // the AM4 has its own (non-gen-3) codec; the gen-3 self-describe walk does not apply
     cacheImport: true, // byte-source import via AM4_CACHE_PARAMS/AM4_SEEDS (codec >= 0.3.20); no live walk
+    fullCapture: false, // the AM4 has no gen-3 self-describe walk → no write-sweep full capture
     deviceEditWatch: true // AM4 pushes NOTHING on front-panel / AM4-Edit edits (HW-107) → registry polls readDeviceEditState()
   };
 

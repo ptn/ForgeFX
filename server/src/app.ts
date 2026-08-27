@@ -28,6 +28,7 @@ import * as convert from './services/convert.js';
 import type { ConverterPreset } from 'forgefx-midi/convert';
 import * as deviceCache from './services/deviceCache.js';
 import * as editorCacheImport from './services/editorCacheImport.js';
+import * as blockLibraryImport from './services/blockLibraryImport.js';
 import * as editorCacheDiscovery from './services/editorCacheDiscovery.js';
 import * as cloudProfiles from './services/cloudProfiles.js';
 import * as store from './store.js';
@@ -147,6 +148,50 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     const r = await editorCacheImport.importEditorCache(registry, store.defaultStore, bytes, { name, force });
     reply.code(r.code);
     return r.body;
+  });
+
+  // ── FM3-Edit/Axe-Edit III/FM9-Edit saved-block library (.blk single-block saves; cheeky-brewing-
+  //    finch plan) — read-only, offline, model-dispatched (like /preset/decode), NOT device-coupled
+  //    (a saved block isn't tied to a connected device). See blockLibraryImport.ts +
+  //    editorCacheDiscovery.ts#discoverBlockFiles. ──
+  // Sources: metadata only (no decode — 230 files must list fast). The caller supplies the
+  // directory rather than ForgeFX inspecting another application's settings file.
+  app.get<{ Querystring: { libraryPath?: string } }>('/fm3edit/blocks/sources', (req, reply) => {
+    const { libraryPath } = req.query;
+    if (!libraryPath) {
+      reply.code(400);
+      return { error: 'libraryPath query parameter is required' };
+    }
+    return { candidates: editorCacheDiscovery.discoverBlockFiles(libraryPath) };
+  });
+  // Decode: raw octet-stream of the .blk file, OR JSON { path, libraryPath }. File-based decode is
+  // constrained to the library directory the caller explicitly selected. 422 on parse failure.
+  app.post<{ Body: Buffer | { path?: string; libraryPath?: string } }>('/fm3edit/blocks/decode', async (req, reply) => {
+    const b = req.body;
+    let bytes: Uint8Array;
+    if (b && !Buffer.isBuffer(b) && typeof b.path === 'string' && b.path) {
+      if (typeof b.libraryPath !== 'string' || !b.libraryPath) {
+        reply.code(400);
+        return { error: 'libraryPath is required when decoding a file path' };
+      }
+      const candidates = editorCacheDiscovery.discoverBlockFiles(b.libraryPath);
+      if (!candidates.some((c) => c.path === b.path)) {
+        reply.code(400);
+        return { error: 'path is not in the supplied block library' };
+      }
+      try { const read = editorCacheDiscovery.readCandidateFile(b.path); bytes = read.bytes; }
+      catch (e) { reply.code(400); return { error: 'cannot read path', message: (e as Error).message }; }
+    } else if (Buffer.isBuffer(b)) {
+      bytes = new Uint8Array(b);
+    } else {
+      reply.code(400); return { error: 'POST the .blk bytes as application/octet-stream, or JSON { path, libraryPath }' };
+    }
+    try {
+      return blockLibraryImport.decodeBlockFile(bytes);
+    } catch (e) {
+      reply.code(422);
+      return { error: 'block-file-parse-failed', message: (e as Error).message };
+    }
   });
 
   // ── unified handlers ──────────────────────────────────────────────────────────────────────────

@@ -101,3 +101,71 @@ export function readCandidateFile(path: string): { name: string; bytes: Uint8Arr
   const buf = readFileSync(path);
   return { name: basename(path), bytes: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) };
 }
+
+// ── `.blk` block-file library discovery ───────────────────────────────────
+// The caller explicitly selects the library directory. Do not read another application's settings
+// file to infer it: that crosses an application boundary without user approval.
+
+/** One discovered `.blk` saved-block file. */
+export interface BlockFileCandidate {
+  path: string;
+  blocksDir: string;
+  /** The one-level-deep per-effect folder name (e.g. "Drive"), or null for a root-level file. */
+  category: string | null;
+  /** Derived from the filename (strips the `_YYYYMMDD_HHMMSS` timestamp suffix every real file
+   *  carries), NOT from the decoded header — discovery must stay decode-free so 230 files list fast. */
+  name: string;
+  size: number;
+  mtime: string; // ISO
+}
+
+function deriveBlockName(filename: string): string {
+  const m = /^(.*)_\d{8}_\d{6}\.blk$/i.exec(filename);
+  return m ? m[1]! : filename.replace(/\.blk$/i, '');
+}
+
+function pushBlockCandidate(
+  fs: DiscoveryFs,
+  path: string,
+  blocksDir: string,
+  category: string | null,
+  filename: string,
+  out: BlockFileCandidate[],
+): void {
+  let st: { size: number; mtimeMs: number };
+  try { st = fs.statSync(path); } catch { return; }
+  out.push({ path, blocksDir, category, name: deriveBlockName(filename), size: st.size, mtime: new Date(st.mtimeMs).toISOString() });
+}
+
+/** Scan one editor's blocks dir: `.blk` files at the root (category null) plus one level of
+ *  per-effect category folders — the layout every one of 230 real files follows. A root entry that
+ *  isn't itself a `.blk` file is probed as a category folder via `readdirSync`; an unreadable/
+ *  non-directory entry is silently skipped (the same "try readdirSync, catch = not a dir" idiom
+ *  `discoverEditorCaches` already uses — `DiscoveryFs` has no separate `isDirectory` probe). */
+function scanBlocksDir(fs: DiscoveryFs, blocksDir: string, out: BlockFileCandidate[]): void {
+  let entries: string[];
+  try { entries = fs.readdirSync(blocksDir); } catch { return; }
+  for (const entry of entries) {
+    const entryPath = join(blocksDir, entry);
+    if (entry.toLowerCase().endsWith('.blk')) {
+      pushBlockCandidate(fs, entryPath, blocksDir, null, entry, out);
+      continue;
+    }
+    let sub: string[];
+    try { sub = fs.readdirSync(entryPath); } catch { continue; }
+    for (const subEntry of sub) {
+      if (!subEntry.toLowerCase().endsWith('.blk')) continue;
+      pushBlockCandidate(fs, join(entryPath, subEntry), blocksDir, entry, subEntry, out);
+    }
+  }
+}
+
+/**
+ * Discover `.blk` files in the caller-selected library directory. Files at the root and one category
+ * directory deep are included; missing or unreadable directories return no candidates.
+ */
+export function discoverBlockFiles(blocksDir: string, fs: DiscoveryFs = REAL_FS): BlockFileCandidate[] {
+  const candidates: BlockFileCandidate[] = [];
+  scanBlocksDir(fs, blocksDir, candidates);
+  return candidates;
+}

@@ -269,6 +269,7 @@ export function createRouter(deps: RuntimeDeps): {
     const b = c.body as { value: number; continuous?: boolean };
     return h.setParamH(c.reply, Number(c.params.eid), Number(c.params.paramId), b.value, b.continuous ?? true);
   });
+  on('POST', '/preset/blocks/:eid/apply', (c) => h.applySavedBlockH(c.reply, Number(c.params.eid), c.body));
   on('POST', '/preset/blocks/:eid/bypass', (c) => h.bypassH(c.reply, Number(c.params.eid), (c.body as { bypassed: boolean }).bypassed));
   on('POST', '/preset/blocks/:eid/channel', async (c) => {
     const d = await driver();

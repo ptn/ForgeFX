@@ -54,7 +54,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   // The unified handler bodies + capability gate — shared with the runtime router (see handlers.ts).
   const {
     driver, unsupported,
-    gridH, blocksH, sceneStateH, blockParamsH, setParamH, bypassH, sceneSetH,
+    gridH, blocksH, sceneStateH, blockParamsH, setParamH, applySavedBlockH, bypassH, sceneSetH,
     presetSelectH, presetStoreH, presetNameH, locationsH,
     backupH, restoreH, fwValidateH, deviceParamH, modModelH,
     telemetryConfigH, telemetrySetH,
@@ -420,6 +420,10 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   app.put<{ Params: { eid: string; paramId: string }; Body: { value: number; continuous?: boolean } }>(
     '/preset/blocks/:eid/params/:paramId',
     async (req, reply) => setParamH(reply, Number(req.params.eid), Number(req.params.paramId), req.body.value, req.body.continuous ?? true)
+  );
+  // Apply the decoded JSON from /fm3edit/blocks/decode to a compatible placed block in one request.
+  app.post<{ Params: { eid: string }; Body: unknown }>('/preset/blocks/:eid/apply', async (req, reply) =>
+    applySavedBlockH(reply, Number(req.params.eid), req.body)
   );
   app.post<{ Params: { eid: string }; Body: { bypassed: boolean } }>('/preset/blocks/:eid/bypass', async (req, reply) => bypassH(reply, Number(req.params.eid), req.body.bypassed));
   app.post<{ Params: { eid: string }; Body: { channel: string } }>('/preset/blocks/:eid/channel', async (req, reply) => {

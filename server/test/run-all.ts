@@ -25,6 +25,7 @@ import { runRouterParityTests, ROUTER_PARITY_CASE_COUNT } from './api/router.tes
 import { runDeviceCacheTests, DEVICE_CACHE_CASE_COUNT } from './api/device-cache.test.js';
 import { runEditorCacheImportTests, EDITOR_CACHE_IMPORT_CASE_COUNT } from './api/editor-cache-import.test.js';
 import { runBlockLibraryTests, BLOCK_LIBRARY_CASE_COUNT } from './api/block-library.test.js';
+import { runBlockApplyTests, BLOCK_APPLY_CASE_COUNT } from './api/block-apply.test.js';
 import { runCloudProfilesTests, CLOUD_PROFILES_CASE_COUNT } from './api/cloud-profiles.test.js';
 import { runPresetConvertTests, PRESET_CONVERT_CASE_COUNT } from './api/preset-convert.test.js';
 import { runPresetConvertExportTests, PRESET_CONVERT_EXPORT_CASE_COUNT } from './api/preset-convert-export.test.js';

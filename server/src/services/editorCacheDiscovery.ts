@@ -119,6 +119,12 @@ export interface BlockFileCandidate {
   mtime: string; // ISO
 }
 
+/** Expand the user-facing `~/…` convention before scanning a local block library. */
+export function expandHomePath(path: string, home = homedir()): string {
+  if (path === '~') return home;
+  return path.startsWith('~/') ? join(home, path.slice(2)) : path;
+}
+
 function deriveBlockName(filename: string): string {
   const m = /^(.*)_\d{8}_\d{6}\.blk$/i.exec(filename);
   return m ? m[1]! : filename.replace(/\.blk$/i, '');

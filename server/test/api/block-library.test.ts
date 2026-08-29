@@ -5,13 +5,13 @@ import { fileURLToPath } from 'node:url';
 import '../helpers/env.js';
 import { buildApp } from '../../src/app.js';
 import { __createRegistryForTest } from '../../src/drivers/registry.js';
-import { discoverBlockFiles, type DiscoveryFs } from '../../src/services/editorCacheDiscovery.js';
+import { discoverBlockFiles, expandHomePath, type DiscoveryFs } from '../../src/services/editorCacheDiscovery.js';
 import { decodeBlockFile } from '../../src/services/blockLibraryImport.js';
 import { assert, assertEqual } from '../helpers/mock.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'block-library');
 
-export const BLOCK_LIBRARY_CASE_COUNT = 5;
+export const BLOCK_LIBRARY_CASE_COUNT = 6;
 
 function fakeFs(tree: Record<string, string[]>, statOf: Record<string, { size: number; mtimeMs: number }>): DiscoveryFs {
   return {
@@ -40,6 +40,11 @@ function discoveryUsesSuppliedLibrary(): void {
 
 function discoveryIgnoresMissingLibrary(): void {
   assertEqual(discoverBlockFiles('/missing', fakeFs({}, {})).length, 0, 'missing selected library yields no candidates');
+}
+
+function expandsHomeLibraryPath(): void {
+  assertEqual(expandHomePath('~/Documents/Fractal Audio/FM3-Edit/blocks', '/Users/axis'), '/Users/axis/Documents/Fractal Audio/FM3-Edit/blocks', 'expands the user-facing home shorthand');
+  assertEqual(expandHomePath('/chosen/library', '/Users/axis'), '/chosen/library', 'leaves absolute paths untouched');
 }
 
 async function decodeFixtureEndpoint(): Promise<void> {
@@ -99,6 +104,7 @@ async function decodeRejections(): Promise<void> {
 export async function runBlockLibraryTests(): Promise<void> {
   discoveryUsesSuppliedLibrary();
   discoveryIgnoresMissingLibrary();
+  expandsHomeLibraryPath();
   await decodeFixtureEndpoint();
   await sourcesRequireLibraryPath();
   await decodeRejections();

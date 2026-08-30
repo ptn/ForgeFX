@@ -1376,6 +1376,24 @@ class Gen3Driver implements DeviceDriver {
     this.#gridCache = null; // edit buffer changed → next grid/blocks read reflects it
     return { ok: true };
   }
+
+  /** Apply a whole block's raw values to a placed block in ONE 0x74/0x75/0x76 burst — the same
+   *  EFFECT_DUMP write FM3-Edit emits to apply a saved `.blk` block. Replaces the ~10s per-param
+   *  apply loop (one setChannel/setType/setParam round-trip per param). `block.values` are
+   *  channel-blocked positional wire values; the burst head's blockId is the target's effect id. */
+  async applyBlock(eid: number, block: { itemCount: number; values: number[] }, activeChannel: number): Promise<{ ok: boolean }> {
+    const dev = await this.#conn();
+    const burst = this.#codec.buildGen3BlockBulkWrite({ blockId: eid, itemCount: block.itemCount, values: block.values });
+    const bytes = burst.flat();
+    if (dev.sendPaced) await dev.sendPaced(bytes);
+    else await dev.sendQueued(bytes);
+    // Restore the saved block's active channel after the bulk write.
+    await this.setChannel(eid, String.fromCharCode(65 + activeChannel));
+    this.#gridCache = null;
+    this.#lastLocalEditAt = Date.now(); // pause the FM3 device-edit poll so it doesn't echo the burst
+    this.#emit({ type: 'changed', scope: 'grid' });
+    return { ok: true };
+  }
 }
 
 function clamp01(v: number) { return Math.max(0, Math.min(1, v)); }

@@ -13,34 +13,27 @@ import type { DeviceRegistry } from '../drivers/registryCore.js';
 export interface StatusSink { code(statusCode: number): unknown }
 
 /** The subset of `/fm3edit/blocks/decode` that is needed to apply a saved block. Axis passes the
- * decoder result through unchanged; raw values keep the device's original precision. */
+ * decoder result through unchanged; `values` keep the device's original precision, channel-blocked
+ * (`index = channel × stride + paramId`). */
 interface SavedBlock {
-  device: string;
   slug: string;
   activeChannel: number;
-  channels: { channel: number; params: { paramId: number; kind: string; raw: number }[] }[];
+  itemCount: number;
+  values: number[];
 }
 
 function savedBlock(value: unknown): SavedBlock | null {
   if (!value || typeof value !== 'object') return null;
   const b = value as Partial<SavedBlock>;
-  if (typeof b.device !== 'string' || typeof b.slug !== 'string' || !Number.isInteger(b.activeChannel) || !Array.isArray(b.channels) || !b.channels.length) return null;
-  const activeChannel = b.activeChannel as number;
-  const channels = b.channels as SavedBlock['channels'];
-  const seenChannels = new Set<number>();
-  for (const channel of channels) {
-    if (!channel || !Number.isInteger(channel.channel) || channel.channel < 0 || channel.channel > 3 || seenChannels.has(channel.channel) || !Array.isArray(channel.params)) return null;
-    seenChannels.add(channel.channel);
-    const seenParams = new Set<number>();
-    for (const param of channel.params) {
-      if (!param || !Number.isInteger(param.paramId) || param.paramId < 0 || seenParams.has(param.paramId) || (param.kind !== 'enum' && param.kind !== 'float') || !Number.isFinite(param.raw) || param.raw < 0 || param.raw > 65534) return null;
-      seenParams.add(param.paramId);
-    }
-    // The decoder always puts the family type selector at parameter zero. It must be applied
-    // before the remaining values because a model can change the available parameter layout.
-    if (!channel.params.some((param) => param.paramId === 0 && param.kind === 'enum')) return null;
+  if (typeof b.slug !== 'string') return null;
+  if (!Number.isInteger(b.activeChannel) || (b.activeChannel as number) < 0 || (b.activeChannel as number) > 3) return null;
+  if (!Number.isInteger(b.itemCount) || (b.itemCount as number) < 0) return null;
+  if (!Array.isArray(b.values)) return null;
+  if (b.values.length !== b.itemCount) return null;
+  for (const v of b.values) {
+    if (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 65534) return null;
   }
-  return seenChannels.has(activeChannel) ? b as SavedBlock : null;
+  return b as SavedBlock;
 }
 
 export function createUnifiedHandlers(registry: DeviceRegistry) {
@@ -94,53 +87,27 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
     if (!d.setParam) return unsupported(reply, 'setParam');
     return d.setParam(addr, paramId, value, continuous);
   };
-  /** Apply every channel in a decoded FM3-Edit `.blk` save to a compatible placed block. The device
-   * has no transactional block write, so writes stay ordered and a rejection reports its exact point. */
+  /** Apply a decoded FM3-Edit `.blk` save to a compatible placed block in ONE bulk burst. The device
+   * has no transactional block write, so rejection is best-effort (the burst is fire-and-forget). */
   const applySavedBlockH = async (reply: StatusSink, addr: number, body: unknown) => {
     const saved = savedBlock(body);
     if (!saved) { reply.code(400); return { error: 'invalid-saved-block' }; }
     const d = await driver();
-    if (d.name !== saved.device) { reply.code(422); return { error: 'saved-block-device-mismatch', expected: d.name, received: saved.device }; }
     if (!d.placedBlocks) return unsupported(reply, 'placedBlocks');
-    if (!d.setParam) return unsupported(reply, 'setParam');
-    if (!d.setType) return unsupported(reply, 'setType');
-    if (!d.setChannel) return unsupported(reply, 'channels');
     const target = (await d.placedBlocks()).find((block) => block.effectId === addr);
     if (!target) { reply.code(404); return { error: 'block-not-found', effectId: addr }; }
     if (target.slug.toLowerCase() !== saved.slug.toLowerCase()) {
       reply.code(422);
       return { error: 'saved-block-family-mismatch', target: target.slug, saved: saved.slug };
     }
+    if (!d.applyBlock) return unsupported(reply, 'applyBlock');
 
-    let applied = 0;
-    let channel = -1;
-    let paramId: number | null = null;
     try {
-      for (const source of [...saved.channels].sort((a, b) => a.channel - b.channel)) {
-        channel = source.channel;
-        const channelResult = await d.setChannel(addr, String.fromCharCode(65 + channel));
-        if (!channelResult.ok) throw new Error('channel write rejected');
-        const type = source.params.find((param) => param.paramId === 0)!;
-        paramId = type.paramId;
-        const typeResult = await d.setType(addr, type.raw);
-        if (!typeResult.ok) throw new Error('type write rejected');
-        applied++;
-        for (const param of source.params) {
-          if (param.paramId === 0) continue;
-          paramId = param.paramId;
-          const result = await d.setParam(addr, param.paramId, param.kind === 'float' ? param.raw / 65534 : param.raw, param.kind === 'float');
-          if (!result.ok) throw new Error('parameter write rejected');
-          applied++;
-        }
-      }
-      // Restore the library block's selected channel after applying all its channel slices.
-      channel = saved.activeChannel;
-      const activeResult = await d.setChannel(addr, String.fromCharCode(65 + channel));
-      if (!activeResult.ok) throw new Error('active channel write rejected');
-      return { ok: true, channels: saved.channels.length, params: applied, activeChannel: saved.activeChannel };
+      await d.applyBlock(addr, { itemCount: saved.itemCount, values: saved.values }, saved.activeChannel);
+      return { ok: true, params: saved.itemCount, activeChannel: saved.activeChannel };
     } catch (e) {
       reply.code(409);
-      return { error: 'saved-block-apply-failed', message: (e as Error).message, applied, channel, paramId };
+      return { error: 'saved-block-apply-failed', message: (e as Error).message };
     }
   };
   const bypassH = async (reply: StatusSink, addr: number, bypassed: boolean) => {

@@ -52,7 +52,7 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `api/device-cache (${DEVICE_CACHE_CASE_COUNT} cases, on-connect self-describe build, mocked FM3/AM4)`, run: runDeviceCacheTests },
   { name: `api/editor-cache-import (${EDITOR_CACHE_IMPORT_CASE_COUNT} cases, .cache byte-source import + disk discovery, mocked FM3/AM4)`, run: runEditorCacheImportTests },
   { name: `api/block-library (${BLOCK_LIBRARY_CASE_COUNT} cases, explicit .blk library scan + decode, no device coupling)`, run: runBlockLibraryTests },
-  { name: `api/block-apply (${BLOCK_APPLY_CASE_COUNT} cases, decoded saved-block validation + ordered writes)`, run: runBlockApplyTests },
+  { name: `api/block-apply (${BLOCK_APPLY_CASE_COUNT} cases, decoded saved-block validation + bulk write)`, run: runBlockApplyTests },
   { name: `api/cloud-profiles (${CLOUD_PROFILES_CASE_COUNT} cases, shared profile check/pull/publish, mocked cloud)`, run: runCloudProfilesTests },
   { name: `api/preset-convert (${PRESET_CONVERT_CASE_COUNT} cases, cross-device convert offline/connected/501/caps, mocked)`, run: runPresetConvertTests },
   { name: `api/preset-convert-export (${PRESET_CONVERT_EXPORT_CASE_COUNT} cases, FM3→FM3 author round-trip + guards, mocked)`, run: runPresetConvertExportTests }

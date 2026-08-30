@@ -11,6 +11,11 @@ export interface DecodedBlockFileResult {
   effectTypeId: number;
   slug: string;
   activeChannel: number;
+  /** The burst head's blockId — the grid slot the block occupied (diagnostic). */
+  blockId: number;
+  /** Channel-blocked raw value count (itemCount) + the positional wire values themselves. */
+  itemCount: number;
+  values: number[];
   channels: DecodedBlock[];
 }
 
@@ -29,6 +34,9 @@ export function decodeBlockFile(bytes: Uint8Array): DecodedBlockFileResult {
     effectTypeId: file.effectTypeId,
     slug: primary?.slug ?? '',
     activeChannel: file.activeChannel,
+    blockId: file.blockId,
+    itemCount: file.itemCount,
+    values: file.values,
     channels,
   };
 }

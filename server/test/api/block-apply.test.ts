@@ -1,24 +1,22 @@
 // Saved-block apply: Axis sends the decoded /fm3edit/blocks/decode JSON once; ForgeFX validates the
-// target and writes every saved channel in device order.
+// target and applies the whole block in ONE bulk burst (the gen-3 0x74/0x75/0x76 EFFECT_DUMP write).
 import type { DeviceDriver, DriverCapabilities } from '../../src/drivers/types.js';
 import { buildTestApp } from '../helpers/api.js';
 import { assertEqual } from '../helpers/mock.js';
 
-export const BLOCK_APPLY_CASE_COUNT = 3;
+export const BLOCK_APPLY_CASE_COUNT = 5;
 
 const savedBlock = {
-  name: 'Saved Drive',
   device: 'FM3',
-  effectTypeId: 1,
   slug: 'drive',
   activeChannel: 1,
-  channels: [
-    { channel: 0, params: [{ paramId: 0, kind: 'enum', raw: 7 }, { paramId: 1, kind: 'float', raw: 32767 }] },
-    { channel: 1, params: [{ paramId: 0, kind: 'enum', raw: 8 }, { paramId: 1, kind: 'float', raw: 65534 }] },
-  ],
+  itemCount: 4,
+  values: [7, 32767, 8, 65534],
 };
 
-function makeDriver(writes: string[], rejectParam = false): DeviceDriver {
+type RecordedApply = { eid: number; block: { itemCount: number; values: number[] }; activeChannel: number };
+
+function makeDriver(records: RecordedApply[], failApply = false): DeviceDriver {
   return {
     modelId: 0x11,
     key: 'fm3',
@@ -26,55 +24,86 @@ function makeDriver(writes: string[], rejectParam = false): DeviceDriver {
     capabilities: {} as DriverCapabilities,
     grid: async () => ({ model: 'fm3', name: '', crcValid: true, rows: 4, cols: 12, scenes: [], cells: [], source: 'dump' }),
     placedBlocks: async () => [{ slug: 'drive', name: 'Drive 1', effectId: 118, row: 1, col: 1, fromRows: [], bypassed: false, channel: 'A' }],
-    setChannel: async (_eid, channel) => { writes.push(`channel:${channel}`); return { ok: true }; },
-    setType: async (_eid, value) => { writes.push(`type:${value}`); return { ok: true }; },
-    setParam: async (_eid, paramId, value, continuous) => {
-      writes.push(`param:${paramId}:${value}:${continuous}`);
-      return { ok: !(rejectParam && paramId === 1 && value === 1) };
+    applyBlock: async (eid, block, activeChannel) => {
+      records.push({ eid, block, activeChannel });
+      if (failApply) throw new Error('bulk write rejected');
+      return { ok: true };
     },
   };
 }
 
-async function appliesAllChannels(): Promise<void> {
-  const writes: string[] = [];
-  const { app } = await buildTestApp(0x11, makeDriver(writes));
+async function appliesBulkBlock(): Promise<void> {
+  const records: RecordedApply[] = [];
+  const { app } = await buildTestApp(0x11, makeDriver(records));
   try {
     const res = await app.inject({ method: 'POST', url: '/preset/blocks/118/apply', payload: savedBlock });
     assertEqual(res.statusCode, 200, 'apply succeeds');
-    assertEqual(res.payload, JSON.stringify({ ok: true, channels: 2, params: 4, activeChannel: 1 }), 'apply result reports all written params');
-    assertEqual(writes.join(','), 'channel:A,type:7,param:1:0.5:true,channel:B,type:8,param:1:1:true,channel:B', 'writes channels, types, then normalized floats and restores active channel');
+    assertEqual(res.payload, JSON.stringify({ ok: true, params: 4, activeChannel: 1 }), 'apply result reports the item count + active channel');
+    assertEqual(records.length, 1, 'exactly one applyBlock call');
+    assertEqual(records[0]!.eid, 118, 'applyBlock targets the placed block eid');
+    assertEqual(records[0]!.activeChannel, 1, 'applyBlock restores the saved active channel');
+    assertEqual(JSON.stringify(records[0]!.block), JSON.stringify({ itemCount: 4, values: [7, 32767, 8, 65534] }), 'applyBlock forwards the raw positional values');
+  } finally {
+    await app.close();
+  }
+}
+
+async function appliesCrossDeviceBlock(): Promise<void> {
+  const records: RecordedApply[] = [];
+  const { app } = await buildTestApp(0x11, makeDriver(records));
+  try {
+    const res = await app.inject({ method: 'POST', url: '/preset/blocks/118/apply', payload: { ...savedBlock, device: 'FM9' } });
+    assertEqual(res.statusCode, 200, 'a block saved for a different device still applies');
+    assertEqual(res.payload, JSON.stringify({ ok: true, params: 4, activeChannel: 1 }), 'cross-device apply result matches the same-device result');
+    assertEqual(records.length, 1, 'exactly one applyBlock call for a cross-device block');
   } finally {
     await app.close();
   }
 }
 
 async function rejectsWrongFamilyBeforeWrites(): Promise<void> {
-  const writes: string[] = [];
-  const { app } = await buildTestApp(0x11, makeDriver(writes));
+  const records: RecordedApply[] = [];
+  const { app } = await buildTestApp(0x11, makeDriver(records));
   try {
     const res = await app.inject({ method: 'POST', url: '/preset/blocks/118/apply', payload: { ...savedBlock, slug: 'amp' } });
     assertEqual(res.statusCode, 422, 'mismatched saved-block family is rejected');
     assertEqual(res.payload, JSON.stringify({ error: 'saved-block-family-mismatch', target: 'drive', saved: 'amp' }), 'family rejection identifies both families');
-    assertEqual(writes.length, 0, 'family rejection sends no writes');
+    assertEqual(records.length, 0, 'family rejection sends no writes');
   } finally {
     await app.close();
   }
 }
 
-async function reportsPartialWriteFailure(): Promise<void> {
-  const writes: string[] = [];
-  const { app } = await buildTestApp(0x11, makeDriver(writes, true));
+async function rejectsBlockNotFound(): Promise<void> {
+  const records: RecordedApply[] = [];
+  const { app } = await buildTestApp(0x11, makeDriver(records));
+  try {
+    const res = await app.inject({ method: 'POST', url: '/preset/blocks/120/apply', payload: savedBlock });
+    assertEqual(res.statusCode, 404, 'applying to a non-placed block is not found');
+    assertEqual(res.payload, JSON.stringify({ error: 'block-not-found', effectId: 120 }), 'not-found names the effect id');
+    assertEqual(records.length, 0, 'not-found sends no writes');
+  } finally {
+    await app.close();
+  }
+}
+
+async function reportsApplyFailure(): Promise<void> {
+  const records: RecordedApply[] = [];
+  const { app } = await buildTestApp(0x11, makeDriver(records, true));
   try {
     const res = await app.inject({ method: 'POST', url: '/preset/blocks/118/apply', payload: savedBlock });
-    assertEqual(res.statusCode, 409, 'a rejected write reports the non-atomic apply failure');
-    assertEqual(res.payload, JSON.stringify({ error: 'saved-block-apply-failed', message: 'parameter write rejected', applied: 3, channel: 1, paramId: 1 }), 'failure identifies the exact partial-write position');
+    assertEqual(res.statusCode, 409, 'a throwing applyBlock reports the apply failure');
+    assertEqual(res.payload, JSON.stringify({ error: 'saved-block-apply-failed', message: 'bulk write rejected' }), 'failure reports the driver error');
+    assertEqual(records.length, 1, 'applyBlock was attempted once');
   } finally {
     await app.close();
   }
 }
 
 export async function runBlockApplyTests(): Promise<void> {
-  await appliesAllChannels();
+  await appliesBulkBlock();
+  await appliesCrossDeviceBlock();
   await rejectsWrongFamilyBeforeWrites();
-  await reportsPartialWriteFailure();
+  await rejectsBlockNotFound();
+  await reportsApplyFailure();
 }

@@ -19,10 +19,18 @@ below are byte-confirmed against FM3-Edit captures (via the mcp-midi-control cod
 | Cable | fn `0x01` sub `0x35` | FM3 4-row: `b21=srcGp>>1`, `b22=((srcGp&1)<<6)\|srcCol`, `b23=(destRow-1)<<5` · `srcGp=(srcCol-1)*4+(srcRow-1)` |
 | Switch preset | fn `0x01` sub `0x27` | `preset14 @ pos 6` |
 | Store preset | fn `0x01` sub `0x26` | `preset14 @ pos 6` |
+| Apply saved block (bulk) | fn `0x74`/`0x75`/`0x76` | head `blockId14 itemCount14` (no flag); body `encode14(pageLen)` + `pageLen × packValue16`; end empty. Paged 256 values/frame. |
 
 `eid` = effect id (the block's base id + instance-1). `pid` = parameter index. The value is a
 5-septet float32 — for a knob it's the normalized 0..1 value; for a model/type select it's the
 roster ordinal as a float.
+
+The bulk apply re-emits the same `0x74/0x75/0x76` burst FM3-Edit sends to apply a saved `.blk`
+block (and the same frames the file stores): a 12-byte head (`blockId` = the target block's
+effect id, `itemCount` = the value count), paged 256-value `0x75` bodies whose bytes 6-7 carry
+`encode14(pageLen)`, and an empty `0x76` end. Values are channel-blocked
+(`index = channel × stride + paramId`), sent positional with no remap. Rejection is best-effort
+(`0x64` MULTIPURPOSE_RESPONSE); the burst is fire-and-forget like preset writes.
 
 ## Accept / reject model
 

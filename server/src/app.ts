@@ -28,6 +28,8 @@ import * as convert from './services/convert.js';
 import type { ConverterPreset } from 'forgefx-midi/convert';
 import * as deviceCache from './services/deviceCache.js';
 import * as editorCacheImport from './services/editorCacheImport.js';
+import * as colorLabelsImport from './services/colorLabelsImport.js';
+import * as blockLibraryImport from './services/blockLibraryImport.js';
 import * as editorCacheDiscovery from './services/editorCacheDiscovery.js';
 import * as cloudProfiles from './services/cloudProfiles.js';
 import * as store from './store.js';
@@ -53,7 +55,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   // The unified handler bodies + capability gate — shared with the runtime router (see handlers.ts).
   const {
     driver, unsupported,
-    gridH, blocksH, sceneStateH, blockParamsH, setParamH, bypassH, sceneSetH,
+    gridH, blocksH, sceneStateH, blockParamsH, setParamH, applySavedBlockH, bypassH, sceneSetH,
     presetSelectH, presetStoreH, presetNameH, locationsH,
     backupH, restoreH, fwValidateH, deviceParamH, modModelH,
     telemetryConfigH, telemetrySetH,
@@ -147,6 +149,76 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     const r = await editorCacheImport.importEditorCache(registry, store.defaultStore, bytes, { name, force });
     reply.code(r.code);
     return r.body;
+  });
+
+  // ── FM3-Edit preset-color import (color-assignments*.dat → tag names + colors; NOT device-coupled —
+  //    a preset-color file isn't tied to a connected device, so no persisted-cache/model/firmware
+  //    handling like the block above). See services/colorLabelsImport.ts + editorCacheDiscovery.ts. ──
+  app.get('/fm3edit/color-labels/sources', () => ({ candidates: editorCacheDiscovery.discoverColorAssignments() }));
+  // Import: raw octet-stream of the .dat file, OR JSON { path } to read a discovered candidate off disk.
+  // 422 on parse failure (mirrors editor-cache-import's cache-parse-failed handling).
+  app.post<{ Body: Buffer | { path?: string } }>('/fm3edit/color-labels/import', async (req, reply) => {
+    const b = req.body;
+    let bytes: Uint8Array;
+    if (b && !Buffer.isBuffer(b) && typeof b.path === 'string' && b.path) {
+      try { const read = editorCacheDiscovery.readCandidateFile(b.path); bytes = read.bytes; }
+      catch (e) { reply.code(400); return { error: 'cannot read path', message: (e as Error).message }; }
+    } else if (Buffer.isBuffer(b)) {
+      bytes = new Uint8Array(b);
+    } else {
+      reply.code(400); return { error: 'POST the .dat bytes as application/octet-stream, or JSON { path }' };
+    }
+    try {
+      const result = colorLabelsImport.parseColorAssignments(bytes);
+      return result;
+    } catch (e) {
+      reply.code(422);
+      return { error: 'color-labels-parse-failed', message: (e as Error).message };
+    }
+  });
+
+  // ── FM3-Edit/Axe-Edit III/FM9-Edit saved-block library (.blk single-block saves; cheeky-brewing-
+  //    finch plan) — read-only, offline, model-dispatched (like /preset/decode), NOT device-coupled
+  //    (a saved block isn't tied to a connected device). See blockLibraryImport.ts +
+  //    editorCacheDiscovery.ts#discoverBlockFiles. ──
+  // Sources: metadata only (no decode — 230 files must list fast). The caller supplies the
+  // directory rather than ForgeFX inspecting another application's settings file.
+  app.get<{ Querystring: { libraryPath?: string } }>('/fm3edit/blocks/sources', (req, reply) => {
+    const { libraryPath } = req.query;
+    if (!libraryPath) {
+      reply.code(400);
+      return { error: 'libraryPath query parameter is required' };
+    }
+    return { candidates: editorCacheDiscovery.discoverBlockFiles(editorCacheDiscovery.expandHomePath(libraryPath)) };
+  });
+  // Decode: raw octet-stream of the .blk file, OR JSON { path, libraryPath }. File-based decode is
+  // constrained to the library directory the caller explicitly selected. 422 on parse failure.
+  app.post<{ Body: Buffer | { path?: string; libraryPath?: string } }>('/fm3edit/blocks/decode', async (req, reply) => {
+    const b = req.body;
+    let bytes: Uint8Array;
+    if (b && !Buffer.isBuffer(b) && typeof b.path === 'string' && b.path) {
+      if (typeof b.libraryPath !== 'string' || !b.libraryPath) {
+        reply.code(400);
+        return { error: 'libraryPath is required when decoding a file path' };
+      }
+      const candidates = editorCacheDiscovery.discoverBlockFiles(editorCacheDiscovery.expandHomePath(b.libraryPath));
+      if (!candidates.some((c) => c.path === b.path)) {
+        reply.code(400);
+        return { error: 'path is not in the supplied block library' };
+      }
+      try { const read = editorCacheDiscovery.readCandidateFile(b.path); bytes = read.bytes; }
+      catch (e) { reply.code(400); return { error: 'cannot read path', message: (e as Error).message }; }
+    } else if (Buffer.isBuffer(b)) {
+      bytes = new Uint8Array(b);
+    } else {
+      reply.code(400); return { error: 'POST the .blk bytes as application/octet-stream, or JSON { path, libraryPath }' };
+    }
+    try {
+      return blockLibraryImport.decodeBlockFile(bytes);
+    } catch (e) {
+      reply.code(422);
+      return { error: 'block-file-parse-failed', message: (e as Error).message };
+    }
   });
 
   // ── unified handlers ──────────────────────────────────────────────────────────────────────────
@@ -375,6 +447,10 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   app.put<{ Params: { eid: string; paramId: string }; Body: { value: number; continuous?: boolean } }>(
     '/preset/blocks/:eid/params/:paramId',
     async (req, reply) => setParamH(reply, Number(req.params.eid), Number(req.params.paramId), req.body.value, req.body.continuous ?? true)
+  );
+  // Apply the decoded JSON from /fm3edit/blocks/decode to a compatible placed block in one request.
+  app.post<{ Params: { eid: string }; Body: unknown }>('/preset/blocks/:eid/apply', async (req, reply) =>
+    applySavedBlockH(reply, Number(req.params.eid), req.body)
   );
   app.post<{ Params: { eid: string }; Body: { bypassed: boolean } }>('/preset/blocks/:eid/bypass', async (req, reply) => bypassH(reply, Number(req.params.eid), req.body.bypassed));
   app.post<{ Params: { eid: string }; Body: { channel: string } }>('/preset/blocks/:eid/channel', async (req, reply) => {

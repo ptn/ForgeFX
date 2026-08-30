@@ -12,6 +12,30 @@ import type { DeviceRegistry } from '../drivers/registryCore.js';
  *  `code()` matches; the runtime router records the status into its RouterResponse. */
 export interface StatusSink { code(statusCode: number): unknown }
 
+/** The subset of `/fm3edit/blocks/decode` that is needed to apply a saved block. Axis passes the
+ * decoder result through unchanged; `values` keep the device's original precision, channel-blocked
+ * (`index = channel × stride + paramId`). */
+interface SavedBlock {
+  slug: string;
+  activeChannel: number;
+  itemCount: number;
+  values: number[];
+}
+
+function savedBlock(value: unknown): SavedBlock | null {
+  if (!value || typeof value !== 'object') return null;
+  const b = value as Partial<SavedBlock>;
+  if (typeof b.slug !== 'string') return null;
+  if (!Number.isInteger(b.activeChannel) || (b.activeChannel as number) < 0 || (b.activeChannel as number) > 3) return null;
+  if (!Number.isInteger(b.itemCount) || (b.itemCount as number) < 0) return null;
+  if (!Array.isArray(b.values)) return null;
+  if (b.values.length !== b.itemCount) return null;
+  for (const v of b.values) {
+    if (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 65534) return null;
+  }
+  return b as SavedBlock;
+}
+
 export function createUnifiedHandlers(registry: DeviceRegistry) {
   const driver = () => registry.driver();
 
@@ -62,6 +86,29 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
     const d = await driver();
     if (!d.setParam) return unsupported(reply, 'setParam');
     return d.setParam(addr, paramId, value, continuous);
+  };
+  /** Apply a decoded FM3-Edit `.blk` save to a compatible placed block in ONE bulk burst. The device
+   * has no transactional block write, so rejection is best-effort (the burst is fire-and-forget). */
+  const applySavedBlockH = async (reply: StatusSink, addr: number, body: unknown) => {
+    const saved = savedBlock(body);
+    if (!saved) { reply.code(400); return { error: 'invalid-saved-block' }; }
+    const d = await driver();
+    if (!d.placedBlocks) return unsupported(reply, 'placedBlocks');
+    const target = (await d.placedBlocks()).find((block) => block.effectId === addr);
+    if (!target) { reply.code(404); return { error: 'block-not-found', effectId: addr }; }
+    if (target.slug.toLowerCase() !== saved.slug.toLowerCase()) {
+      reply.code(422);
+      return { error: 'saved-block-family-mismatch', target: target.slug, saved: saved.slug };
+    }
+    if (!d.applyBlock) return unsupported(reply, 'applyBlock');
+
+    try {
+      await d.applyBlock(addr, { itemCount: saved.itemCount, values: saved.values }, saved.activeChannel);
+      return { ok: true, params: saved.itemCount, activeChannel: saved.activeChannel };
+    } catch (e) {
+      reply.code(409);
+      return { error: 'saved-block-apply-failed', message: (e as Error).message };
+    }
   };
   const bypassH = async (reply: StatusSink, addr: number, bypassed: boolean) => {
     const d = await driver();
@@ -170,7 +217,7 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
 
   return {
     driver, unsupported, decodeFail,
-    gridH, blocksH, sceneStateH, blockParamsH, setParamH, bypassH, sceneSetH,
+    gridH, blocksH, sceneStateH, blockParamsH, setParamH, applySavedBlockH, bypassH, sceneSetH,
     presetSelectH, presetStoreH, presetNameH, locationsH,
     backupH, restoreH, fwValidateH, deviceParamH, modModelH,
     telemetryConfigH, telemetrySetH,

@@ -12,6 +12,8 @@ import { runAm4EditWatchTests, AM4_EDITWATCH_CASE_COUNT } from './drivers/am4-ed
 import { runVp4Tests, VP4_CASE_COUNT } from './drivers/vp4.test.js';
 import { runModelByteTests, MODELBYTE_CASE_COUNT } from './drivers/modelbyte.test.js';
 import { runDefinitionCompletenessTests, DEFINITION_COMPLETENESS_CASE_COUNT } from './drivers/definition-completeness.test.js';
+import { runChannelSliceTests, CHANNEL_SLICE_CASE_COUNT } from './drivers/channel-slice.test.js';
+import { runWalkReclassificationTests, WALK_RECLASSIFICATION_CASE_COUNT } from './drivers/walk-reclassification.test.js';
 import { runTablesTests, TABLES_CASE_COUNT } from './drivers/tables.test.js';
 import { runLayoutsTests, LAYOUTS_CASE_COUNT } from './drivers/layouts.test.js';
 import { runTelemetryTests, TELEMETRY_CASE_COUNT } from './drivers/telemetry.test.js';
@@ -24,6 +26,9 @@ import { runSyncPlanTests, SYNCPLAN_CASE_COUNT } from './api/syncplan.test.js';
 import { runRouterParityTests, ROUTER_PARITY_CASE_COUNT } from './api/router.test.js';
 import { runDeviceCacheTests, DEVICE_CACHE_CASE_COUNT } from './api/device-cache.test.js';
 import { runEditorCacheImportTests, EDITOR_CACHE_IMPORT_CASE_COUNT } from './api/editor-cache-import.test.js';
+import { runColorLabelsImportTests, COLOR_LABELS_IMPORT_CASE_COUNT } from './api/color-labels-import.test.js';
+import { runBlockLibraryTests, BLOCK_LIBRARY_CASE_COUNT } from './api/block-library.test.js';
+import { runBlockApplyTests, BLOCK_APPLY_CASE_COUNT } from './api/block-apply.test.js';
 import { runCloudProfilesTests, CLOUD_PROFILES_CASE_COUNT } from './api/cloud-profiles.test.js';
 import { runPresetConvertTests, PRESET_CONVERT_CASE_COUNT } from './api/preset-convert.test.js';
 import { runPresetConvertExportTests, PRESET_CONVERT_EXPORT_CASE_COUNT } from './api/preset-convert-export.test.js';
@@ -37,6 +42,8 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `drivers/vp4 (${VP4_CASE_COUNT} cases, VP4 gated writes + structure read + caps)`, run: runVp4Tests },
   { name: `drivers/modelbyte (${MODELBYTE_CASE_COUNT} cases, wrong-model-byte guard)`, run: runModelByteTests },
   { name: `drivers/definition-completeness (${DEFINITION_COMPLETENESS_CASE_COUNT} cases, blockParams unit/taper passthrough)`, run: runDefinitionCompletenessTests },
+  { name: `drivers/channel-slice (${CHANNEL_SLICE_CASE_COUNT} cases, fn-0x1F channel stride + cache overlay)`, run: runChannelSliceTests },
+  { name: `drivers/walk-reclassification (${WALK_RECLASSIFICATION_CASE_COUNT} cases, cache overlay never reclassifies a catalog kind)`, run: runWalkReclassificationTests },
   { name: `drivers/tables (${TABLES_CASE_COUNT} identity checks, paramId cross-contamination guard)`, run: runTablesTests },
   { name: `drivers/layouts (${LAYOUTS_CASE_COUNT} editor-layout v2 variant-selection + passthrough)`, run: runLayoutsTests },
   { name: `drivers/telemetry (${TELEMETRY_CASE_COUNT} cadence/traffic/echo-guard/yield cases)`, run: runTelemetryTests },
@@ -49,6 +56,9 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `api/router (${ROUTER_PARITY_CASE_COUNT} app↔runtime-router parity twins, mocked FM3)`, run: runRouterParityTests },
   { name: `api/device-cache (${DEVICE_CACHE_CASE_COUNT} cases, on-connect self-describe build, mocked FM3/AM4)`, run: runDeviceCacheTests },
   { name: `api/editor-cache-import (${EDITOR_CACHE_IMPORT_CASE_COUNT} cases, .cache byte-source import + disk discovery, mocked FM3/AM4)`, run: runEditorCacheImportTests },
+  { name: `api/color-labels-import (${COLOR_LABELS_IMPORT_CASE_COUNT} cases, FM3-Edit color-assignments parse + disk discovery, no device coupling)`, run: runColorLabelsImportTests },
+  { name: `api/block-library (${BLOCK_LIBRARY_CASE_COUNT} cases, explicit .blk library scan + decode, no device coupling)`, run: runBlockLibraryTests },
+  { name: `api/block-apply (${BLOCK_APPLY_CASE_COUNT} cases, decoded saved-block validation + bulk write)`, run: runBlockApplyTests },
   { name: `api/cloud-profiles (${CLOUD_PROFILES_CASE_COUNT} cases, shared profile check/pull/publish, mocked cloud)`, run: runCloudProfilesTests },
   { name: `api/preset-convert (${PRESET_CONVERT_CASE_COUNT} cases, cross-device convert offline/connected/501/caps, mocked)`, run: runPresetConvertTests },
   { name: `api/preset-convert-export (${PRESET_CONVERT_EXPORT_CASE_COUNT} cases, FM3→FM3 author round-trip + guards, mocked)`, run: runPresetConvertExportTests }

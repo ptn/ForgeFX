@@ -261,6 +261,10 @@ export interface DeviceDriver {
   /** Store the edit buffer to slot n. `location`/`code` are ADDITIVE (AM4). */
   store?(n: number): Promise<{ ok: boolean; location?: number; code?: string }>;
   loadPresetBytes?(syx: Uint8Array): Promise<{ ok: boolean }>;
+  /** Apply a whole block's raw values to a placed block in one 0x74/0x75/0x76 burst (gen-3
+   *  EFFECT_DUMP write) — the fast path that replaces the per-param apply loop. `block.values` are
+   *  channel-blocked positional wire values (`index = channel × stride + paramId`), `itemCount` long. */
+  applyBlock?(eid: number, block: { itemCount: number; values: number[] }, activeChannel: number): Promise<{ ok: boolean }>;
   setSceneName?(index: number, name: string): Promise<{ ok: boolean }>;
   setPresetName?(name: string): Promise<{ ok: boolean }>;
 

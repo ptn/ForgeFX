@@ -109,6 +109,10 @@ const ROWS: Row[] = [
   { name: 'block types', method: 'GET', url: '/blocks/amp/types' },
   { name: 'block params', method: 'GET', url: '/preset/blocks/58/params' },
   { name: 'set param', method: 'PUT', url: '/preset/blocks/58/params/7', body: { value: 0.42, continuous: true } },
+  { name: 'apply saved block', method: 'POST', url: '/preset/blocks/58/apply', body: {
+    device: 'FM3', slug: 'amp', activeChannel: 0,
+    channels: [{ channel: 0, params: [{ paramId: 0, kind: 'enum', raw: 1 }, { paramId: 1, kind: 'float', raw: 32767 }] }]
+  } },
   { name: 'bypass', method: 'POST', url: '/preset/blocks/58/bypass', body: { bypassed: true } },
   { name: 'channel', method: 'POST', url: '/preset/blocks/58/channel', body: { channel: 'B' } },
   { name: 'grid select', method: 'POST', url: '/preset/grid/select', body: { row: 1, col: 2 } },

@@ -217,15 +217,29 @@ class Gen3Driver implements DeviceDriver {
   #conn() { return this.#ctx.transport(); }
   #emit: DriverCtx['emit'] = (e) => this.#ctx.emit(e);
 
+  /** fn-0x1F channel-block geometry for a family: one channel's slice width, how many channels the
+   *  body carries, and where the active channel's slice starts.
+   *
+   *  The table stride is normally the catalog's hardware-validated wire stride, but a walk-built
+   *  runtime profile can under-report it (the live walk's section meta counts the records it managed
+   *  to collect, not the section's true width). A short stride is silent and destructive: base =
+   *  channel x stride then lands mid-way through an EARLIER channel's slice, so every param read for
+   *  channels B-D — the amp model included — is a real, valid-looking value from the wrong param.
+   *  The wire is the tiebreaker: the body carries whole channel blocks (itemCount = channels x stride
+   *  on every shipped catalog), so a stride that does not divide the advertised itemCount cannot be
+   *  the real one → fall back to the per-channel width the body itself implies. */
   #channelSlice(
     family: string | undefined,
     bulk: { itemCount: number; values: readonly number[] },
     activeChannel: number,
   ): { stride: number; channelCount: number; base: number } {
     const tableStride = family ? this.#prof.rangeSections[family]?.stride : undefined;
-    const stride = tableStride && tableStride > 0
-      ? tableStride
-      : (bulk.itemCount > 0 && bulk.itemCount % 4 === 0 ? bulk.itemCount / 4 : Math.max(1, bulk.values.length));
+    const wireStride = bulk.itemCount > 0 && bulk.itemCount % 4 === 0 ? bulk.itemCount / 4 : null;
+    // Trust the table only when the wire agrees with it (or the wire advertised no count at all).
+    const tableFits = !!tableStride && tableStride > 0 && (bulk.itemCount <= 0 || bulk.itemCount % tableStride === 0);
+    const stride = tableFits
+      ? tableStride!
+      : (wireStride ?? (tableStride && tableStride > 0 ? tableStride : Math.max(1, bulk.values.length)));
     const basis = bulk.itemCount > 0 ? bulk.itemCount : bulk.values.length;
     const channelCount = Math.max(1, Math.floor(basis / stride));
     return { stride, channelCount, base: Math.min(activeChannel, channelCount - 1) * stride };
@@ -531,7 +545,6 @@ class Gen3Driver implements DeviceDriver {
     const knobs = defs.filter((p) => {
       const range = this.#prof.ranges[family]?.[p.paramId];
       if (range?.kind !== 'float') return false;
-      if (!KNOB_UNITS.has(p.unit ?? '')) return false;
       if (/bypass/i.test(p.displayLabel ?? p.name)) return false;
       if (range.displayMin === range.displayMax) return false; // unusable (0..0) knob
       if (seenIds.has(p.paramId)) return false; // dedupe same wire paramId (first wins)
@@ -1374,6 +1387,24 @@ class Gen3Driver implements DeviceDriver {
     if (dev.sendPaced) await dev.sendPaced(bytes);
     else await dev.sendQueued(bytes);
     this.#gridCache = null; // edit buffer changed → next grid/blocks read reflects it
+    return { ok: true };
+  }
+
+  /** Apply a whole block's raw values to a placed block in ONE 0x74/0x75/0x76 burst — the same
+   *  EFFECT_DUMP write FM3-Edit emits to apply a saved `.blk` block. Replaces the ~10s per-param
+   *  apply loop (one setChannel/setType/setParam round-trip per param). `block.values` are
+   *  channel-blocked positional wire values; the burst head's blockId is the target's effect id. */
+  async applyBlock(eid: number, block: { itemCount: number; values: number[] }, activeChannel: number): Promise<{ ok: boolean }> {
+    const dev = await this.#conn();
+    const burst = this.#codec.buildGen3BlockBulkWrite({ blockId: eid, itemCount: block.itemCount, values: block.values });
+    const bytes = burst.flat();
+    if (dev.sendPaced) await dev.sendPaced(bytes);
+    else await dev.sendQueued(bytes);
+    // Restore the saved block's active channel after the bulk write.
+    await this.setChannel(eid, String.fromCharCode(65 + activeChannel));
+    this.#gridCache = null;
+    this.#lastLocalEditAt = Date.now(); // pause the FM3 device-edit poll so it doesn't echo the burst
+    this.#emit({ type: 'changed', scope: 'grid' });
     return { ok: true };
   }
 }

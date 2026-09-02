@@ -36,7 +36,9 @@ export interface GridCellDTO {
    *  (their sweep contract is byte-identical). */
   slug?: string;
 }
-export interface PresetGridDTO { model: string; name: string; crcValid: boolean; rows: number; cols: number; scenes: string[]; cells: GridCellDTO[]; source: 'dump'; }
+/** `source` tells which read filled the grid: `'dump'` = the whole-preset Huffman dump (carries a
+ *  verified CRC), `'live'` = the gen-3 sub-0x2E live layout query (milliseconds, no CRC over the grid). */
+export interface PresetGridDTO { model: string; name: string; crcValid: boolean; rows: number; cols: number; scenes: string[]; cells: GridCellDTO[]; source: 'dump' | 'live'; }
 export interface PresetBlockDTO { slug: string; name: string; effectId: number; row: number; col: number; fromRows: number[]; bypassed: boolean | null; channel: string | null; }
 export interface NamedParam { id: number; name: string; value: number; norm: number; unit?: string; min?: number; max?: number; log?: boolean; }
 export interface EnumParam { id: number; name: string; value: number; options: { value: number; label: string }[]; }

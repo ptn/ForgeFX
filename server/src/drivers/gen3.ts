@@ -17,13 +17,17 @@ import {
   isLooperWaveformResponse,
   parseLooperWaveform,
   buildLooperControl,
+  buildRequestGridLayout,
+  parseGen3GridLayout,
+  FN_PARAMETER_SETGET,
+  SUB_ACTION_GRID_LAYOUT,
   type ModernFractalCodec
 } from 'forgefx-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'forgefx-midi/shared';
 import {
   parsePresetDump, decodeRawPatch, decodeGen3Body,
   readBlockParamsForModel, modelsFromBlocks,
-  effectRoster, blockRefForEid, slugForEffectId, blockInstances,
+  effectRoster, blockRefForEid, slugForEffectId, blockInstances, effectName,
   retargetPresetDumpToEditBuffer,
   type DecodedBlock
 } from 'forgefx-midi/devices/gen3';
@@ -43,6 +47,28 @@ const BLOCK_META: Record<string, { name: string; page: number }> = (() => {
 })();
 
 const EDIT_BUFFER = 0x3fff; // preset number sentinel = current edit buffer
+
+/** FM3 model byte. The live grid-layout decode (forgefx-midi gridLayout.ts) is byte-exact against
+ *  real FM3 responses ONLY; the III/FM9 branch is community-beta, so they keep the dump path. */
+const FM3_MODEL = 0x11;
+/** Gen-3 shunt effect-id base: a routing cell's stored id is `SHUNT_BASE + n` (the dump decoder's
+ *  `eid > 1000` shunt test and Axis's shunt allocator both key off this). */
+const SHUNT_BASE = 1023;
+const GEN3_SCENES = 8;
+
+/** Incoming-cable bitmask → source rows of the previous column (bit r = row r), the dump decoder's
+ *  `from_rows` convention. */
+function rowsFromMask(mask: number, rows: number): number[] {
+  const out: number[] = [];
+  for (let r = 0; r < rows; r++) if (mask & (1 << r)) out.push(r);
+  return out;
+}
+
+/** True for a live grid-layout (fn 0x01 / sub 0x2E) response frame. Matches the predicate the
+ *  hardware calibration probe used (src/probes/grid-2e.ts). */
+function isGridLayoutResponse(f: readonly number[]): boolean {
+  return f[5] === FN_PARAMETER_SETGET && f[6] === SUB_ACTION_GRID_LAYOUT;
+}
 
 // ── preset-dump decode (forgefx-midi devices/gen3 pipeline) ──
 // Adapter producing the exact DTO the pre-Phase-4 server-local codec (fm3PresetGrid.ts
@@ -271,11 +297,11 @@ class Gen3Driver implements DeviceDriver {
     return { number: r.presetNumber, name: r.name };
   }
 
-  /** Routing grid via the hardware-validated dump decoder. Deduped + short-TTL cached. */
+  /** Routing grid. Deduped + short-TTL cached; FM3 reads it live, everything else dumps the preset. */
   async grid(): Promise<PresetGridDTO> {
     if (this.#gridInflight) return this.#gridInflight; // coalesce concurrent callers
     if (this.#gridCache && Date.now() - this.#gridCache.at < Gen3Driver.GRID_TTL_MS) return this.#gridCache.grid;
-    this.#gridInflight = this.#dumpGrid();
+    this.#gridInflight = this.#readGrid();
     try {
       const g = await this.#gridInflight;
       this.#gridCache = { grid: g, at: Date.now() };
@@ -283,6 +309,96 @@ class Gen3Driver implements DeviceDriver {
     } finally {
       this.#gridInflight = null;
     }
+  }
+
+  /** FM3: read the routing grid with the LIVE sub-0x2E layout query (a single small frame, tens of
+   *  milliseconds) instead of pulling and Huffman-decompressing the whole preset (~1.2s on a slow
+   *  link — the audible gap after a preset change). This is what FM3-Edit does: it never dumps a
+   *  preset to draw the grid, it polls this query continuously.
+   *
+   *  Fallback, never a hard dependency: any failure (timeout, no reply, short/malformed frame, no
+   *  cached scene names) falls through to the dump. A slow-but-correct grid always beats a wrong one. */
+  async #readGrid(): Promise<PresetGridDTO> {
+    if (this.#prof.model === FM3_MODEL) {
+      try {
+        return await this.#liveGrid();
+      } catch (e) {
+        console.log(`[forgefx] liveGrid: falling back to the preset dump (${(e as Error)?.message ?? String(e)})`);
+      }
+    }
+    return this.#dumpGrid();
+  }
+
+  /** Scene names by preset number. The sub-0x2E frame carries none, so they come from the 8 small
+   *  fn-0x0E QUERY SCENE NAME reads — cached per preset, since only a preset change can alter them
+   *  (a rename goes through setSceneName, which busts the cache). */
+  #sceneCache: { preset: number; names: string[] } | null = null;
+
+  async #sceneNames(preset: number): Promise<string[]> {
+    if (this.#sceneCache?.preset === preset) return this.#sceneCache.names;
+    const dev = await this.#conn();
+    const names: string[] = [];
+    for (let i = 0; i < GEN3_SCENES; i++) {
+      const frames = await dev.request(this.#codec.buildQuerySceneName(i), {
+        timeoutMs: dev.slow ? 1500 : 600,
+        quietMs: dev.slow ? 120 : 40,
+        match: (fs) => fs.some((f) => this.#codec.isQuerySceneNameResponse(f))
+      });
+      const f = frames.find((x) => this.#codec.isQuerySceneNameResponse(x));
+      if (!f) throw new Error(`no scene-name reply for scene ${i}`);
+      names.push(this.#codec.parseQuerySceneNameResponse(f).name);
+    }
+    this.#sceneCache = { preset, names };
+    return names;
+  }
+
+  /** Live routing grid (fn 0x01 / sub 0x2E), FM3 only. Three small round trips in the steady state
+   *  (preset ref + grid frame, scene names cached), ten right after a preset change. */
+  async #liveGrid(): Promise<PresetGridDTO> {
+    const dev = await this.#conn();
+    // The 0x2E frame carries neither the preset name nor its number — presetRef() supplies both, and
+    // the number is what keys the scene-name cache to THIS preset (never the one we just left).
+    const ref = await this.presetRef();
+    if (ref.number < 0) throw new Error('no current-preset reply (cannot key scene names)');
+    const scenes = await this.#sceneNames(ref.number);
+    const frames = await dev.request(buildRequestGridLayout(this.#prof.model), {
+      timeoutMs: dev.slow ? 4000 : 1200,
+      quietMs: dev.slow ? 300 : 80,
+      match: (fs) => fs.some(isGridLayoutResponse)
+    });
+    const f = frames.find(isGridLayoutResponse);
+    if (!f) throw new Error('no sub-0x2E grid-layout reply');
+    return {
+      model: 'fm3',
+      name: ref.name,
+      crcValid: false, // no CRC over the live read (unlike the dump's verified body)
+      rows: this.#prof.rows,
+      cols: this.#prof.cols,
+      scenes,
+      cells: parseGen3GridLayout(f, this.#prof.model).map((c) => {
+        // Shunt ids must land in the SAME absolute space the dump reports (Axis's shunt allocator
+        // keys new routing cells off `effectId >= shuntBase`). The FM3 cell's 12-bit id field is
+        // wide enough to hold the stored `SHUNT_BASE + n` directly, but the decoder documents it as
+        // a "sequential index" — accept either: a value already in the shunt range passes through,
+        // a small index is rebased. Both readings then produce dump-compatible ids.
+        const raw = (c.isShunt ? c.shuntIndex : c.effectId) ?? 0;
+        const effectId = c.isShunt ? (raw > SHUNT_BASE ? raw : SHUNT_BASE + raw) : raw;
+        return {
+          row: c.row,
+          col: c.col,
+          effectId,
+          // same naming convention as the dump decoder's parseGrid (presetBody.ts)
+          name: c.isShunt ? `Shunt ${effectId - SHUNT_BASE}` : (effectName(effectId) ?? `eid_${effectId}`),
+          isShunt: c.isShunt,
+          routeFlag: c.cableInputMask,
+          // FM3's mask is normalized to "bit r = fed from row r of the previous column" and is
+          // byte-exact against a real multi-row preset with cross-row cables — the same thing the
+          // dump's `from_rows` carries, and the ONLY thing Axis draws cables from.
+          fromRows: rowsFromMask(c.cableInputMask, this.#prof.rows)
+        };
+      }),
+      source: 'live'
+    };
   }
 
   /** Read a preset dump, retrying when it arrives incomplete. On Windows USB-MIDI a big multi-packet
@@ -1313,6 +1429,7 @@ class Gen3Driver implements DeviceDriver {
   async setSceneName(index: number, name: string) {
     if (index < 0 || index > 7) return { ok: false };
     const clean = (name ?? '').replace(/[^\x20-\x7e]/g, '').slice(0, 32); // printable ASCII, 32 max
+    this.#sceneCache = null; // the live grid path serves scene names from here
     return this.#write(this.#codec.buildSetSceneName(index, clean));
   }
   /** Rename the working-buffer PRESET (fn 0x01 sub 0x28, via fractal-midi's buildRenamePreset). Visible
@@ -1357,6 +1474,10 @@ class Gen3Driver implements DeviceDriver {
   async selectPreset(n: number) {
     this.#gridCache = null;
     const r = await this.#write(this.#codec.buildSwitchPresetSysEx(n));
+    // Clear AGAIN after the write: a grid read that landed while the switch was in flight would
+    // otherwise have re-cached the OUTGOING preset's layout for the rest of the TTL — visible now
+    // that the live path makes the follow-up read fast enough to hit that window.
+    this.#gridCache = null;
     this.#emit({ type: 'changed', scope: 'preset' });
     return r;
   }
@@ -1387,6 +1508,7 @@ class Gen3Driver implements DeviceDriver {
     if (dev.sendPaced) await dev.sendPaced(bytes);
     else await dev.sendQueued(bytes);
     this.#gridCache = null; // edit buffer changed → next grid/blocks read reflects it
+    this.#sceneCache = null; // …including its scene names
     return { ok: true };
   }
 

@@ -181,6 +181,30 @@ function dedupeLabels(items: { name: string }[]): void {
 function paramLabel(p: { displayLabel?: string; name: string }): string {
   return p.displayLabel ?? p.name.replace(/^[A-Z0-9]+_/, '').replace(/_/g, ' ');
 }
+/** Override named/enum param labels with the resolved editor layout's OWN label, by paramId, when the
+ *  layout has a non-empty one — the layout is already firmware/selector-resolved (see `layoutFor`), so
+ *  this is how a firmware-renamed control (e.g. cab "Distance N" -> "Delay N" @ fw 12.00) shows the
+ *  current name instead of the static catalog's possibly-stale displayLabel. Params the layout doesn't
+ *  cover keep their static label untouched. First control wins if a paramId appears more than once. */
+function applyLayoutLabels(layout: DeviceLayout, named: NamedParam[], enums: EnumParam[]): void {
+  const labelByParamId = new Map<number, string>();
+  for (const page of layout.pages) {
+    for (const row of page.rows) {
+      for (const ctl of row.controls) {
+        if (ctl.paramId == null || !ctl.label || labelByParamId.has(ctl.paramId)) continue;
+        labelByParamId.set(ctl.paramId, ctl.label);
+      }
+    }
+  }
+  for (const p of named) {
+    const label = labelByParamId.get(p.id);
+    if (label) p.name = label;
+  }
+  for (const e of enums) {
+    const label = labelByParamId.get(e.id);
+    if (label) e.name = label;
+  }
+}
 
 class Gen3Driver implements DeviceDriver {
   #prof: DeviceProfile;
@@ -737,6 +761,12 @@ class Gen3Driver implements DeviceDriver {
     // amp firmware-pinned variant, etc.) and filter its pages to the current selector/firmware state;
     // falls back to the null/first variant when type is unknown.
     layout = this.#prof.layoutFor(family, type?.value, selectors);
+    // Prefer the resolved layout's OWN label over the static catalog displayLabel where the editor
+    // has one: layoutFor already resolves firmware-versioned siblings to the newest firmware (see
+    // resolveLayoutPages), so a control the editor renamed on a later firmware (e.g. the cab's
+    // "Distance N" -> "Delay N" as of fw 12.00) shows the current name here, not the stale mined one.
+    // Static catalog stays the fallback for params the editor layout doesn't cover at all.
+    if (layout) applyLayoutLabels(layout, named, enums);
     // disambiguate repeated labels within a block (e.g. the cab's 4× "Low Cut", amp's two "Depth")
     // so identical names get a 1/2/3 suffix the UI can tell apart.
     dedupeLabels(named);

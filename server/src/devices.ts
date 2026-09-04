@@ -30,6 +30,7 @@ import {
   FM3_MOD_FIELDS,
   FM3_MONITOR_PARAMS,
   FM3_RANGE_SECTIONS,
+  FM3_RENDERER,
 } from 'forgefx-midi/gen3/fm3';
 import {
   FM9_RANGES_CLASSIFIED as FM9_RANGES, FM9_PARAMS_BY_FAMILY, FM9_ENUM_OVERRIDES, FM9_FAMILY_BY_EFFECT_ID, FM9_LAYOUTS,
@@ -47,10 +48,11 @@ import {
   AXE3_FC_EFFECT_ID, AXE3_FC_CONFIGS, AXE3_FC_PARAMS_WIDTH, AXE3_FC_FIELDS,
   AXE3_MOD_EFFECT_ID, AXE3_MOD_SLOT_COUNT, AXE3_MOD_FIELDS, AXE3_MOD_SOURCES_STATUS,
   AXE3_RANGE_SECTIONS,
+  AXE3_RENDERER,
 } from 'forgefx-midi/gen3/axe-fx-iii';
 import type {
   DeviceEditorLayouts, EditorBlockLayout, EditorLayoutVariant, EditorLayoutPage,
-  EditorLayoutRow, EditorFwRange,
+  EditorLayoutRow, EditorFwRange, EditorRendererProfile,
 } from 'forgefx-midi/gen3/fm3';
 import { AM4_LAYOUTS } from 'forgefx-midi/am4';
 
@@ -205,12 +207,29 @@ export const resolveLayoutPages = (
 
 // Resolve a family's editor layout to the wire DeviceLayout for the block's CURRENT type value, with the
 // selected variant's pages filtered to the current selector/firmware state (see resolveLayoutPages).
-const layoutFrom = (layouts: DeviceEditorLayouts) =>
+// When a renderer profile is supplied, each page's `layout` name resolves to its PageLayout `geometry`
+// and each control's `rawWidget` to its outer `bounds` (both attached directly, so the client renders
+// the device-authored geometry without reproducing any PageLayout/component constants).
+const layoutFrom = (layouts: DeviceEditorLayouts, renderer?: EditorRendererProfile) =>
   (family: string, typeValue?: number, selectors?: SelectorValues): DeviceLayout | undefined => {
     const block = layouts[family];
     if (!block) return undefined;
     const variant = selectVariant(block, typeValue);
     if (!variant) return undefined;
+    const pages = resolveLayoutPages(variant.pages, typeValue, selectors);
+    const servedPages: EditorLayoutPage[] = renderer
+      ? pages.map((p) => ({
+          ...p,
+          ...(p.layout && renderer.pageLayouts[p.layout] ? { geometry: renderer.pageLayouts[p.layout] } : {}),
+          rows: p.rows.map((r) => ({
+            ...r,
+            controls: r.controls.map((c) => ({
+              ...c,
+              ...(renderer.widgetBounds[c.rawWidget] ? { bounds: renderer.widgetBounds[c.rawWidget] } : {}),
+            })),
+          })),
+        }))
+      : pages;
     return {
       editorName: block.editorName,
       family: block.family,
@@ -218,7 +237,7 @@ const layoutFrom = (layouts: DeviceEditorLayouts) =>
       variantValue: variant.value,
       ...(variant.fw ? { fw: variant.fw } : {}),
       ...(variant.pinned ? { pinned: true } : {}),
-      pages: resolveLayoutPages(variant.pages, typeValue, selectors),
+      pages: servedPages,
     };
   };
 
@@ -443,10 +462,22 @@ const recToLabels = (r: Record<number, string>): string[] => {
 /** The family's user-facing model selector: `<FAM>_MODEL` where it exists
  *  (DELAY — `DELAY_TYPE` is the 8-value MONO/STEREO routing enum, the real
  *  model list lives on `DELAY_MODEL`; cache-confirmed FM3/FM9/III), else the
- *  `<FAM>_TYPE` param. */
+ *  `<FAM>_TYPE` param, else an explicit per-family override for the few blocks
+ *  whose model selector is neither (their sub-model lives on `<FAM>_BASETYPE`).
+ *  A family with no entry here and no `<FAM>_MODEL`/`<FAM>_TYPE` has NO single
+ *  model selector — notably CABINET, whose "type" is the cab IR index, not an
+ *  enum, so `CABINET_PRETYPE` (the preamp-type dropdown) must stay a normal
+ *  enum rather than being mis-read as the model selector. */
+const MODEL_SELECTOR_OVERRIDES: Readonly<Record<string, string>> = {
+  MULTITAP: 'MULTITAP_BASETYPE',
+  PLEX: 'PLEX_BASETYPE',
+};
+export { MODEL_SELECTOR_OVERRIDES };
 const modelSelectorPid = (params: ParamsByFamily, fam: string): number | undefined => {
   const defs = params[fam] ?? [];
-  return (defs.find((p) => p.name === `${fam}_MODEL`) ?? defs.find((p) => p.name === `${fam}_TYPE`))?.paramId;
+  return (defs.find((p) => p.name === `${fam}_MODEL`)
+    ?? defs.find((p) => p.name === `${fam}_TYPE`)
+    ?? (MODEL_SELECTOR_OVERRIDES[fam] ? defs.find((p) => p.name === MODEL_SELECTOR_OVERRIDES[fam]) : undefined))?.paramId;
 };
 /** FM3-style roster/labels over a family-shaped enum-override table. */
 const familyShapedRosterFor = (params: ParamsByFamily, enums: Record<string, Record<string, string[]>>) =>
@@ -550,7 +581,7 @@ export const PROFILES: Record<number, DeviceProfile> = {
     enumLabelsFor: axe3EnumLabels,
     cabIrs: () => AXE3_CAB_IRS as unknown as Record<string, string[]>, // factory banks bundled (III editor cache, fw 32.6 era); USER banks read live
     familyForEffectId: eidFamily(), // III ships no effectId table → shared gen-3 virtual eids only
-    layoutFor: layoutFrom(AXE3_LAYOUTS as unknown as DeviceEditorLayouts),
+    layoutFor: layoutFrom(AXE3_LAYOUTS as unknown as DeviceEditorLayouts, AXE3_RENDERER),
     fcModel: AXE3_FC_MODEL,
     modModel: AXE3_MOD_MODEL,
     monitorParams: AXE3_MONITOR_PARAMS
@@ -567,7 +598,7 @@ export const PROFILES: Record<number, DeviceProfile> = {
     enumLabelsFor: fm3EnumLabels,
     cabIrs: () => fm3CabIrs, // device-true IR names per bank (fractal-midi FM3_CAB_IRS)
     familyForEffectId: eidFamily(FM3_FAMILY_BY_EFFECT_ID as Record<number, string>),
-    layoutFor: layoutFrom(FM3_LAYOUTS as unknown as DeviceEditorLayouts),
+    layoutFor: layoutFrom(FM3_LAYOUTS as unknown as DeviceEditorLayouts, FM3_RENDERER),
     fcModel: FM3_FC_MODEL,
     modModel: FM3_MOD_MODEL,
     monitorParams: FM3_MONITOR_PARAMS,

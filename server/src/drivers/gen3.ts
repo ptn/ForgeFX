@@ -31,7 +31,7 @@ import {
   retargetPresetDumpToEditBuffer,
   type DecodedBlock
 } from 'forgefx-midi/devices/gen3';
-import { SLUG_FAMILY, type DeviceProfile, type TypeModel, type DeviceLayout, type SelectorValues } from '../devices.js';
+import { SLUG_FAMILY, MODEL_SELECTOR_OVERRIDES, type DeviceProfile, type TypeModel, type DeviceLayout, type SelectorValues } from '../devices.js';
 import { blockHelpBySlug } from '../help.js';
 import type {
   DeviceDriver, DriverCapabilities, DriverCtx,
@@ -1284,13 +1284,18 @@ class Gen3Driver implements DeviceDriver {
    *       DIFFERENT selector entirely (FUZZ → FUZZ_CLIPTYPE pid 10, PITCH → PITCH_XFADETYPE
    *       pid 46; III DYNDIST → DYNDIST_BQTYPE) — so the Drive block's "type" read AND wrote
    *       the clipping-diode param (the field-reported drive-type bug);
-   *    3. the enum-unit /TYPE$/ heuristic, as the last resort for families with neither. */
+   *    3. an explicit per-family override (MULTITAP/PLEX: the sub-model lives on `<FAM>_BASETYPE`).
+   *
+   *  The unsafe `/TYPE$/` suffix fallback is REMOVED (Cab PID-43 bug): it resolved CABINET's
+   *  model selector to `CABINET_PRETYPE`, which then dropped the real "Preamp Type" dropdown from
+   *  `enums`. A family with no MODEL/TYPE/override (CABINET, CONTROLLERS, GLOBAL, …) has no single
+   *  model selector, so `'type'` resolves undefined and those enums stay in place. */
   #paramId(family: string, name: string): number | undefined {
     const defs = this.#prof.params[family] ?? [];
     if (name.toLowerCase() === 'type') {
       return (defs.find((p) => p.name === `${family}_MODEL`)
         ?? defs.find((p) => p.name === `${family}_TYPE`)
-        ?? defs.find((p) => p.unit === 'enum' && /TYPE$/i.test(p.name)))?.paramId;
+        ?? (MODEL_SELECTOR_OVERRIDES[family] ? defs.find((p) => p.name === MODEL_SELECTOR_OVERRIDES[family]) : undefined))?.paramId;
     }
     return defs.find((p) => p.displayLabel === name || p.name === name)?.paramId;
   }

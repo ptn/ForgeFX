@@ -3,6 +3,7 @@
 // must not drift. `DeviceDriver` is the per-device surface the routes call; methods a device lacks
 // are optional and mirrored by `DriverCapabilities` so routes can answer 501 instead of guessing.
 import type { DecodedBlock } from 'forgefx-midi/devices/gen3';
+import type { ParamHelp } from 'forgefx-midi/gen3/fm3';
 import type { TypeModel, DeviceLayout, DeviceProfile } from '../devices.js';
 import type { Transport } from '../transport/types.js';
 import type { TelemetryMode, CadenceProfile } from './telemetryProfiles.js';
@@ -40,8 +41,42 @@ export interface GridCellDTO {
  *  verified CRC), `'live'` = the gen-3 sub-0x2E live layout query (milliseconds, no CRC over the grid). */
 export interface PresetGridDTO { model: string; name: string; crcValid: boolean; rows: number; cols: number; scenes: string[]; cells: GridCellDTO[]; source: 'dump' | 'live'; }
 export interface PresetBlockDTO { slug: string; name: string; effectId: number; row: number; col: number; fromRows: number[]; bypassed: boolean | null; channel: string | null; }
-export interface NamedParam { id: number; name: string; value: number; norm: number; unit?: string; min?: number; max?: number; log?: boolean; }
-export interface EnumParam { id: number; name: string; value: number; options: { value: number; label: string }[]; }
+/** Why a param ships despite failing a usability check, instead of vanishing (Phase 1.2): the
+ *  device's layout can still name its paramId, and the renderer must be able to resolve every one.
+ *  `'no-range'` = no entry in the family's range table; `'degenerate-range'` = a 0-width (or
+ *  inverted) display range; `'duplicate-id'` = a later catalog def collided with an earlier one's
+ *  wire paramId (the earlier def ships unflagged; later ones flag it). Absent = normal, usable param. */
+export type UnusableParamReason = 'no-range' | 'degenerate-range' | 'duplicate-id';
+/** Fields ADDITIVE to a NamedParam/EnumParam beyond the original six `#display` keys
+ *  (value/norm/unit/min/max/log) — widened so Axis can stop re-deriving what ForgeFX already knows
+ *  (Phase 1.1). All optional: absent wherever the source data (ParamDef/RangeDef) doesn't carry it. */
+interface ParamMeta {
+  /** Editor symbol (e.g. `'REVERB_TIME'`) — joins to layout controls and `/help` without a second fetch. */
+  paramName?: string;
+  /** Catalog family (e.g. `'REVERB'`) — monitor/enum scoping is family-unique, not pid-unique. */
+  family?: string;
+  /** Device-true front-panel increment, in display units. */
+  step?: number;
+  /** Device-true default: decoded to display units for a float param, the raw ordinal for an enum
+   *  (RangeDef.defaultRaw already stores the enum default as its ordinal, not a wire value). */
+  default?: number;
+  /** Device-true taper. `'custom'` also carries `taperPoints`; a `'custom'` taper is not yet applied
+   *  on the wire, so the param is still served on a linear sweep for now. */
+  taper?: 'linear' | 'log' | 'flat' | 'custom';
+  taperPoints?: ReadonlyArray<readonly [number, number]>;
+  /** Catalog unit CODE (e.g. `'numeric'` / `'count'` / `'unverified'`) — distinct from `unit`, the
+   *  formatted display label ('dB', 'Hz', …) `#display` already resolves. */
+  unitCode?: string;
+  /** Control kind, no longer implied by which array (`named` vs `enums`) the param landed in. */
+  kind?: 'enum' | 'float';
+  /** Present when this param failed a usability check but ships anyway — see {@link UnusableParamReason}. */
+  unusable?: UnusableParamReason;
+  /** Curated tooltip copy (GET /help/blocks/:slug), folded in by paramName so Axis needs no second
+   *  fetch (Phase 1.5). Absent where the block/param has no curated help entry. */
+  help?: ParamHelp;
+}
+export interface NamedParam extends ParamMeta { id: number; name: string; value: number; norm: number; unit?: string; min?: number; max?: number; log?: boolean; }
+export interface EnumParam extends ParamMeta { id: number; name: string; value: number; options: { value: number; label: string }[]; }
 export interface MeterVal { norm: number; value: number; unit?: string; min?: number; max?: number; log?: boolean; }
 /** One side (tap/hold) of an FC switch as read by the sub-0x01 structured read. `present` = the
  *  device returned a record whose config/side echo matched the request; `raw` = the 78-byte response

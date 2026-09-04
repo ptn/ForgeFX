@@ -16,53 +16,100 @@ positions as the device organizes them — surfaced as plain JSON.
 
 ## The layout shape
 
-Each device supplies a per-family layout map. A family resolves to a layout of pages, and each
-page lists its controls in order:
+Each device supplies a per-family layout map (v2 schema — the block-type/firmware **variant**
+already resolved to the one the editor would show for the block's *current* type value; see
+`layoutFor(family, typeValue, selectors)` in [`server/src/devices.ts`](../server/src/devices.ts)).
+A resolved layout is variant metadata plus that variant's pages → rows → controls, **passed
+through verbatim** from the codec's `*_LAYOUTS` data — nothing here is Axis-invented arrangement:
 
 ```ts
 type DeviceLayout = {
-  editorName?: string;                       // the family's editor display name
+  editorName: string;                        // the block's editor display name (e.g. 'Amp')
+  family: string;                            // catalog family symbol (e.g. 'DISTORT')
+  variantName: string;                       // chosen variant's editor display name
+  variantValue: string | null;               // that variant's block-type selector value(s), or null
+  fw?: { gtet?: string; lt?: string };       // firmware gate on the chosen variant, when present
+  pinned?: boolean;                          // true for the firmware-current pinned variant (Amp)
   pages: {
     name: string;                            // tab/page label
-    controls: {
-      label: string;                         // control label as shown
-      paramName: string;                     // device param name
-      paramId: number | null;                // wire paramId (null = label-only / not addressable)
-      col?: number;                          // column hint for grid arrangement
+    pageNum?: number;
+    value?: string;                          // selector value(s) that gate this page, when present
+    selectorParamName?: string;              // the selector param this page's `value` gates on
+    fw?: { gtet?: string; lt?: string };
+    rows: {
+      section: 'parameters' | 'mixer';       // which page section the row belongs to
+      controls: {
+        label: string;                       // editor caption, '' for decorative controls
+        paramName: string | null;            // editor param symbol, null = decorative (spacer/graph)
+        paramId: number | null;              // wire paramId (null = not addressable)
+        widget: string;                      // normalized kind: knob/toggle/slider/dropdown/graph/…
+        rawWidget: string;                   // verbatim editor widget token, e.g. 'knobCompact'
+        placement?: { col?: number; offsetX?: number; offsetY?: number; positionExact?: string };
+        crossBlock?: { effect: string; family: string | null; paramName: string | null; paramId: number | null };
+        fw?: { gtet?: string; lt?: string };
+      }[];
     }[];
   }[];
 };
 ```
 
-This is the same shape for every gen-3 device; only the data differs per unit. The profile
-exposes it via `layoutFor(family)` (see [`server/src/devices.ts`](../server/src/devices.ts)).
+This is the same shape for every gen-3 device; only the data differs per unit. `resolveLayoutPages`
+has already collapsed selector/firmware siblings and pruned firmware-hidden controls, so a client
+renders exactly the pages/controls the editor would show for the block's current state — it should
+not re-filter by `value`/`fw` itself.
 
 ## Layouts on the parameter response
 
-`GET /preset/blocks/:eid/params` returns the block's live, named parameter values and now also
-carries the family's editor layout:
+`GET /preset/blocks/:eid/params` returns the block's live parameter values and now also carries
+the family's editor layout:
 
 ```jsonc
 {
   "block": "Amp",
   "slug": "amp",
   "page": 58,
-  "named": [ /* knob params with live values */ ],
-  "enums": [ /* discrete selectors */ ],
+  "named": [    // continuous params (kind 'float') — knobs
+    {
+      "id": 12, "name": "Drive", "value": 5.2, "norm": 0.52, "unit": "dB", "min": -20, "max": 20, "log": false,
+      "paramName": "DISTORT_DRIVE", "family": "DISTORT",       // editor symbol + catalog family
+      "step": 0.1, "default": 0,                               // device-true increment / default
+      "taper": "linear",                                       // 'linear' | 'log' | 'flat' | 'custom'
+      "unitCode": "db",                                        // catalog unit CODE (not the display label)
+      "kind": "float",
+      "help": { "blurb": "…", "tip": "…" }                      // curated copy, when this param has any
+    }
+  ],
+  "enums": [ /* discrete selectors — same additive fields, plus "options" */ ],
   "type":  { "value": 3, "name": "…" },
-  "layout": {                                 // ← editor-authentic pages for this family
-    "editorName": "Amp",
-    "pages": [
-      { "name": "…", "controls": [ { "label": "…", "paramName": "…", "paramId": 0, "col": 0 } ] }
-    ]
-  }
+  "layout": { /* editor-authentic pages for this family, shape above */ }
 }
 ```
 
+Every catalog def for the family ships in `named`/`enums` — none are dropped for being unusable
+any more. A param that has no range row, a degenerate (0-width) range, or a paramId that collides
+with an earlier def carries `"unusable": "no-range" | "degenerate-range" | "duplicate-id"` instead
+of vanishing, because a layout control can still name that paramId and the renderer must be able to
+resolve it. The two categories still excluded outright are real device semantics surfaced
+elsewhere: the raw bypass flag, and the family TYPE selector (surfaced as the top-level `type`).
+
 `layout` is **optional**: it is present when the active device profile has a layout for the
 block's family, and omitted otherwise. The `named`/`enums` arrays remain the source of truth for
-live values — `layout` only describes *how* a client may arrange and label them. A client that
-ignores `layout` still gets a fully functional flat parameter list.
+live values — `layout` only describes *how* a client should arrange and label them (a control's own
+`label`, not the param's `name`, is what should be rendered — see below). A client that ignores
+`layout` still gets a fully functional flat parameter list.
+
+## Labels: `named[].name`/`enums[].name` vs `layout` control labels
+
+`named`/`enums` carry the **catalog** label (`name`) — served unchanged, straight from the static
+catalog's `displayLabel`. It is **not** deduplicated and **not** overridden by the layout: two
+params that the editor shows as, say, four identical "Low Cut" mic knobs all carry the literal name
+`"Low Cut"` here. This is deliberate — ForgeFX no longer rewrites labels server-side (an earlier
+pipeline overwrote `name` with the resolved layout's own label, then appended "` 1`"/"` 2`" to
+disambiguate repeats, which is why served labels used to drift from the official editor). A client
+rendering by `layout` should use each **control's own** `label` (already unique per placement, and
+already the editor's current text for that firmware) and treat `named`/`enums[].name` as the
+catalog-only fallback for consumers that key off the flat param list directly (deep param search,
+the contract test).
 
 ## Virtual effects
 

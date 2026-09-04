@@ -32,6 +32,7 @@ import {
   type DecodedBlock
 } from 'forgefx-midi/devices/gen3';
 import { SLUG_FAMILY, type DeviceProfile, type TypeModel, type DeviceLayout, type SelectorValues } from '../devices.js';
+import { blockHelpBySlug } from '../help.js';
 import type {
   DeviceDriver, DriverCapabilities, DriverCtx,
   PresetGridDTO, PresetBlockDTO, PresetSummary, NamedParam, EnumParam, MeterVal,
@@ -163,47 +164,24 @@ const KNOB_UNITS = new Set([
   'numeric', 'knob_0_10', 'knob_0_20', 'db', 'hz', 'ms', 'seconds', 'percent', 'bipolar_percent', 'ratio', 'semitones', 'degrees'
 ]);
 
-/** Append 1/2/3… to labels that repeat within a list (e.g. the cab's four "Low Cut" mic params),
- * so the UI can tell otherwise-identical controls apart. Mutates the items' `name`. */
-function dedupeLabels(items: { name: string }[]): void {
-  const total = new Map<string, number>();
-  for (const it of items) total.set(it.name, (total.get(it.name) ?? 0) + 1);
-  const seen = new Map<string, number>();
-  for (const it of items) {
-    if ((total.get(it.name) ?? 0) > 1) {
-      const n = (seen.get(it.name) ?? 0) + 1;
-      seen.set(it.name, n);
-      it.name = `${it.name} ${n}`;
-    }
-  }
-}
-/** Friendly param label: the catalog displayLabel, else tidy the raw NAME (strip family prefix, _→space). */
+/** Friendly param label: the catalog displayLabel, else tidy the raw NAME (strip family prefix, _→space).
+ *  Served UNCHANGED (Phase 1.3) — this used to be overwritten by `applyLayoutLabels` with the resolved
+ *  layout's own control label, then `dedupeLabels` appended " 1"/" 2" to whatever repeated; that pipeline
+ *  is deleted, which is the fix for served labels drifting from the official app. The layout's own
+ *  `control.label` is what actually gets rendered (Axis draws by layout, not by this name) and is
+ *  already unique per placement; this stays the catalog-only name on `named`/`enums` for consumers that
+ *  key off them directly (the contract test, deep param search). Duplicate names across a block's params
+ *  (e.g. the cab's 4× "Low Cut") are therefore expected here now. */
 function paramLabel(p: { displayLabel?: string; name: string }): string {
   return p.displayLabel ?? p.name.replace(/^[A-Z0-9]+_/, '').replace(/_/g, ' ');
 }
-/** Override named/enum param labels with the resolved editor layout's OWN label, by paramId, when the
- *  layout has a non-empty one — the layout is already firmware/selector-resolved (see `layoutFor`), so
- *  this is how a firmware-renamed control (e.g. cab "Distance N" -> "Delay N" @ fw 12.00) shows the
- *  current name instead of the static catalog's possibly-stale displayLabel. Params the layout doesn't
- *  cover keep their static label untouched. First control wins if a paramId appears more than once. */
-function applyLayoutLabels(layout: DeviceLayout, named: NamedParam[], enums: EnumParam[]): void {
-  const labelByParamId = new Map<number, string>();
-  for (const page of layout.pages) {
-    for (const row of page.rows) {
-      for (const ctl of row.controls) {
-        if (ctl.paramId == null || !ctl.label || labelByParamId.has(ctl.paramId)) continue;
-        labelByParamId.set(ctl.paramId, ctl.label);
-      }
-    }
-  }
-  for (const p of named) {
-    const label = labelByParamId.get(p.id);
-    if (label) p.name = label;
-  }
-  for (const e of enums) {
-    const label = labelByParamId.get(e.id);
-    if (label) e.name = label;
-  }
+
+/** A catalog def paired with its resolved range (if any) and usability verdict — what the
+ *  knob/enum classification pass in `blockParams` builds before it has live wire values to read. */
+interface ParamCandidate {
+  p: { paramId: number; name: string; displayLabel?: string; unit?: string };
+  range?: { kind: 'enum' | 'float'; displayMin: number; displayMax: number; step?: number; defaultRaw?: number; taper?: 'linear' | 'log' | 'flat' | 'custom'; taperPoints?: ReadonlyArray<readonly [number, number]> };
+  unusable: NamedParam['unusable'];
 }
 
 class Gen3Driver implements DeviceDriver {
@@ -677,30 +655,36 @@ class Gen3Driver implements DeviceDriver {
       return { block: blockName, slug, page, named: [], enums: [], type: null, layout }; // no device-true param family mapped
     }
     const defs = this.#prof.params[family] ?? [];
-    // knob params = continuous, musician-facing: a float range + a real display unit
-    // (drops enum selectors, internal 'numeric'/'unverified' params, and bypass flags).
-    // knobs = every continuous param with a usable range. We expose ALL real controls (the UI
-    // organizes them); only genuinely-dead params are dropped: no range (min===max) or the bypass flag.
-    const seenIds = new Set<number>();
-    const knobs = defs.filter((p) => {
-      const range = this.#prof.ranges[family]?.[p.paramId];
-      if (range?.kind !== 'float') return false;
-      if (/bypass/i.test(p.displayLabel ?? p.name)) return false;
-      if (range.displayMin === range.displayMax) return false; // unusable (0..0) knob
-      if (seenIds.has(p.paramId)) return false; // dedupe same wire paramId (first wins)
-      seenIds.add(p.paramId);
-      return true;
-    });
-    // enums = every discrete selector. The family TYPE selector is excluded (header retype palette),
-    // plus the raw bypass flag; everything else (modes, slopes, mics, mic/cab pickers…) is shown.
+    // Classify EVERY catalog def for the family into named (kind 'float') or enums (kind 'enum') —
+    // nothing is silently dropped any more (Phase 1.2). A def that used to vanish entirely (no range
+    // row, a degenerate 0..0 range, or a paramId that collides with an earlier def's wire address)
+    // now ships flagged `unusable` instead: the device's layout can still name that paramId, so the
+    // renderer must be able to resolve every one it names. Only two categories stay excluded, because
+    // they're real device semantics re-surfaced elsewhere: the raw bypass flag, and the family TYPE
+    // selector (re-surfaced as `type` below).
     const typeId = this.#paramId(family, 'type');
-    const enumDefs = defs.filter((p) => {
+    const seenIds = new Set<number>();
+    const unusableFor = (paramId: number, range: ParamCandidate['range']): NamedParam['unusable'] => {
+      if (seenIds.has(paramId)) return 'duplicate-id'; // a later def collided with an earlier def's wire paramId
+      seenIds.add(paramId);
+      if (!range) return 'no-range';
+      if (range.kind === 'float' && range.displayMin === range.displayMax) return 'degenerate-range';
+      if (range.kind === 'enum' && range.displayMax <= range.displayMin) return 'degenerate-range';
+      return undefined;
+    };
+    const knobs: ParamCandidate[] = [];
+    const enumCands: ParamCandidate[] = [];
+    for (const p of defs) {
       const range = this.#prof.ranges[family]?.[p.paramId];
-      if (range?.kind !== 'enum' || p.paramId === typeId) return false;
-      if (range.displayMax <= range.displayMin) return false;
-      if (/^bypass$/i.test(p.displayLabel ?? p.name)) return false;
-      return true;
-    });
+      const isEnum = range ? range.kind === 'enum' : p.unit === 'enum'; // no range row → guess from the catalog unit code
+      if (isEnum) {
+        if (p.paramId === typeId || /^bypass$/i.test(p.displayLabel ?? p.name)) continue;
+        enumCands.push({ p, range, unusable: unusableFor(p.paramId, range) });
+      } else {
+        if (/bypass/i.test(p.displayLabel ?? p.name)) continue;
+        knobs.push({ p, range, unusable: unusableFor(p.paramId, range) });
+      }
+    }
     const named: NamedParam[] = [];
     const enums: EnumParam[] = [];
     let type: { value: number; name: string } | null = null;
@@ -718,18 +702,28 @@ class Gen3Driver implements DeviceDriver {
         // Prime the device-edit-push baseline with the OPEN channel's values so a later front-panel
         // edit's burst diffs cleanly to the moved param (no first-sight reload — see decodeEditBurst).
         this.#editSnapshot.set(eid, bulk.values.slice(base, base + stride));
-        for (const p of knobs) {
+        for (const { p, range, unusable } of knobs) {
           const raw = bulk.values[base + p.paramId] ?? 0;
-          named.push({ id: p.paramId, name: paramLabel(p), ...this.#display(family, p.paramId, raw) });
+          named.push({
+            id: p.paramId, name: paramLabel(p), ...this.#display(family, p.paramId, raw),
+            paramName: p.name, family, step: range?.step, default: this.#defaultDisplay(family, p.paramId, range),
+            taper: range?.taper, taperPoints: range?.taperPoints, unitCode: p.unit, kind: range?.kind ?? 'float',
+            unusable
+          });
         }
-        for (const p of enumDefs) {
-          const range = this.#prof.ranges[family]![p.paramId]!;
-          const max = Math.round(range.displayMax);
-          const min = Math.round(range.displayMin);
+        for (const { p, range, unusable } of enumCands) {
+          const max = range ? Math.round(range.displayMax) : 0;
+          const min = range ? Math.round(range.displayMin) : 0;
           const raw = bulk.values[base + p.paramId] ?? 0;
           // discrete params store the ordinal; if the wire value looks 16-bit-scaled, unscale it
-          const value = raw > max ? Math.round((raw / 65534) * (max - min)) + min : raw;
-          enums.push({ id: p.paramId, name: paramLabel(p), value, options: this.#enumOptions(family, p.paramId, p.name, min, max) });
+          const value = max > min && raw > max ? Math.round((raw / 65534) * (max - min)) + min : raw;
+          enums.push({
+            id: p.paramId, name: paramLabel(p), value,
+            options: max > min ? this.#enumOptions(family, p.paramId, p.name, min, max) : [],
+            paramName: p.name, family, step: range?.step, default: this.#defaultDisplay(family, p.paramId, range),
+            taper: range?.taper, taperPoints: range?.taperPoints, unitCode: p.unit, kind: range?.kind ?? 'enum',
+            unusable
+          });
         }
         // current model/type (for EQ band layout etc.)
         if (typeId != null) {
@@ -741,7 +735,7 @@ class Gen3Driver implements DeviceDriver {
         }
       } catch {
         named.length = 0; // a mid-loop throw left partial data — reset before the zeroed fallback
-        for (const p of knobs) named.push({ id: p.paramId, name: paramLabel(p), value: 0, norm: 0 });
+        for (const { p } of knobs) named.push({ id: p.paramId, name: paramLabel(p), value: 0, norm: 0 });
       }
     }
     // Current value of any page/control selector param, keyed by its editor symbol: the family type
@@ -761,16 +755,13 @@ class Gen3Driver implements DeviceDriver {
     // amp firmware-pinned variant, etc.) and filter its pages to the current selector/firmware state;
     // falls back to the null/first variant when type is unknown.
     layout = this.#prof.layoutFor(family, type?.value, selectors);
-    // Prefer the resolved layout's OWN label over the static catalog displayLabel where the editor
-    // has one: layoutFor already resolves firmware-versioned siblings to the newest firmware (see
-    // resolveLayoutPages), so a control the editor renamed on a later firmware (e.g. the cab's
-    // "Distance N" -> "Delay N" as of fw 12.00) shows the current name here, not the stale mined one.
-    // Static catalog stays the fallback for params the editor layout doesn't cover at all.
-    if (layout) applyLayoutLabels(layout, named, enums);
-    // disambiguate repeated labels within a block (e.g. the cab's 4× "Low Cut", amp's two "Depth")
-    // so identical names get a 1/2/3 suffix the UI can tell apart.
-    dedupeLabels(named);
-    dedupeLabels(enums);
+    // Fold each param's curated help blurb/tip (GET /help/blocks/:slug) onto it, keyed by the editor
+    // symbol (paramName) — one response, one source of UI truth, no second Axis fetch (Phase 1.5).
+    const help = blockHelpBySlug(this.#prof, slug);
+    if (help) {
+      for (const n of named) { const h = n.paramName ? help.paramsByName[n.paramName] : undefined; if (h) n.help = h; }
+      for (const e of enums) { const h = e.paramName ? help.paramsByName[e.paramName] : undefined; if (h) e.help = h; }
+    }
     return { block: blockName, slug, page, named, enums, type, layout };
   }
 
@@ -1273,6 +1264,15 @@ class Gen3Driver implements DeviceDriver {
       }
     }
     return { value: Math.round(norm * 1000) / 100, norm }; // 0..10 fallback
+  }
+
+  /** Device-true default (Phase 1.1): decoded to display units via `#display` for a float param, or
+   *  served as the raw ordinal for an enum (RangeDef.defaultRaw already stores the enum's default as
+   *  its ordinal, not a wire value that needs decoding). Undefined when the resolved range carries no
+   *  default — a walk-built runtime-profile override doesn't capture one (see the RangeDef note). */
+  #defaultDisplay(family: string | undefined, paramId: number, range: ParamCandidate['range']): number | undefined {
+    if (!range || range.defaultRaw == null) return undefined;
+    return range.kind === 'enum' ? range.defaultRaw : this.#display(family, paramId, range.defaultRaw).value;
   }
 
   /** Resolve a param name (display label) → device-true paramId. 'Type' → the model-selector,

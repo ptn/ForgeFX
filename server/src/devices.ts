@@ -374,7 +374,12 @@ type ParamDef = { paramId: number; name: string; displayLabel?: string; unit?: s
 // from EITHER source `ranges` resolves to — a static-catalog row (which carries them today) or a
 // walk-built RangeDef (which gains `taper` in a parallel work package). Optional → both read cleanly,
 // no rework when the walk builder starts populating it. `custom` also carries `taperPoints`.
-type RangeDef = { kind: string; displayMin: number; displayMax: number; typecode: number; scale?: number; step?: number; unit?: string; taper?: 'linear' | 'log' | 'flat' | 'custom'; taperPoints?: ReadonlyArray<readonly [number, number]> };
+// `kind` is tightened to the literal union (matching every real source table) so gen3.ts's
+// NamedParam/EnumParam.kind — no longer implied by which array a param landed in — can read it
+// straight through with no cast. `defaultRaw` is the device-DEFAULT as the stored u16 (or the enum's
+// default ordinal directly); present on the generated static catalogs, absent from a walk-built
+// runtime-profile override (the on-connect cache walk doesn't capture it).
+type RangeDef = { kind: 'enum' | 'float'; displayMin: number; displayMax: number; typecode: number; scale?: number; step?: number; unit?: string; taper?: 'linear' | 'log' | 'flat' | 'custom'; taperPoints?: ReadonlyArray<readonly [number, number]>; defaultRaw?: number };
 type ParamsByFamily = Record<string, ParamDef[]>;
 type Ranges = Record<string, Record<number, RangeDef>>;
 type RangeSections = Record<string, { stride: number; recordCount: number }>;

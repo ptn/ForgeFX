@@ -190,7 +190,11 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
       reply.code(400);
       return { error: 'libraryPath query parameter is required' };
     }
-    return { candidates: editorCacheDiscovery.discoverBlockFiles(editorCacheDiscovery.expandHomePath(libraryPath)) };
+    return {
+      candidates: editorCacheDiscovery
+        .discoverBlockFiles(editorCacheDiscovery.expandHomePath(libraryPath))
+        .map((c) => ({ ...c, slug: blockLibrarySave.slugForFolder(c.category) })),
+    };
   });
   // Decode: raw octet-stream of the .blk file, OR JSON { path, libraryPath }. File-based decode is
   // constrained to the library directory the caller explicitly selected. 422 on parse failure.

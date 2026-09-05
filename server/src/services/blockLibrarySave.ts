@@ -57,6 +57,18 @@ export function effectTypeForSlug(slug: string | undefined | null): EffectTypeIn
   return EFFECT_TYPE_BY_SLUG[slug.toLowerCase()] ?? null;
 }
 
+/** Inverse of EFFECT_TYPE_BY_SLUG: FM3-Edit category folder name → pack slug. Used to match a
+ *  discovered `.blk` (whose `category` is the folder it lives in) to the block family the palette
+ *  is browsing — the folder name ("Parametric EQ", "Wahwah") is NOT the pack slug ("peq", "wah"). */
+const SLUG_BY_FOLDER: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(Object.entries(EFFECT_TYPE_BY_SLUG).map(([slug, info]) => [info.folder, slug])),
+);
+
+export function slugForFolder(folder: string | null | undefined): string | null {
+  if (!folder) return null;
+  return SLUG_BY_FOLDER[folder] ?? null;
+}
+
 /** Human-readable family name for a pack slug — used only to make the refusal message actionable. */
 const SLUG_LABEL: Readonly<Record<string, string>> = Object.freeze({
   amp: 'Amp', cab: 'Cab', chorus: 'Chorus', comp: 'Compressor', delay: 'Delay', drive: 'Drive',

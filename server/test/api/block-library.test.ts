@@ -7,6 +7,7 @@ import { buildApp } from '../../src/app.js';
 import { __createRegistryForTest } from '../../src/drivers/registry.js';
 import { discoverBlockFiles, expandHomePath, type DiscoveryFs } from '../../src/services/editorCacheDiscovery.js';
 import { decodeBlockFile } from '../../src/services/blockLibraryImport.js';
+import { slugForFolder } from '../../src/services/blockLibrarySave.js';
 import { assert, assertEqual } from '../helpers/mock.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'block-library');
@@ -40,6 +41,15 @@ function discoveryUsesSuppliedLibrary(): void {
 
 function discoveryIgnoresMissingLibrary(): void {
   assertEqual(discoverBlockFiles('/missing', fakeFs({}, {})).length, 0, 'missing selected library yields no candidates');
+}
+
+function folderSlugMatching(): void {
+  assertEqual(slugForFolder('Parametric EQ'), 'peq', 'folder name maps to the peq pack slug');
+  assertEqual(slugForFolder('Wahwah'), 'wah', 'folder name maps to the wah pack slug');
+  assertEqual(slugForFolder('Multi Delay'), 'multitap', 'folder name maps to the multitap pack slug');
+  assertEqual(slugForFolder('Drive'), 'drive', 'verbatim folder names map through');
+  assertEqual(slugForFolder(null), null, 'a root-level file has no slug');
+  assertEqual(slugForFolder('Nope'), null, 'an unmapped folder resolves to null');
 }
 
 function expandsHomeLibraryPath(): void {
@@ -104,6 +114,7 @@ async function decodeRejections(): Promise<void> {
 export async function runBlockLibraryTests(): Promise<void> {
   discoveryUsesSuppliedLibrary();
   discoveryIgnoresMissingLibrary();
+  folderSlugMatching();
   expandsHomeLibraryPath();
   await decodeFixtureEndpoint();
   await sourcesRequireLibraryPath();

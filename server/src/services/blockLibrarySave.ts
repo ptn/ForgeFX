@@ -14,8 +14,8 @@ export interface EffectTypeInfo {
   folder: string;
 }
 
-/** editor pack slug → effectTypeId + library folder. Only the 25 ids confirmed across the whole
- *  real library are mapped; anything else refuses to save (the editor would reject a guessed id). */
+/** editor pack slug → effectTypeId + library folder. Only the ids confirmed against the real
+ *  library are mapped; anything else refuses to save (the editor would reject a guessed id). */
 const EFFECT_TYPE_BY_SLUG: Readonly<Record<string, EffectTypeInfo>> = Object.freeze({
   comp: { effectTypeId: 7, folder: 'Compressor' },
   geq: { effectTypeId: 8, folder: 'Graphic EQ' },
@@ -28,20 +28,27 @@ const EFFECT_TYPE_BY_SLUG: Readonly<Record<string, EffectTypeInfo>> = Object.fre
   plex: { effectTypeId: 15, folder: 'Plex Delay' },
   chorus: { effectTypeId: 16, folder: 'Chorus' },
   flanger: { effectTypeId: 17, folder: 'Flanger' },
+  rotary: { effectTypeId: 18, folder: 'Rotary' },
   phaser: { effectTypeId: 19, folder: 'Phaser' },
   wah: { effectTypeId: 20, folder: 'Wahwah' },
   tremolo: { effectTypeId: 22, folder: 'Tremolo-Panner' },
   pitch: { effectTypeId: 23, folder: 'Pitch Shifter' },
   filter: { effectTypeId: 24, folder: 'Filter' },
   drive: { effectTypeId: 25, folder: 'Drive' },
+  enhancer: { effectTypeId: 26, folder: 'Enhancer' },
+  mixer: { effectTypeId: 28, folder: 'Mixer' },
   return: { effectTypeId: 30, folder: 'Feedback Return' },
+  synth: { effectTypeId: 31, folder: 'Synth' },
   megatap: { effectTypeId: 33, folder: 'Megatap Delay' },
   gate: { effectTypeId: 35, folder: 'Gate-Expander' },
   ringmod: { effectTypeId: 36, folder: 'Ring Modulator' },
   multicomp: { effectTypeId: 37, folder: 'Multiband Compressor' },
   tentap: { effectTypeId: 38, folder: 'Ten-Tap Delay' },
   resonator: { effectTypeId: 39, folder: 'Resonator' },
+  volume: { effectTypeId: 40, folder: 'Volume-Pan' },
   input: { effectTypeId: 41, folder: 'Input 1' },
+  looper: { effectTypeId: 50, folder: 'Looper' },
+  multiplexer: { effectTypeId: 54, folder: 'Multiplex Delay' },
 });
 
 /** Resolve a block's pack slug to its editor effect-type id + library folder, or null (refuse). */

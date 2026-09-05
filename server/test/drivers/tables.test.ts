@@ -4,8 +4,8 @@
 // (the paramId cross-contamination bug class) fails here immediately.
 //
 // Grounded in what src/devices.ts actually wires:
-//   0x11 (FM3):  params/ranges/monitorParams/fc fields/mod fields/rosters/enum labels/cab IRs
-//                come straight from forgefx-midi/gen3/fm3.
+//   0x11 (FM3):  params/ranges/monitorParams/fc fields/mod fields/rosters/enum labels
+//                come straight from forgefx-midi/gen3/fm3; its phantom scratchpad table is excluded.
 //   0x12 (FM9):  params/ranges/monitorParams/fc fields/mod fields from forgefx-midi/gen3/fm9
 //                (rosters + enum labels are synthesized from FM9_ENUM_OVERRIDES — no identity).
 //   0x10 (III):  params/monitorParams/fc fields/mod fields from forgefx-midi/gen3/axe-fx-iii
@@ -38,7 +38,16 @@ const checks: Array<{ name: string; ok: () => boolean }> = [
   { name: 'fm3.fcModel.fields === FM3_FC_FIELDS', ok: () => same(fm3.fcModel?.fields, FM3_FC_FIELDS) },
   { name: 'fm3.modModel.fields === FM3_MOD_FIELDS', ok: () => same(fm3.modModel?.fields, FM3_MOD_FIELDS) },
   { name: "fm3.rosterFor('amp') === FM3_ROSTERS.amp", ok: () => same(fm3.rosterFor('amp'), (FM3_ROSTERS as Record<string, unknown>).amp) },
-  { name: 'fm3.cabIrs() === FM3_CAB_IRS', ok: () => same(fm3.cabIrs(), FM3_CAB_IRS) },
+  {
+    name: 'fm3.cabIrs preserves static banks but omits phantom scratchpad',
+    ok: () => {
+      const irs = fm3.cabIrs();
+      return irs['FACTORY 1'] === FM3_CAB_IRS['FACTORY 1']
+        && irs['FACTORY 2'] === FM3_CAB_IRS['FACTORY 2']
+        && irs.LEGACY === FM3_CAB_IRS.LEGACY
+        && !('SCRATCHPAD' in irs);
+    },
+  },
   {
     name: 'fm3.enumLabelsFor serves FM3_ENUM_OVERRIDES arrays by identity',
     ok: () => {

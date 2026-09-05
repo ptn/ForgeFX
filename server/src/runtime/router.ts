@@ -168,12 +168,10 @@ export function createRouter(deps: RuntimeDeps): {
     c.reply.code(r.code);
     return r.body;
   });
-  // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — refresh lets a driver merge live per-device banks.
+  // Cab IR names per bank. FM3 USER is cached from a live read; refresh replaces it.
   on('GET', '/cab/irs', async (c) => {
-    if (c.query.get('refresh') === '1') {
-      const d = await driver();
-      if (d.cabIrs) return d.cabIrs(true);
-    }
+    const d = await driver();
+    if (d.cabIrs) return d.cabIrs(c.query.get('refresh') === '1');
     return registry.profile.cabIrs();
   });
 

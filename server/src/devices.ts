@@ -517,7 +517,11 @@ const fm9EnumLabels = familyShapedEnumLabels(fm9Enums);
 // family → paramId → labels[], FM3_CAB_IRS = bank → IR names. ForgeFX is now a thin consumer.
 const fm3Rosters = FM3_ROSTERS as unknown as Record<string, Fm3TypeModel[]>;
 const fm3Enums = FM3_ENUM_OVERRIDES as unknown as Record<string, Record<string, string[]>>;
-const fm3CabIrs = FM3_CAB_IRS as unknown as Record<string, string[]>;
+// FM3-Edit's generated scratchpad table is III-sized data, not the FM3's
+// 16-slot device bank. Do not serve it until its live address range is known.
+const fm3CabIrs = Object.fromEntries(
+  Object.entries(FM3_CAB_IRS).filter(([bank]) => bank !== 'SCRATCHPAD'),
+) as Record<string, string[]>;
 const fm3Params = FM3_PARAMS_BY_FAMILY as unknown as ParamsByFamily;
 const fm3EnumRosterFor = familyShapedRosterFor(fm3Params, fm3Enums);
 function fm3RosterFor(slug: string): TypeModel[] {

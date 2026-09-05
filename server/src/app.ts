@@ -610,12 +610,10 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   // auto-detect the connected Fractal unit (FM3/FM9/Axe-Fx/…) via the fn 0x00 handshake
   app.get('/device/detect', () => registry.detect());
 
-  // cab IR names per bank (Factory 1/2, Legacy, Scratchpad) — refresh lets a driver merge live per-device banks.
+  // Cab IR names per bank. FM3 USER is cached from a live read; refresh replaces it.
   app.get<{ Querystring: { refresh?: string } }>('/cab/irs', async (req) => {
-    if (req.query.refresh === '1') {
-      const d = await driver();
-      if (d.cabIrs) return d.cabIrs(true);
-    }
+    const d = await driver();
+    if (d.cabIrs) return d.cabIrs(req.query.refresh === '1');
     return registry.profile.cabIrs();
   });
 

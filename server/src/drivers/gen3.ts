@@ -996,14 +996,22 @@ class Gen3Driver implements DeviceDriver {
     return { eid, values };
   }
 
-  /** Cab IR catalog. `refresh` is the API hook for live per-device USER/SCRATCHPAD reads; the live
-   *  wire path is still RE-pending, so refresh currently preserves the bundled factory/legacy banks
-   *  and fails soft instead of breaking the picker/cache build. */
+  #liveCabIrBanks: Record<string, string[]> | null = null;
+  #liveCabIrRead: Promise<Record<string, string[]>> | null = null;
+
+  /** Cab IR catalog. FM3 USER names are read once per connection and retained in their device slots. */
   async cabIrs(refresh = false): Promise<Record<string, string[]>> {
     const base = Object.fromEntries(Object.entries(this.#prof.cabIrs()).map(([k, v]) => [k, [...v]]));
-    if (!refresh) return base;
+    if (this.#prof.model !== FM3_MODEL) return base;
+    if (!refresh && this.#liveCabIrBanks) return { ...base, ...this.#liveCabIrBanks };
     try {
-      const live = await this.#liveCabIrs();
+      if (refresh || !this.#liveCabIrRead) {
+        this.#liveCabIrRead = this.#liveCabIrs().then((live) => {
+          this.#liveCabIrBanks = live;
+          return live;
+        }).finally(() => { this.#liveCabIrRead = null; });
+      }
+      const live = await this.#liveCabIrRead;
       return { ...base, ...live };
     } catch {
       return base;
@@ -1011,7 +1019,24 @@ class Gen3Driver implements DeviceDriver {
   }
 
   async #liveCabIrs(): Promise<Record<string, string[]>> {
-    return {};
+    const dev = await this.#conn();
+    const names = new Array<string>(512).fill('');
+    for (let slot = 0; slot < names.length; slot++) {
+      const flatIndex = 2048 + slot;
+      const query = this.#codec.buildCabIrNameRead(flatIndex);
+      // The 0x4B reply does not echo the requested flat index. Requests are serialized
+      // on the one device transport, so its function/sub-action pair identifies this reply.
+      const match = (f: number[]) => f[5] === 0x01 && f[6] === 0x4b;
+      const frames = await dev.request(query, {
+        timeoutMs: dev.slow ? 1500 : 600,
+        quietMs: dev.slow ? 80 : 20,
+        match: (fs) => fs.some(match),
+      });
+      const reply = frames.find(match);
+      const name = reply ? this.#codec.parseCabIrNameResponse(reply) : null;
+      if (name !== null) names[slot] = name;
+    }
+    return { USER: names };
   }
 
   /** Cab block state for the IR picker: current mode (Legacy / DynaCab), per-slot bank + IR index +
@@ -1056,7 +1081,7 @@ class Gen3Driver implements DeviceDriver {
       const list = irBanks[bankLabel] ?? [];
       const irIndex = ord(irParam, Math.max(0, list.length - 1));
       const dynaV = ord(dynaParam, Math.max(0, dynaOptions.length - 1));
-      return { slot: s + 1, bankParam, irParam, dynaParam, bank: { value: bankV, label: bankLabel }, irIndex, irName: list[irIndex] ?? `#${irIndex}`, dyna: { value: dynaV, label: dynaOptions[dynaV]?.label ?? String(dynaV) } };
+      return { slot: s + 1, bankParam, irParam, dynaParam, bank: { value: bankV, label: bankLabel }, irIndex, irName: list[irIndex] || `#${irIndex}`, dyna: { value: dynaV, label: dynaOptions[dynaV]?.label ?? String(dynaV) } };
     });
     const modeV = ord(modeParam, 1);
     return { modeParam, mode: { value: modeV, label: modeOptions[modeV]?.label ?? '' }, modeOptions, bankOptions, dynaOptions, slots };

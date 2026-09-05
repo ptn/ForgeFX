@@ -47,3 +47,9 @@ export function __createRegistryForTest(deps: Partial<RegistryDeps>): DeviceRegi
 export function __setDriverForTest(reg: DeviceRegistry, modelId: number, d: DeviceDriver): void {
   reg.__seedDriver(modelId, d);
 }
+
+/** TEST-ONLY: force the running-firmware snapshot on an ISOLATED test registry (the fn 0x08 query
+ *  is not scripted by the mock transport, so the save route's firmware stamp would otherwise be null). */
+export function __setFirmwareForTest(reg: DeviceRegistry, fw: { major: number; minor: number; version: string; build: string }): void {
+  reg.__setFirmwareForTest(fw);
+}

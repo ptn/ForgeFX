@@ -30,6 +30,7 @@ import * as deviceCache from './services/deviceCache.js';
 import * as editorCacheImport from './services/editorCacheImport.js';
 import * as colorLabelsImport from './services/colorLabelsImport.js';
 import * as blockLibraryImport from './services/blockLibraryImport.js';
+import * as blockLibrarySave from './services/blockLibrarySave.js';
 import * as editorCacheDiscovery from './services/editorCacheDiscovery.js';
 import * as cloudProfiles from './services/cloudProfiles.js';
 import * as store from './store.js';
@@ -220,6 +221,87 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
       return { error: 'block-file-parse-failed', message: (e as Error).message };
     }
   });
+  // Save a placed block back to a caller-selected `.blk` library (the write twin of the decode route
+  // above). Device-coupled: the payload is the block's live bulk-read burst and the firmware bytes
+  // come from the connected unit (never a previewed block). See services/blockLibrarySave.ts.
+  app.post<{ Body: { libraryPath?: string; name?: string; effectId?: number; mode?: 'current' | 'all'; overwrite?: boolean } }>(
+    '/fm3edit/blocks/save',
+    async (req, reply) => {
+      const b = req.body ?? {};
+      const { libraryPath, name, effectId, mode, overwrite } = b;
+      if (typeof libraryPath !== 'string' || !libraryPath.trim()) {
+        reply.code(400);
+        return { error: 'libraryPath is required' };
+      }
+      const safeName = blockLibrarySave.sanitizeBlockName(name ?? '');
+      if (!safeName) {
+        reply.code(400);
+        return { error: 'name is required and must be a safe filename' };
+      }
+      if (!Number.isInteger(effectId) || (effectId as number) < 0) {
+        reply.code(400);
+        return { error: 'effectId is required' };
+      }
+      const scope = mode === 'all' ? 'all' : 'current';
+
+      const d = await driver();
+      if (!d.captureBlockForSave) return unsupported(reply, 'blockLibrarySave');
+
+      // Firmware must come from the connected device — echoing a foreign block's version produces
+      // a file the editor refuses (too high) or silently migrates (too low). Fail without it.
+      const fw = registry.firmwareInfo();
+      if (!fw) {
+        reply.code(400);
+        return { error: 'firmware-not-reported', message: 'the connected device did not report its firmware version' };
+      }
+
+      let captured: Awaited<ReturnType<NonNullable<typeof d.captureBlockForSave>>>;
+      try {
+        captured = await d.captureBlockForSave(effectId as number, scope);
+      } catch (e) {
+        reply.code(503);
+        return { error: 'block-capture-failed', message: (e as Error).message };
+      }
+
+      const info = blockLibrarySave.effectTypeForSlug(captured.slug);
+      if (!info) {
+        reply.code(422);
+        return {
+          error: 'unsaved-family',
+          slug: captured.slug,
+          message: `${blockLibrarySave.slugLabel(captured.slug)} blocks can't be saved — this family has no confirmed editor effect-type id`,
+        };
+      }
+
+      const bytes = blockLibrarySave.buildBlockLibraryFile({
+        modelId: d.modelId,
+        firmware: { major: fw.major, minor: fw.minor },
+        effectTypeId: info.effectTypeId,
+        activeChannel: captured.activeChannel,
+        name: safeName,
+        payload: captured.payload,
+      });
+
+      try {
+        const result = blockLibrarySave.writeBlockLibraryFile(
+          editorCacheDiscovery.expandHomePath(libraryPath),
+          info,
+          safeName,
+          bytes,
+          !!overwrite,
+        );
+        return { ok: true, ...result };
+      } catch (e) {
+        const err = e as { code?: string; path?: string; message?: string };
+        if (err.code === 'EXISTS') {
+          reply.code(409);
+          return { error: 'block-exists', path: err.path };
+        }
+        reply.code(500);
+        return { error: 'block-save-failed', message: err.message };
+      }
+    },
+  );
 
   // ── unified handlers ──────────────────────────────────────────────────────────────────────────
   // Each capability-gated handler that a /am4/* alias folds into is a named function from

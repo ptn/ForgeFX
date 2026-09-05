@@ -268,6 +268,12 @@ export class DeviceRegistry {
     this.#drivers.set(modelId, d);
   }
 
+  /** TEST-ONLY seam: force the running-firmware snapshot (normally populated by the fn 0x08 query
+   *  during detect) so suites that need a firmware stamp can set one without scripting the query. */
+  __setFirmwareForTest(fw: { major: number; minor: number; version: string; build: string }): void {
+    this.#firmware = fw;
+  }
+
   /** TEST-ONLY: route-driven (non-supervisor) requests currently in flight — the value the supervisor
    *  yields on (FORGEFX-28). Production never calls this. */
   __interactiveInFlightForTest(): number { return this.#interactiveInFlight(); }

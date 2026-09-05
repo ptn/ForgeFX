@@ -1564,6 +1564,58 @@ class Gen3Driver implements DeviceDriver {
     this.#emit({ type: 'changed', scope: 'grid' });
     return { ok: true };
   }
+
+  /** Capture a placed block's whole burst for saving back to the `.blk` library. Reuses the fn 0x1F
+   *  bulk-read poll `blockParams` already uses (no second wire path); the payload is rebuilt with
+   *  `buildGen3BlockBulkWrite` so the 0x75 body pages carry `encode14(pageLen)` byte-exactly like a
+   *  real saved file (see forgefx-midi's bulkwrite goldens). */
+  async captureBlockForSave(eid: number, scope: 'current' | 'all'): Promise<{
+    blockId: number;
+    itemCount: number;
+    values: number[];
+    activeChannel: number;
+    slug: string;
+    payload: number[];
+  }> {
+    const codecSlug = slugForEffectId(eid) ?? '';
+    const family = SLUG_FAMILY[codecSlug.toLowerCase()] ?? this.#prof.familyForEffectId(eid);
+    const slug = codecSlug || (family ? family.toLowerCase() : '');
+    const activeCh = (await this.#statusByEffectId()).get(eid)?.channel ?? 0;
+    const dev = await this.#conn();
+    const frames = await dev.request(this.#codec.buildBlockBulkReadPoll(eid), {
+      timeoutMs: dev.slow ? 8000 : 2500,
+      quietMs: dev.slow ? 600 : 120,
+      match: (fs) => fs.some((f) => f[5] === 0x76),
+    });
+    const bulk = this.#codec.assembleGen3BlockBulkRead(frames);
+    const { stride, channelCount, base } = this.#channelSlice(family, bulk, activeCh);
+
+    let values: number[];
+    let xyState: number;
+    if (scope === 'current' && channelCount > 1) {
+      // Current channel keeps its live slice; the other channels reset to the device default.
+      const defs = family ? (this.#prof.params[family] ?? []) : [];
+      const defaults = new Array<number>(stride).fill(0);
+      for (const p of defs) {
+        if (p.paramId >= stride) continue;
+        const range = family ? this.#prof.ranges[family]?.[p.paramId] : undefined;
+        defaults[p.paramId] = range?.defaultRaw ?? 0;
+      }
+      values = new Array<number>(stride * channelCount).fill(0);
+      for (let ch = 0; ch < channelCount; ch++) {
+        const src = ch === activeCh ? bulk.values.slice(base, base + stride) : defaults;
+        for (let i = 0; i < stride; i++) values[ch * stride + i] = src[i] ?? 0;
+      }
+      xyState = activeCh;
+    } else {
+      values = bulk.values.slice();
+      xyState = activeCh;
+    }
+
+    const blockId = bulk.blockId || eid;
+    const payload = this.#codec.buildGen3BlockBulkWrite({ blockId, itemCount: values.length, values }).flat();
+    return { blockId, itemCount: values.length, values, activeChannel: xyState, slug, payload };
+  }
 }
 
 function clamp01(v: number) { return Math.max(0, Math.min(1, v)); }

@@ -302,6 +302,18 @@ export interface DeviceDriver {
    *  EFFECT_DUMP write) — the fast path that replaces the per-param apply loop. `block.values` are
    *  channel-blocked positional wire values (`index = channel × stride + paramId`), `itemCount` long. */
   applyBlock?(eid: number, block: { itemCount: number; values: number[] }, activeChannel: number): Promise<{ ok: boolean }>;
+  /** Capture a placed block's whole burst for saving back to the `.blk` library (gen-3). `scope`
+   *  'all' returns the live channel-blocked burst verbatim; 'current' keeps the active channel's
+   *  live slice and resets the other channels to the device default. Returns the assembled values
+   *  plus the flattened 0x74/0x75/0x76 payload already built (same envelope the `.blk` stores). */
+  captureBlockForSave?(eid: number, scope: 'current' | 'all'): Promise<{
+    blockId: number;
+    itemCount: number;
+    values: number[];
+    activeChannel: number;
+    slug: string;
+    payload: number[];
+  }>;
   setSceneName?(index: number, name: string): Promise<{ ok: boolean }>;
   setPresetName?(name: string): Promise<{ ok: boolean }>;
 

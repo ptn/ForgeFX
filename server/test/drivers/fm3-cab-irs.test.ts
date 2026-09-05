@@ -1,6 +1,7 @@
 import { createGen3Driver } from '../../src/drivers/gen3.js';
 import { cadenceFor } from '../../src/drivers/telemetryProfiles.js';
 import { PROFILES } from '../../src/devices.js';
+import { effectRoster } from 'forgefx-midi/devices/gen3';
 import { MockTransport, assertEqual } from '../helpers/mock.js';
 
 // Live FM3 slot 0 reply for "TDR Vox mix". Its bytes 12-13 are 0x01, 0x00,
@@ -30,6 +31,12 @@ export async function runFm3CabIrTests(): Promise<void> {
   assertEqual(user[0], 'TDR Vox mix', 'FM3 response without echoed index is accepted');
   assertEqual(user[511], 'TDR Vox mix', 'response is associated with its serialized request');
   assertEqual(mock.sent.length, 512, 'one read per FM3 USER slot');
+
+  const cab = effectRoster().find((block) => block.slug === 'cab');
+  if (!cab) throw new Error('FM3 cab effect missing from the roster');
+  mock.sent.length = 0;
+  await driver.cabState!(cab.page);
+  assertEqual(mock.sent.some((frame) => frame[5] === 0x01 && frame[6] === 0x4b), false, 'cab state must not read the live USER catalog');
 }
 
-export const FM3_CAB_IR_CASE_COUNT = 4;
+export const FM3_CAB_IR_CASE_COUNT = 5;

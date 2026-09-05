@@ -1072,7 +1072,10 @@ class Gen3Driver implements DeviceDriver {
     const dynaLabels = this.#prof.enumLabelsFor(family, dynaOptionPid) ?? [];
     const dynaOptions = this.#enumOptions(family, dynaOptionPid, 'DynaCab Type', 0, Math.max(0, dynaLabels.length - 1));
     const modeOptions = this.#enumOptions(family, modeParam, 'Mode', 0, 1);
-    const irBanks = await this.cabIrs(false);
+    // Cab state is read for the editor's compact slot summary. It must not start
+    // the 512-slot USER catalog scan; that is reserved for an explicit /cab/irs
+    // request, where Axis can persist the result in IndexedDB.
+    const irBanks = this.#liveCabIrBanks ? { ...this.#prof.cabIrs(), ...this.#liveCabIrBanks } : this.#prof.cabIrs();
     const slots = bankPids.slice(0, 2).map((bankParam, s) => {
       const irParam = irPids[s] ?? 4 + s;
       const dynaParam = dynaPids[s] ?? 85 + s;

@@ -70,6 +70,9 @@ export type DeviceLayout = {
   /** Chosen variant's block-type selector value(s), comma-joined as in the editor XML, or null for an
    *  unconditional / firmware-only-versioned variant (e.g. the Amp block). */
   variantValue: string | null;
+  /** The selector param whose current value keyed `variantValue`, when the variant was folded up from
+   *  page selectors (a family with no model selector — CABINET's `CABINET_MODE`). */
+  variantSelectorParamName?: string;
   /** Firmware gate of the chosen variant, when present. */
   fw?: EditorLayoutVariant['fw'];
   /** True when the chosen variant is the firmware-current pinned one (amp DISTORT block). */
@@ -99,9 +102,21 @@ const parseSelectorValues = (value: string | null | undefined): number[] =>
 //   3. else every variant (degenerate: nothing declared).
 // Within the winning set, prefer the firmware-pinned variant (amp DISTORT ships every historical fw
 // layout with exactly one pinned:true), else the first in editor order.
-const selectVariant = (block: EditorBlockLayout, typeValue?: number): EditorLayoutVariant | undefined => {
+const selectVariant = (block: EditorBlockLayout, typeValue?: number, selectors?: SelectorValues): EditorLayoutVariant | undefined => {
   const variants = block.variants;
   if (!variants.length) return undefined;
+  // A variant folded up from page-level selectors (a family with exactly one selector parameter —
+  // CABINET's `CABINET_MODE`) carries that parameter on `selectorParamName`, so its `value` keys on
+  // the selector's CURRENT value, not the block type. CABINET has no model selector, so a type-value
+  // match could never select its DynaCab variant.
+  const selectorName = variants.find((v) => v.selectorParamName)?.selectorParamName;
+  if (selectorName) {
+    const cur = selectors?.(selectorName);
+    let cands = cur == null ? [] : variants.filter((v) => parseSelectorValues(v.value).includes(cur));
+    if (!cands.length) cands = variants.filter((v) => v.value == null);
+    if (!cands.length) cands = variants;
+    return cands.find((v) => v.pinned) ?? cands[0];
+  }
   let cands = typeValue == null ? [] : variants.filter((v) => parseSelectorValues(v.value).includes(typeValue));
   if (!cands.length) cands = variants.filter((v) => v.value == null);
   if (!cands.length) cands = variants;
@@ -214,7 +229,7 @@ const layoutFrom = (layouts: DeviceEditorLayouts, renderer?: EditorRendererProfi
   (family: string, typeValue?: number, selectors?: SelectorValues): DeviceLayout | undefined => {
     const block = layouts[family];
     if (!block) return undefined;
-    const variant = selectVariant(block, typeValue);
+    const variant = selectVariant(block, typeValue, selectors);
     if (!variant) return undefined;
     const pages = resolveLayoutPages(variant.pages, typeValue, selectors);
     const servedPages: EditorLayoutPage[] = renderer
@@ -235,6 +250,7 @@ const layoutFrom = (layouts: DeviceEditorLayouts, renderer?: EditorRendererProfi
       family: block.family,
       variantName: variant.name,
       variantValue: variant.value,
+      ...(variant.selectorParamName ? { variantSelectorParamName: variant.selectorParamName } : {}),
       ...(variant.fw ? { fw: variant.fw } : {}),
       ...(variant.pinned ? { pinned: true } : {}),
       pages: servedPages,

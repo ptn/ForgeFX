@@ -52,6 +52,28 @@ const checks: Array<{ name: string; ok: () => boolean }> = [
   { name: 'AM4 COMP with no matching type falls back to the first variant', ok: () => am4LayoutFor('compressor', 99999)?.variantName === 'Analog' },
   { name: 'unknown family → undefined', ok: () => fm3.layoutFor('NOT_A_FAMILY') === undefined && axe3.layoutFor('NOT_A_FAMILY', 3) === undefined },
 
+  // ── variant selection: a SELECTOR-keyed variant (folded up from page selectors) ──
+  // CABINET has no model selector; its two variants ("0" legacy / "1" DynaCab) key on CABINET_MODE.
+  { name: 'FM3 CABINET: CABINET_MODE=1 selects the DynaCab variant and serves a dynaCabControl cone', ok: () => {
+    const sel: SelectorValues = (n) => (n === 'CABINET_MODE' ? 1 : undefined);
+    const l = fm3.layoutFor('CABINET', undefined, sel);
+    const hasCone = [...controlsOf(l!)].some(({ control }) => control.rawWidget === 'dynaCabControl');
+    return !!l && l.variantValue === '1' && hasCone; } },
+  { name: 'FM3 CABINET: CABINET_MODE=0 selects the legacy variant (no dynaCabControl)', ok: () => {
+    const sel: SelectorValues = (n) => (n === 'CABINET_MODE' ? 0 : undefined);
+    const l = fm3.layoutFor('CABINET', undefined, sel);
+    return !!l && l.variantValue === '0'
+      && ![...controlsOf(l)].some(({ control }) => control.rawWidget === 'dynaCabControl'); } },
+  { name: 'FM3 CABINET: unknown mode falls back to the legacy variant, never the DynaCab one', ok: () => {
+    const l = fm3.layoutFor('CABINET'); // no selectors
+    return !!l && l.variantValue === '0'; } },
+  { name: 'FM9 CABINET: CABINET_MODE=1 selects the DynaCab variant', ok: () => {
+    const sel: SelectorValues = (n) => (n === 'CABINET_MODE' ? 1 : undefined);
+    return fm9.layoutFor('CABINET', undefined, sel)?.variantValue === '1'; } },
+  { name: 'Axe-Fx III CABINET: CABINET_MODE=1 selects the DynaCab variant', ok: () => {
+    const sel: SelectorValues = (n) => (n === 'CABINET_MODE' ? 1 : undefined);
+    return axe3.layoutFor('CABINET', undefined, sel)?.variantValue === '1'; } },
+
   // ── v2 passthrough shape ──
   { name: 'Axe-Fx III DISTORT layout is v2-shaped (pages→rows→controls)', ok: () => { const l = axe3.layoutFor('DISTORT', 0); return !!l && shapeOk(l); } },
   { name: 'AM4 COMP layout is v2-shaped', ok: () => { const l = am4LayoutFor('compressor', 6); return !!l && shapeOk(l); } },

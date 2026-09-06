@@ -365,6 +365,7 @@ export function createRouter(deps: RuntimeDeps): {
     if (!d.getScene) return unsupported(c.reply, 'scenes');
     return d.getScene();
   });
+  on('GET', '/preset/scene-names', (c) => h.sceneNamesH(c.reply));
   on('POST', '/scene', (c) => h.sceneSetH(c.reply, (c.body as { index: number }).index));
   // Rename a scene (0-based index) in the working buffer. Visible immediately; persist is a separate store.
   on('POST', '/scene/name', async (c) => {

@@ -78,7 +78,7 @@ function driverFor(model: number, mock: MockTransport) {
   });
 }
 
-/** Mock that answers the live path: current preset, 8 scene names, and the grid frame. */
+/** Mock that answers the live path: current preset, optional scene names, and the grid frame. */
 function liveMock(opts: { grid?: boolean } = {}): MockTransport {
   const mock = new MockTransport('serial', 'mock-fm3');
   mock.isOpen = true;
@@ -93,7 +93,7 @@ function liveMock(opts: { grid?: boolean } = {}): MockTransport {
 
 const cases: Array<() => Promise<void>> = [];
 
-// 1. FM3 reads the grid live — decoded cells, preset name, scene names, and NO preset dump.
+// 1. FM3 reads the grid live without blocking on scene-name reads.
 cases.push(async () => {
   const mock = liveMock();
   const g = await driverFor(FM3, mock).grid();
@@ -103,8 +103,9 @@ cases.push(async () => {
   assertEqual(g.crcValid, false, 'the live read has no CRC over the grid');
   assertEqual(g.rows, 4, 'FM3 grid rows');
   assertEqual(g.cols, 12, 'FM3 grid cols');
-  assertEqual(g.scenes.length, 8, 'all 8 scene names are read');
-  assertEqual(g.scenes[0], 'Scene 1', 'first scene name');
+  assertEqual(g.scenes.length, 8, 'grid provides eight immediate scene labels');
+  assertEqual(g.scenes[0], 'Scene 1', 'cold grid uses the default first scene label');
+  assertEqual(mock.sent.filter((f) => f[5] === FN_QUERY_SCENE_NAME).length, 0, 'grid does not delay on scene-name reads');
   assert(!mock.sent.some(isDumpRequest), 'the live path must NOT request a preset dump');
   assert(mock.sent.some(isGridLayoutRequest), 'the live path requests the sub-0x2E layout');
 
@@ -156,7 +157,7 @@ cases.push(async () => {
   assert(threw, 'with neither read answered, the dump path surfaces its own decode error');
 });
 
-// 4. No current-preset reply → no way to key scene names to THIS preset → dump.
+// 4. No current-preset reply → no way to key the live grid to this preset → dump.
 cases.push(async () => {
   const mock = new MockTransport('serial', 'mock-fm3');
   mock.isOpen = true;
@@ -182,24 +183,25 @@ cases.push(async () => {
   assert(mock.sent.some(isDumpRequest), 'FM9 still dumps the preset');
 });
 
-// 6. Scene names are cached per preset — a second grid read (after the grid TTL is busted by an
-//    edit-buffer change) re-reads the layout but NOT the 8 scene names.
+// 6. Scene names are requested separately, then reused by grid reads for the same preset.
 cases.push(async () => {
   const mock = liveMock();
   const driver = driverFor(FM3, mock);
   await driver.grid();
-  const sceneReadsAfterFirst = mock.sent.filter((f) => f[5] === FN_QUERY_SCENE_NAME).length;
-  assertEqual(sceneReadsAfterFirst, 8, 'the first live grid reads all 8 scene names');
+  assertEqual(mock.sent.filter((f) => f[5] === FN_QUERY_SCENE_NAME).length, 0, 'initial grid does not read scene names');
+  const names = await driver.sceneNames();
+  assertEqual(names[0], 'Scene 1', 'scene-name route reads the stored labels');
+  assertEqual(mock.sent.filter((f) => f[5] === FN_QUERY_SCENE_NAME).length, 8, 'scene-name route performs eight reads');
 
   await driver.loadPresetBytes(Uint8Array.from([0xf0, 0x00, 0x01, 0x74, FM3, 0x77, 0x00, 0x00, 0xf7]));
   mock.sent.length = 0;
   await driver.grid();
-  assertEqual(mock.sent.filter((f) => f[5] === FN_QUERY_SCENE_NAME).length, 8, 'an edit-buffer replacement re-reads scene names');
+  assertEqual(mock.sent.filter((f) => f[5] === FN_QUERY_SCENE_NAME).length, 0, 'grid remains free of scene-name reads after an edit-buffer replacement');
 
   mock.sent.length = 0;
   await driver.cable(1, 1, 2, true); // busts the grid cache, not the scene cache (rows/cols are 1-indexed here)
   await driver.grid();
-  assertEqual(mock.sent.filter((f) => f[5] === FN_QUERY_SCENE_NAME).length, 0, 'scene names are served from cache on the same preset');
+  assertEqual(mock.sent.filter((f) => f[5] === FN_QUERY_SCENE_NAME).length, 0, 'grid uses cached names on the same preset');
   assert(mock.sent.some(isGridLayoutRequest), 'the layout itself is re-read');
 });
 

@@ -323,6 +323,8 @@ export interface DeviceDriver {
   tapTempo?(): Promise<{ ok: boolean }>;
   getScene?(): Promise<{ index: number }>;
   setScene?(index: number): Promise<{ ok: boolean }>;
+  /** Names for the current preset's scenes. Kept separate from the live-grid read so startup stays responsive. */
+  sceneNames?(): Promise<string[]>;
   /** Live active-channel per placed block (effectId → channel 0-3). Drives the registry's
    *  front-panel channel-change watch so a device-side A–D switch re-reads the per-channel
    *  block type. Gen-3 only (blocks with A–D channels); undefined on devices without channels. */

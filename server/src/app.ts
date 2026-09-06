@@ -57,7 +57,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   const {
     driver, unsupported,
     gridH, blocksH, sceneStateH, blockParamsH, setParamH, applySavedBlockH, bypassH, sceneSetH,
-    presetSelectH, presetStoreH, presetNameH, locationsH,
+    presetSelectH, presetStoreH, presetNameH, locationsH, sceneNamesH,
     backupH, restoreH, fwValidateH, deviceParamH, modModelH,
     telemetryConfigH, telemetrySetH,
     decodeH, decodeBytes
@@ -593,6 +593,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     if (!d.getScene) return unsupported(reply, 'scenes');
     return d.getScene();
   });
+  app.get('/preset/scene-names', async (_req, reply) => sceneNamesH(reply));
   app.post<{ Body: { index: number } }>('/scene', async (req, reply) => sceneSetH(reply, req.body.index));
   // Rename a scene (0-based index) in the working buffer. Visible immediately; persist is a separate store.
   app.post<{ Body: { index: number; name: string } }>('/scene/name', async (req, reply) => {

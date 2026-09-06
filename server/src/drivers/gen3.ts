@@ -354,6 +354,12 @@ class Gen3Driver implements DeviceDriver {
     return names;
   }
 
+  /** Read scene labels separately from the live grid. Eight serial reads must never delay the canvas. */
+  async sceneNames(): Promise<string[]> {
+    const ref = await this.presetRef();
+    return ref.number >= 0 ? this.#sceneNames(ref.number) : [];
+  }
+
   /** Live routing grid (fn 0x01 / sub 0x2E), FM3 only. Three small round trips in the steady state
    *  (preset ref + grid frame, scene names cached), ten right after a preset change. */
   async #liveGrid(): Promise<PresetGridDTO> {
@@ -362,7 +368,11 @@ class Gen3Driver implements DeviceDriver {
     // the number is what keys the scene-name cache to THIS preset (never the one we just left).
     const ref = await this.presetRef();
     if (ref.number < 0) throw new Error('no current-preset reply (cannot key scene names)');
-    const scenes = await this.#sceneNames(ref.number);
+    // A cold scene-name cache takes eight serial reads. Return the canvas first;
+    // Axis requests the labels separately after the grid is visible.
+    const scenes = this.#sceneCache?.preset === ref.number
+      ? this.#sceneCache.names
+      : Array.from({ length: GEN3_SCENES }, (_, i) => `Scene ${i + 1}`);
     const frames = await dev.request(buildRequestGridLayout(this.#prof.model), {
       timeoutMs: dev.slow ? 4000 : 1200,
       quietMs: dev.slow ? 300 : 80,

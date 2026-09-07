@@ -95,7 +95,8 @@ const parseSelectorValues = (value: string | null | undefined): number[] =>
     ? []
     : value.split(',').map((s) => s.trim()).filter((s) => s !== '').map(Number).filter((n) => Number.isFinite(n));
 
-// Pick the block-type / firmware variant that matches the block's CURRENT type value:
+// Pick the block-type / firmware variant that matches the block's CURRENT type value. The bundled
+// layouts target the newest supported firmware, so variants gated `lt` are legacy and never eligible:
 //   1. variants whose selector `value` list contains typeValue win (the normal per-type case);
 //   2. else the unconditional (value === null) variants — the firmware-only-versioned Amp block, whose
 //      variants all carry value:null but differ by `fw`;
@@ -103,7 +104,7 @@ const parseSelectorValues = (value: string | null | undefined): number[] =>
 // Within the winning set, prefer the firmware-pinned variant (amp DISTORT ships every historical fw
 // layout with exactly one pinned:true), else the first in editor order.
 const selectVariant = (block: EditorBlockLayout, typeValue?: number, selectors?: SelectorValues): EditorLayoutVariant | undefined => {
-  const variants = block.variants;
+  const variants = block.variants.filter((v) => v.fw?.lt == null);
   if (!variants.length) return undefined;
   // A variant folded up from page-level selectors (a family with exactly one selector parameter —
   // CABINET's `CABINET_MODE`) carries that parameter on `selectorParamName`, so its `value` keys on
@@ -140,7 +141,7 @@ const fwBound = (v?: string): number => {
 // apply to the NEWEST firmware — deterministic, no live firmware version needed:
 //   • a `gtet` (>=) sibling supersedes everything → keep the single highest `gtet`;
 //   • else null-gated (always-applicable) siblings supersede `lt`-only ones → keep the null-gated ones;
-//   • else (only `lt`-only siblings) the newest firmware reaches the highest `lt` bound → keep that one.
+//   • `lt`-only pages have already been removed: they apply only to older firmware.
 // With no firmware gates in the set the siblings are genuinely distinct → all kept.
 const preferNewestFw = <T extends { fw?: EditorFwRange }>(items: T[]): T[] => {
   if (items.length <= 1) return items;
@@ -149,7 +150,7 @@ const preferNewestFw = <T extends { fw?: EditorFwRange }>(items: T[]): T[] => {
   if (gtet.length) return [gtet.reduce((a, b) => (fwBound(b.fw!.gtet) > fwBound(a.fw!.gtet) ? b : a))];
   const nullGated = items.filter((i) => !i.fw?.gtet && !i.fw?.lt);
   if (nullGated.length) return nullGated;
-  return [items.reduce((a, b) => (fwBound(b.fw!.lt) > fwBound(a.fw!.lt) ? b : a))];
+  return [];
 };
 
 // Selector filter for one group of same-named pages: a page with no selector value is always kept; a
@@ -198,9 +199,9 @@ const pruneControlsByFw = (page: EditorLayoutPage): EditorLayoutPage => {
 };
 
 // Filter a variant's pages down to what the editor actually shows for the block's current state: pages
-// group by display name (same-named pages are selector/firmware siblings), each group collapses to the
-// selector-matching page(s), firmware siblings collapse to the newest-firmware one, and per-control
-// firmware gates prune controls hidden on the newest firmware. Order preserved.
+// discard legacy `lt` pages, then group by display name (same-named pages are selector/firmware siblings).
+// Each group collapses to the selector-matching page(s), firmware siblings collapse to the newest-firmware
+// one, and per-control firmware gates prune controls hidden on the newest firmware. Order preserved.
 export const resolveLayoutPages = (
   pages: EditorLayoutPage[],
   typeValue?: number,
@@ -209,6 +210,7 @@ export const resolveLayoutPages = (
   const order: string[] = [];
   const groups = new Map<string, EditorLayoutPage[]>();
   for (const p of pages) {
+    if (p.fw?.lt != null) continue;
     if (!groups.has(p.name)) { groups.set(p.name, []); order.push(p.name); }
     groups.get(p.name)!.push(p);
   }

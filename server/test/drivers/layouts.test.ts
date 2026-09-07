@@ -49,6 +49,9 @@ const checks: Array<{ name: string; ok: () => boolean }> = [
   // ── variant selection: FALLBACK ──
   { name: 'FM3 DISTORT falls back to the null-value variants and prefers the pinned one', ok: () => {
     const l = fm3.layoutFor('DISTORT', 5); return !!l && l.variantValue === null && l.pinned === true && l.variantName === 'Amp GTE 8.00'; } },
+  { name: 'FM3 COMP type 0 selects the current Studio FF variant, not Studio LT 10', ok: () => {
+    const l = fm3.layoutFor('COMP', 0);
+    return l?.variantName === 'Studio FF' && l.fw?.gtet === '10,00'; } },
   { name: 'AM4 COMP with no matching type falls back to the first variant', ok: () => am4LayoutFor('compressor', 99999)?.variantName === 'Analog' },
   { name: 'unknown family → undefined', ok: () => fm3.layoutFor('NOT_A_FAMILY') === undefined && axe3.layoutFor('NOT_A_FAMILY', 3) === undefined },
 
@@ -119,6 +122,11 @@ const checks: Array<{ name: string; ok: () => boolean }> = [
     const l = fm3.layoutFor('DISTORT', 15, sel);
     const auth = l?.pages.filter((p) => p.name === 'Authentic') ?? [];
     return auth.length === 1 && auth[0]!.fw?.gtet === '10,00' && auth[0]!.fw?.lt === undefined; } },
+  { name: 'FM3 FLANGER excludes legacy pages and old parameter symbols', ok: () => {
+    const l = fm3.layoutFor('FLANGER'); if (!l) return false;
+    const names = l.pages.map((p) => p.name);
+    return names.join(',') === 'Basic,Expert 1,Expert 2'
+      && ![...controlsOf(l)].some(({ control }) => control.paramName?.startsWith('OLD_FLANGER_')); } },
   { name: 'FM3 amp: no-selector pages (Preamp/Speaker) are always included', ok: () => {
     const sel: SelectorValues = (n) => (n === 'DISTORT_TYPE' ? 29 : undefined);
     const l = fm3.layoutFor('DISTORT', 29, sel);
@@ -208,12 +216,12 @@ const checks: Array<{ name: string; ok: () => boolean }> = [
     ];
     const out = resolveLayoutPages(pages);
     return out.length === 1 && out[0]!.fw === undefined; } },
-  { name: 'fw rule: only lt-only siblings → newest reaches the highest lt bound', ok: () => {
+  { name: 'fw rule: lt-only siblings are excluded on newest firmware', ok: () => {
     const pages: EditorLayoutPage[] = [
       { name: 'X', rows: [], fw: { lt: '6,00' } }, { name: 'X', rows: [], fw: { lt: '12,00' } },
     ];
     const out = resolveLayoutPages(pages);
-    return out.length === 1 && out[0]!.fw?.lt === '12,00'; } },
+    return out.length === 0; } },
 
   // ── page filtering: per-control firmware pruning (lt-bounded controls hidden on newest firmware) ──
   { name: 'control fw pruning: lt-bounded controls are dropped, gtet/ungated kept', ok: () => {

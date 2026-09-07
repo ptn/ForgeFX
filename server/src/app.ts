@@ -700,6 +700,23 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
       return await d.bindModifier(b.slot, b.targetEffectId, b.targetParam, b.source);
     } catch (e) { reply.code(503); return { ok: false, error: (e as Error).message }; }
   });
+  // resolve the modifier slot bound to a target (or the first free slot) — READ-ONLY lookup, so
+  // opening an editor for (targetEffectId, targetParam) edits the right slot instead of slot 1.
+  app.get<{ Querystring: { targetEffectId?: string; targetParam?: string } }>('/mod/slot', async (req, reply) => {
+    const targetEffectId = Number(req.query.targetEffectId);
+    const targetParam = Number(req.query.targetParam);
+    if (!Number.isFinite(targetEffectId) || !Number.isFinite(targetParam)) {
+      reply.code(400);
+      return { error: 'targetEffectId + targetParam required' };
+    }
+    try {
+      const d = await driver();
+      if (!d.resolveModifierSlot) return unsupported(reply, 'modifiers.bind');
+      const r = await d.resolveModifierSlot(targetEffectId, targetParam);
+      if (r.ok === false && r.error === 'no_free_slot') reply.code(409);
+      return r;
+    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+  });
   // raw param values for an effect (for FC eid 199 / Modifier eid 3, whose params have no display range)
   app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/raw', async (req, reply) => {
     try {

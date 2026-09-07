@@ -82,6 +82,10 @@ function makeFakeFm3(): DeviceDriver {
     store: async () => ({ ok: true }),
     setPresetName: async () => ({ ok: true }),
     modifierModel: () => ({ bindingSupported: true, slotCount: 16 }),
+    resolveModifierSlot: async (targetEffectId: number, targetParam: number) =>
+      targetEffectId === 99 && targetParam === 99
+        ? { ok: false, error: 'no_free_slot', slotCount: 16 }
+        : { ok: true, matched: targetEffectId === 58 && targetParam === 4, slot: 2, slotCount: 16 },
     dumpRaw: async (n: number) => ({ bytes: presetSyx(n), summary: summary(n) }),
     loadPresetBytes: async () => ({ ok: true }),
     decodePresetBytes: (bytes: Uint8Array) => {
@@ -133,6 +137,9 @@ const ROWS: Row[] = [
   { name: 'decode (JSON bytes)', method: 'POST', url: '/preset/decode', body: { bytes: [...presetSyx(42)] } },
   { name: 'fc model', method: 'GET', url: '/fc/model' },
   { name: 'mod model', method: 'GET', url: '/mod/model' },
+  { name: 'mod slot resolve', method: 'GET', url: '/mod/slot?targetEffectId=58&targetParam=4' },
+  { name: 'mod slot no free 409', method: 'GET', url: '/mod/slot?targetEffectId=99&targetParam=99' },
+  { name: 'mod slot missing 400', method: 'GET', url: '/mod/slot' },
   { name: 'monitors table', method: 'GET', url: '/preset/monitors' },
   { name: 'cab irs', method: 'GET', url: '/cab/irs' },
   { name: 'help block', method: 'GET', url: '/help/blocks/reverb' },
@@ -166,7 +173,7 @@ const ROWS: Row[] = [
 ];
 
 // dynamic follow-ups (need the version id from the backup row) + local rows + subscribe = extra cases
-export const ROUTER_PARITY_CASE_COUNT = ROWS.length + 8;
+export const ROUTER_PARITY_CASE_COUNT = ROWS.length + 11;
 
 function deepEq(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;

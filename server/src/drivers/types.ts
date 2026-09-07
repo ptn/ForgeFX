@@ -279,6 +279,10 @@ export interface DeviceDriver {
   fcReadSwitch?(layout: number, view: number, sw: number): Promise<FcSwitchState>;
   fcReadState?(layout: number, view: number, sw: number): Promise<FcReadState>;
   bindModifier?(slot: number, targetEffectId: number, targetParam: number, source: number): Promise<{ ok: boolean; error?: string; slotEid?: number; slot?: number; targetEffectId?: number; targetParam?: number; source?: number }>;
+  /** Resolve which modifier slot is bound to a target (or the first free slot) — READ-ONLY lookup.
+   *  `ok:false` with `error === 'no_free_slot'` means every slot is taken and the caller must not
+   *  overwrite an unrelated assignment. */
+  resolveModifierSlot?(targetEffectId: number, targetParam: number): Promise<{ ok: boolean; matched?: boolean; slot?: number; slotCount?: number; error?: string }>;
 
   // ── writes ──
   setParam?(eid: number, paramId: number, value: number, continuous: boolean): Promise<{ ok: boolean }>;

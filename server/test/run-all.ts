@@ -21,6 +21,8 @@ import { runCabDynacabTests, CAB_DYNACAB_CASE_COUNT } from './drivers/cab-dynaca
 import { runTelemetryTests, TELEMETRY_CASE_COUNT } from './drivers/telemetry.test.js';
 import { runGen3LiveGridTests, GEN3_LIVEGRID_CASE_COUNT } from './drivers/gen3-livegrid.test.js';
 import { runFm3CabIrTests, FM3_CAB_IR_CASE_COUNT } from './drivers/fm3-cab-irs.test.js';
+import { runModifierSlotsTests, MODIFIER_SLOTS_CASE_COUNT } from './drivers/modifier-slots.test.js';
+import { runGen3ModifierSlotTests, GEN3_MODIFIER_SLOT_CASE_COUNT } from './drivers/gen3-modifier-slot.test.js';
 import { runAliasParityTests, ALIAS_PARITY_CASE_COUNT } from './api/alias-parity.test.js';
 import { runCapsTests, CAPS_CASE_COUNT } from './api/caps.test.js';
 import { runTelemetryConfigTests, TELEMETRY_CONFIG_CASE_COUNT } from './api/telemetryConfig.test.js';
@@ -56,6 +58,8 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `drivers/telemetry (${TELEMETRY_CASE_COUNT} cadence/traffic/echo-guard/yield cases)`, run: runTelemetryTests },
   { name: `drivers/gen3-livegrid (${GEN3_LIVEGRID_CASE_COUNT} cases, FM3 live sub-0x2E grid + dump fallback)`, run: runGen3LiveGridTests },
   { name: `drivers/fm3-cab-irs (${FM3_CAB_IR_CASE_COUNT} cases, 512-slot live USER catalog)`, run: runFm3CabIrTests },
+  { name: `drivers/modifier-slots (${MODIFIER_SLOTS_CASE_COUNT} cases, pure target→slot selection)`, run: runModifierSlotsTests },
+  { name: `drivers/gen3-modifier-slot (${GEN3_MODIFIER_SLOT_CASE_COUNT} cases, read-only slot resolution, mocked FM3)`, run: runGen3ModifierSlotTests },
   { name: `api/alias-parity (${ALIAS_PARITY_CASE_COUNT} alias↔unified twins, mocked AM4)`, run: runAliasParityTests },
   { name: `api/caps (${CAPS_CASE_COUNT} device capability matrices)`, run: runCapsTests },
   { name: `api/telemetryConfig (${TELEMETRY_CONFIG_CASE_COUNT} GET/PUT mode + event + parity)`, run: runTelemetryConfigTests },

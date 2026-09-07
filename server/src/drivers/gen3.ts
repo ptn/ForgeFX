@@ -33,6 +33,7 @@ import {
 } from 'forgefx-midi/devices/gen3';
 import { SLUG_FAMILY, MODEL_SELECTOR_OVERRIDES, type DeviceProfile, type TypeModel, type DeviceLayout, type SelectorValues } from '../devices.js';
 import { blockHelpBySlug } from '../help.js';
+import { selectModifierSlot } from './modifierSlots.js';
 import type {
   DeviceDriver, DriverCapabilities, DriverCtx,
   PresetGridDTO, PresetBlockDTO, PresetSummary, NamedParam, EnumParam, MeterVal,
@@ -991,7 +992,8 @@ class Gen3Driver implements DeviceDriver {
   /** Raw bulk-read of any effect's param values indexed by paramId — for FC (eid 199) / Modifier
    *  (eid 3), whose params carry no display range so blockParams returns them empty. Sparse
    *  (only non-zero pids), first channel. The client computes pids from the FC/Modifier model. */
-  async rawBlock(eid: number): Promise<{ eid: number; values: Record<number, number> }> {
+  /** Sparse bulk-read of one effect's non-zero param values, keyed by paramId. */
+  async #readRawValues(eid: number): Promise<Record<number, number>> {
     const dev = await this.#conn();
     const frames = await dev.request(this.#codec.buildBlockBulkReadPoll(eid), {
       timeoutMs: 2500,
@@ -1003,7 +1005,11 @@ class Gen3Driver implements DeviceDriver {
     bulk.values.forEach((v, i) => {
       if (v) values[i] = v;
     });
-    return { eid, values };
+    return values;
+  }
+
+  async rawBlock(eid: number): Promise<{ eid: number; values: Record<number, number> }> {
+    return { eid, values: await this.#readRawValues(eid) };
   }
 
   #liveCabIrBanks: Record<string, string[]> | null = null;
@@ -1447,6 +1453,30 @@ class Gen3Driver implements DeviceDriver {
     await this.#write(this.#codec.buildSetParameter(slotEid, f.targetParam.pid, targetParam));
     await this.#write(this.#codec.buildSetParameter(slotEid, f.source.pid, source));
     return { ok: true, slotEid, slot, targetEffectId, targetParam, source };
+  }
+
+  /** Resolve the modifier slot bound to a target parameter (or the first free slot) — READ-ONLY.
+   *  Reads each slot's source/targetEffectId/targetParam via the standard bulk read; never writes. */
+  async resolveModifierSlot(targetEffectId: number, targetParam: number) {
+    const mm = this.#prof.modModel;
+    if (!mm) return { ok: false, error: 'device has no modifier model' };
+    const { effectId, slotCount, fields } = mm;
+    const sourcePid = fields.source?.pid;
+    const targetEffectIdPid = fields.targetEffectId?.pid;
+    const targetParamPid = fields.targetParam?.pid;
+    if (sourcePid == null || targetEffectIdPid == null || targetParamPid == null) {
+      return { ok: false, error: 'modifier model is missing the binding fields (source/targetEffectId/targetParam)' };
+    }
+    const resolution = await selectModifierSlot(slotCount, targetEffectId, targetParam, async (slot) => {
+      const values = await this.#readRawValues(effectId + (slot - 1));
+      return {
+        source: values[sourcePid] ?? 0,
+        targetEffectId: values[targetEffectIdPid] ?? 0,
+        targetParam: values[targetParamPid] ?? 0
+      };
+    });
+    if (resolution.kind === 'noFreeSlot') return { ok: false, error: 'no_free_slot', slotCount };
+    return { ok: true, matched: resolution.kind === 'matched', slot: resolution.slot, slotCount };
   }
 
   /** Modifier address model for GET /mod/model — the profile's ModModel plus the Phase-6 superset

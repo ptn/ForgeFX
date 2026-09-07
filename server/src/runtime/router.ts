@@ -434,6 +434,22 @@ export function createRouter(deps: RuntimeDeps): {
       return await d.bindModifier(b.slot, b.targetEffectId, b.targetParam, b.source);
     } catch (e) { c.reply.code(503); return { ok: false, error: (e as Error).message }; }
   });
+  // resolve the modifier slot bound to a target (or the first free slot) — READ-ONLY lookup.
+  on('GET', '/mod/slot', async (c) => {
+    const targetEffectId = Number(c.query.get('targetEffectId') ?? NaN);
+    const targetParam = Number(c.query.get('targetParam') ?? NaN);
+    if (!Number.isFinite(targetEffectId) || !Number.isFinite(targetParam)) {
+      c.reply.code(400);
+      return { error: 'targetEffectId + targetParam required' };
+    }
+    try {
+      const d = await driver();
+      if (!d.resolveModifierSlot) return unsupported(c.reply, 'modifiers.bind');
+      const r = await d.resolveModifierSlot(targetEffectId, targetParam);
+      if (r.ok === false && r.error === 'no_free_slot') c.reply.code(409);
+      return r;
+    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
+  });
 
   // Validate a firmware .syx (integrity check only, NOT a flasher). Capability firmwareValidate.
   on('POST', '/firmware/validate', (c) => h.fwValidateH(c.reply, (c.body as { bytes?: number[] } | undefined)?.bytes));

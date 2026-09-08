@@ -542,7 +542,7 @@ function fm3EnumLabels(family: string, paramId: number): string[] | undefined {
 // over the param table's inline displayMin/Max. Cache placeholder rows (all-zero float rows kept 1:1
 // for wire-stride math) carry no display info — inline bounds win there; informative cache rows win
 // everywhere else (they're the newer authority).
-const CONT_UNITS = new Set(['numeric', 'knob_0_10', 'knob_0_20', 'db', 'hz', 'ms', 'seconds', 'percent', 'bipolar_percent', 'ratio', 'semitones', 'degrees']);
+const CONT_UNITS = new Set(['numeric', 'knob_0_10', 'knob_0_20', 'db', 'hz', 'ms', 'seconds', 'percent', 'bipolar_percent', 'ratio', 'semitones', 'cents', 'degrees']);
 const axe3Params = AXE3_PARAMS as unknown as Record<string, (ParamDef & { displayMin?: number; displayMax?: number })[]>;
 const axe3DeviceRanges = AXE3_DEVICE_RANGES as unknown as Ranges;
 const AXE3_RANGES: Ranges = (() => {

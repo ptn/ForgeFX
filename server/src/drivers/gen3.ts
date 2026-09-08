@@ -157,12 +157,12 @@ const CH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 // catalog unit code → display label (blank = show the bare number)
 const UNIT_LABEL: Record<string, string> = {
   db: 'dB', hz: 'Hz', ms: 'ms', seconds: 's', percent: '%', bipolar_percent: '%',
-  degrees: '°', semitones: 'st', pf: 'pF', ratio: ':1'
+  degrees: '°', semitones: 'st', cents: 'ct', pf: 'pF', ratio: ':1'
 };
 // units that mark a musician-facing knob. 'numeric' = a plain unitless knob (Drive, Tone, Level,
 // cut freqs…) — primary controls in many families; only 'unverified'/'count'/'enum' are non-knobs.
 const KNOB_UNITS = new Set([
-  'numeric', 'knob_0_10', 'knob_0_20', 'db', 'hz', 'ms', 'seconds', 'percent', 'bipolar_percent', 'ratio', 'semitones', 'degrees'
+  'numeric', 'knob_0_10', 'knob_0_20', 'db', 'hz', 'ms', 'seconds', 'percent', 'bipolar_percent', 'ratio', 'semitones', 'cents', 'degrees'
 ]);
 
 /** Friendly param label: the catalog displayLabel, else tidy the raw NAME (strip family prefix, _→space).

@@ -63,6 +63,7 @@ const PARAMS: { paramId: number; name: string; unit: string }[] = [
   { paramId: 14, name: 'CATALOG_UNIT_WINS', unit: 'db' }, // overlay would say 'dB'
   { paramId: 15, name: 'ABSENT_UNIT_OVERLAY', unit: 'db' }, // overlay 'dB' is the expected fallback
   { paramId: 16, name: 'NONZERO_MIN_ENUM', unit: 'enum' },
+  { paramId: 17, name: 'CENTS_OVERLAY', unit: 'cents' }, // typecode-derived code → overlay 'ct'
 ];
 // typecode 0x40 → middle nibble ((0x40>>4)&0xf)=4 → the heuristic reads log10; 0x00 → linear.
 const RANGES: Record<number, Range> = {
@@ -73,6 +74,7 @@ const RANGES: Record<number, Range> = {
   14: { kind: 'float', displayMin: 0, displayMax: 10, typecode: 0x00, unit: 'MyHz' }, // device-true unit token
   15: { kind: 'float', displayMin: 0, displayMax: 10, typecode: 0x00 }, // no device-true unit → overlay
   16: { kind: 'enum', displayMin: 1, displayMax: 3, typecode: 0x10 },
+  17: { kind: 'float', displayMin: -50, displayMax: 50, typecode: 0x731 }, // no device-true unit → overlay
 };
 
 function synthProfile(): DeviceProfile {
@@ -124,6 +126,14 @@ export async function runDefinitionCompletenessTests(): Promise<void> {
   // UNIT — device-true range.unit wins over the AM4-name-overlay (UNIT_LABEL) fallback.
   assertEqual(get(14).unit, 'MyHz', 'catalog range.unit passthrough beats the AM4 overlay');
   assertEqual(get(15).unit, 'dB', "absent range.unit → overlay fallback preserved (UNIT_LABEL['db'])");
+  // 'cents' is the code the typecode derivation introduced (class 0x7 — detune/offset). It must be
+  // in UNIT_LABEL (→ 'ct'), in KNOB_UNITS, and in CONT_UNITS — omission from the last would
+  // silently reclassify every detune param as an enum, so assert it arrives as a named knob.
+  assertEqual(get(17).unit, 'ct', "catalog unit 'cents' → overlay 'ct' (UNIT_LABEL['cents'])");
+  assert(
+    params.named.some((param) => param.id === 17),
+    "'cents' must be a continuous knob unit — missing from CONT_UNITS/KNOB_UNITS reclassifies detune as enum",
+  );
 
   // ENUM — label tables are ordinal arrays even when the parameter's displayed values start above zero.
   const nonzeroMin = params.enums.find((param) => param.id === 16);

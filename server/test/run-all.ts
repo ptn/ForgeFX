@@ -17,6 +17,7 @@ import { runWalkReclassificationTests, WALK_RECLASSIFICATION_CASE_COUNT } from '
 import { runTablesTests, TABLES_CASE_COUNT } from './drivers/tables.test.js';
 import { runLayoutsTests, LAYOUTS_CASE_COUNT } from './drivers/layouts.test.js';
 import { runCabPrettypeTests, CAB_PRETTYPE_CASE_COUNT } from './drivers/cab-prettype.test.js';
+import { runPhaserQuantizeTests, PHASER_QUANTIZE_CASE_COUNT } from './drivers/phaser-quantize.test.js';
 import { runCabDynacabTests, CAB_DYNACAB_CASE_COUNT } from './drivers/cab-dynacab.test.js';
 import { runTelemetryTests, TELEMETRY_CASE_COUNT } from './drivers/telemetry.test.js';
 import { runGen3LiveGridTests, GEN3_LIVEGRID_CASE_COUNT } from './drivers/gen3-livegrid.test.js';
@@ -54,6 +55,7 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `drivers/tables (${TABLES_CASE_COUNT} identity checks, paramId cross-contamination guard)`, run: runTablesTests },
   { name: `drivers/layouts (${LAYOUTS_CASE_COUNT} editor-layout v2 variant-selection + passthrough)`, run: runLayoutsTests },
   { name: `drivers/cab-prettype (${CAB_PRETTYPE_CASE_COUNT} cases, CABINET_PRETYPE enum + renderer geometry passthrough)`, run: runCabPrettypeTests },
+  { name: `drivers/phaser-quantize (${PHASER_QUANTIZE_CASE_COUNT} cases, continuous knob presentation over discrete ordinals)`, run: runPhaserQuantizeTests },
   { name: `drivers/cab-dynacab (${CAB_DYNACAB_CASE_COUNT} cases, CABINET_MODE selector → DynaCab variant + cone)`, run: runCabDynacabTests },
   { name: `drivers/telemetry (${TELEMETRY_CASE_COUNT} cadence/traffic/echo-guard/yield cases)`, run: runTelemetryTests },
   { name: `drivers/gen3-livegrid (${GEN3_LIVEGRID_CASE_COUNT} cases, FM3 live sub-0x2E grid + dump fallback)`, run: runGen3LiveGridTests },

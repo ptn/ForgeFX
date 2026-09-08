@@ -650,8 +650,8 @@ class Gen3Driver implements DeviceDriver {
    * (knob position); `value`/`unit` are the device-true DISPLAY reading via this.#prof.ranges
    * (e.g. 1.2k Hz, -12 dB) where the cache has a range, else the 0..10 position.
    */
-  async blockParams(eid: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null; layout?: DeviceLayout }> {
-    this.#watchedEid = eid; // this is the block the user has open → the target the FM3 device-edit poll re-reads
+  async blockParams(eid: number, options: { observe?: boolean } = {}): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null; layout?: DeviceLayout }> {
+    if (options.observe !== false) this.#watchedEid = eid; // the block the user opened is the device-edit poll target
     const codecSlug = slugForEffectId(eid) ?? ''; // audio blocks resolve via the codec
     // virtual effects (GLOBAL=1, Controllers=2, Modifier=3, FC=199) resolve via the profile's effectId map
     const family = SLUG_FAMILY[codecSlug.toLowerCase()] ?? this.#prof.familyForEffectId(eid);
@@ -706,7 +706,7 @@ class Gen3Driver implements DeviceDriver {
         // params/type: the fn-0x1F body is channel-blocked and holds ALL channels, so we must slice the
         // active one, not always channel A. Costs one status round-trip per open — worth it for correctness.
         const activeCh = (await this.#statusByEffectId()).get(eid)?.channel ?? 0;
-        this.#watchedChannel = activeCh; // keep the device-edit-burst diff on the same channel (see decodeEditBurst)
+        if (options.observe !== false) this.#watchedChannel = activeCh; // keep the device-edit-burst diff on the same channel
         const frames = await dev.request(this.#codec.buildBlockBulkReadPoll(eid), { timeoutMs: dev.slow ? 8000 : 2500, quietMs: dev.slow ? 600 : 120, match: (fs) => fs.some((f) => f[5] === 0x76) });
         const bulk = this.#codec.assembleGen3BlockBulkRead(frames);
         const { stride, base } = this.#channelSlice(family, bulk, activeCh);
@@ -1485,7 +1485,18 @@ class Gen3Driver implements DeviceDriver {
    *  against the pre-Phase-6 sweep baseline. */
   modifierModel(): Record<string, unknown> | null {
     const mm = this.#prof.modModel;
-    return mm ? { bindingSupported: true, ...mm } : null;
+    if (!mm) return null;
+    if (mm.sources.length) return { bindingSupported: true, ...mm };
+    const source = mm.fields.source;
+    const def = source ? (this.#prof.params.MOD ?? []).find((p) => p.paramId === source.pid) : undefined;
+    const range = source ? this.#prof.ranges.MOD?.[source.pid] : undefined;
+    const options = def && range?.kind === 'enum'
+      ? this.#enumOptions('MOD', source!.pid, def.name, Math.round(range.displayMin), Math.round(range.displayMax))
+      : [];
+    const sources = options.every((option) => option.label !== String(option.value))
+      ? options.map((option) => ({ ordinal: option.value, name: option.label }))
+      : [];
+    return { bindingSupported: true, ...mm, sources };
   }
 
   // ── tempo / scene ──

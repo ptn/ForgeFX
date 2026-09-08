@@ -112,6 +112,7 @@ const ROWS: Row[] = [
   { name: 'blocks catalog', method: 'GET', url: '/blocks' },
   { name: 'block types', method: 'GET', url: '/blocks/amp/types' },
   { name: 'block params', method: 'GET', url: '/preset/blocks/58/params' },
+  { name: 'block params without edit observation', method: 'GET', url: '/preset/blocks/2/params?observe=0' },
   { name: 'set param', method: 'PUT', url: '/preset/blocks/58/params/7', body: { value: 0.42, continuous: true } },
   { name: 'apply saved block', method: 'POST', url: '/preset/blocks/58/apply', body: {
     device: 'FM3', slug: 'amp', activeChannel: 0,

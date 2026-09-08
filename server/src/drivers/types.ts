@@ -258,7 +258,7 @@ export interface DeviceDriver {
   blockTypes?(slug: string): TypeModel[];
 
   // ── live block params ──
-  blockParams?(eid: number): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null; layout?: DeviceLayout }>;
+  blockParams?(eid: number, options?: { observe?: boolean }): Promise<{ block: string; slug: string; page: number; named: NamedParam[]; enums: EnumParam[]; type: { value: number; name: string } | null; layout?: DeviceLayout }>;
   readParams?(eid: number, pids: number[]): Promise<Record<number, number>>;
   readRange?(eid: number, pids: number[]): Promise<Record<number, number>>;
   rawBlock?(eid: number): Promise<{ eid: number; values: Record<number, number> }>;

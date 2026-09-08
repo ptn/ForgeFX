@@ -82,11 +82,11 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
       return await d.sceneState();
     } catch (e) { return decodeFail(reply, 'scene-state', e); }
   };
-  const blockParamsH = async (reply: StatusSink, addr: number) => {
+  const blockParamsH = async (reply: StatusSink, addr: number, observe = true) => {
     try {
       const d = await driver();
       if (!d.blockParams) return unsupported(reply, 'blockParams');
-      return await d.blockParams(addr);
+      return await d.blockParams(addr, { observe });
     } catch (e) { reply.code(404); return { error: (e as Error).message }; }
   };
   // Unified param write: {value, continuous}. continuous:true → the driver's normalized write

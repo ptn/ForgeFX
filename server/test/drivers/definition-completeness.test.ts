@@ -22,7 +22,7 @@ const FAMILY = 'DISTORT'; // the amp block's catalog family (SLUG_FAMILY['amp'])
 const STRIDE = 20;
 const RAW = 30000; // an integer wire value in 0..65534 (log10 needs an int; positive ranges below)
 
-export const DEFINITION_COMPLETENESS_CASE_COUNT = 12;
+export const DEFINITION_COMPLETENESS_CASE_COUNT = 14;
 
 const compactHex = (f: readonly number[]) => f.map((b) => b.toString(16).padStart(2, '0')).join('');
 const enc14 = (v: number): [number, number] => [v & 0x7f, (v >> 7) & 0x7f];
@@ -62,6 +62,7 @@ const PARAMS: { paramId: number; name: string; unit: string }[] = [
   { paramId: 13, name: 'NIBBLE_LINEAR_NO_TAPER', unit: 'numeric' },
   { paramId: 14, name: 'CATALOG_UNIT_WINS', unit: 'db' }, // overlay would say 'dB'
   { paramId: 15, name: 'ABSENT_UNIT_OVERLAY', unit: 'db' }, // overlay 'dB' is the expected fallback
+  { paramId: 16, name: 'NONZERO_MIN_ENUM', unit: 'enum' },
 ];
 // typecode 0x40 → middle nibble ((0x40>>4)&0xf)=4 → the heuristic reads log10; 0x00 → linear.
 const RANGES: Record<number, Range> = {
@@ -71,6 +72,7 @@ const RANGES: Record<number, Range> = {
   13: { kind: 'float', displayMin: 0, displayMax: 10, typecode: 0x00 },
   14: { kind: 'float', displayMin: 0, displayMax: 10, typecode: 0x00, unit: 'MyHz' }, // device-true unit token
   15: { kind: 'float', displayMin: 0, displayMax: 10, typecode: 0x00 }, // no device-true unit → overlay
+  16: { kind: 'enum', displayMin: 1, displayMax: 3, typecode: 0x10 },
 };
 
 function synthProfile(): DeviceProfile {
@@ -81,14 +83,14 @@ function synthProfile(): DeviceProfile {
     ranges: { [FAMILY]: RANGES },
     rangeSections: { [FAMILY]: { stride: STRIDE, recordCount: STRIDE } },
     rosterFor: () => [],
-    enumLabelsFor: () => undefined,
+    enumLabelsFor: (_family, paramId) => paramId === 16 ? ['OFF', '2', '3'] : undefined,
     cabIrs: () => ({}),
     familyForEffectId: () => undefined,
     layoutFor: () => undefined,
   } as unknown as DeviceProfile;
 }
 
-async function readNamed(): Promise<Map<number, { id: number; log?: boolean; unit?: string }>> {
+async function readParams() {
   const eid = ampEid();
   const codec = createModernFractalCodec(MODEL);
   const values = new Array(STRIDE).fill(0);
@@ -99,13 +101,12 @@ async function readNamed(): Promise<Map<number, { id: number; log?: boolean; uni
   mock.reply = (req) => (compactHex(req) === compactHex(codec.buildBlockBulkReadPoll(eid)) ? bulk : []);
   const driver = createGen3Driver(synthProfile(), { transport: async () => mock, emit: () => {}, getCadence: () => cadenceFor(null, 'balanced') });
   const r = await driver.blockParams(eid);
-  const byId = new Map<number, { id: number; log?: boolean; unit?: string }>();
-  for (const n of r.named) byId.set(n.id, n);
-  return byId;
+  return r;
 }
 
 export async function runDefinitionCompletenessTests(): Promise<void> {
-  const named = await readNamed();
+  const params = await readParams();
+  const named = new Map(params.named.map((param) => [param.id, param]));
   const get = (id: number) => {
     const n = named.get(id);
     assert(!!n, `param ${id} present in blockParams.named`);
@@ -123,4 +124,9 @@ export async function runDefinitionCompletenessTests(): Promise<void> {
   // UNIT — device-true range.unit wins over the AM4-name-overlay (UNIT_LABEL) fallback.
   assertEqual(get(14).unit, 'MyHz', 'catalog range.unit passthrough beats the AM4 overlay');
   assertEqual(get(15).unit, 'dB', "absent range.unit → overlay fallback preserved (UNIT_LABEL['db'])");
+
+  // ENUM — label tables are ordinal arrays even when the parameter's displayed values start above zero.
+  const nonzeroMin = params.enums.find((param) => param.id === 16);
+  assertEqual(nonzeroMin?.options[0]?.label, 'OFF', 'non-zero-min enum keeps its first label');
+  assertEqual(nonzeroMin?.options[1]?.label, '2', 'non-zero-min enum labels are not shifted');
 }

@@ -1269,7 +1269,8 @@ class Gen3Driver implements DeviceDriver {
     const ov = resolveEnumValues(name); // III overlay fallback
     const out: { value: number; label: string }[] = [];
     for (let v = min; v <= max && out.length < 128; v++) {
-      out.push({ value: v, label: cache?.[v] ?? ov?.values?.[v] ?? String(v) });
+      const labelIndex = v - min;
+      out.push({ value: v, label: cache?.[labelIndex] ?? ov?.values?.[labelIndex] ?? String(v) });
     }
     return out;
   }

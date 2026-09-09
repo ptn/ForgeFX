@@ -103,8 +103,12 @@ const parseSelectorValues = (value: string | null | undefined): number[] =>
 //   3. else every variant (degenerate: nothing declared).
 // Within the winning set, prefer the firmware-pinned variant (amp DISTORT ships every historical fw
 // layout with exactly one pinned:true), else the first in editor order.
+// A variant whose pages are ALL `lt`-gated is legacy too, even when the variant itself carries no `fw`:
+// the editor moved those block types onto a newer variant's pages (TREMOLO types 0/2/4 fold into the
+// value:null default at fw >= 8,00). Selecting it would resolve to zero pages and leave the block with
+// no layout at all, so it is excluded here and the type falls through to the variant that succeeded it.
 const selectVariant = (block: EditorBlockLayout, typeValue?: number, selectors?: SelectorValues): EditorLayoutVariant | undefined => {
-  const variants = block.variants.filter((v) => v.fw?.lt == null);
+  const variants = block.variants.filter((v) => v.fw?.lt == null && v.pages.some((p) => p.fw?.lt == null));
   if (!variants.length) return undefined;
   // A variant folded up from page-level selectors (a family with exactly one selector parameter —
   // CABINET's `CABINET_MODE`) carries that parameter on `selectorParamName`, so its `value` keys on

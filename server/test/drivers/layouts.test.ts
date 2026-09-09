@@ -77,6 +77,19 @@ const checks: Array<{ name: string; ok: () => boolean }> = [
     const sel: SelectorValues = (n) => (n === 'CABINET_MODE' ? 1 : undefined);
     return axe3.layoutFor('CABINET', undefined, sel)?.variantValue === '1'; } },
 
+  // ── variant selection: a variant whose pages are ALL legacy (`lt`-gated) is skipped ──
+  // TREMOLO types 0/2/4 have their own variant, but its only page is gated `lt 8,00`; on current
+  // firmware the editor draws those types from the value:null default. Selecting the legacy variant
+  // left the block with zero pages and no controls at all.
+  ...[fm3, fm9, axe3].flatMap((dev, i) => [0, 2, 4].map((t) => ({
+    name: `${['FM3', 'FM9', 'Axe-Fx III'][i]} TREMOLO type ${t} skips the legacy lt-8.00 variant and serves pages`,
+    ok: () => {
+      const sel: SelectorValues = (n) => (n === 'TREMOLO_TYPE' ? t : undefined);
+      const l = dev.layoutFor('TREMOLO', t, sel);
+      return !!l && l.variantValue === null && shapeOk(l);
+    },
+  }))),
+
   // ── v2 passthrough shape ──
   { name: 'Axe-Fx III DISTORT layout is v2-shaped (pages→rows→controls)', ok: () => { const l = axe3.layoutFor('DISTORT', 0); return !!l && shapeOk(l); } },
   { name: 'AM4 COMP layout is v2-shaped', ok: () => { const l = am4LayoutFor('compressor', 6); return !!l && shapeOk(l); } },

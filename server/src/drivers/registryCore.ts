@@ -17,7 +17,7 @@ import { DEVICE_MODELS } from 'forgefx-midi/shared';
 import type { BuiltCache } from 'forgefx-midi/cache';
 import type { Transport, Conn, ConnKind } from '../transport/types.js';
 import { DEFAULT_PROFILE, profileForKey, type DeviceProfile } from '../devices.js';
-import type { DeviceDriver, DeviceEvent, DriverCapabilities } from './types.js';
+import type { DeviceDriver, DeviceEvent, DriverCapabilities, DriverConfig } from './types.js';
 import { EventBus } from './registry/eventBus.js';
 import { TelemetrySupervisor, type TelemetryConfigDto } from './registry/telemetrySupervisor.js';
 import { DriverManager } from './registry/driverManager.js';
@@ -64,6 +64,9 @@ export interface RegistryDeps {
    *  Injected so the core stays store-agnostic: the Node server reads defaultStore; a browser runtime
    *  its own. Absent → the registry never swaps in a runtime profile (static profile only). */
   loadDeviceCache?(key: string): BuiltCache | null | Promise<BuiltCache | null>;
+  /** Runtime knobs handed to every driver through DriverCtx.config. The Node host derives them from
+   *  the FORGEFX_* env vars (drivers/registry.ts); a browser host supplies its own. Absent → defaults. */
+  driverConfig?: Partial<DriverConfig>;
 }
 
 // The Node process object where available (server/Electron) — a browser runtime has none, and /diag

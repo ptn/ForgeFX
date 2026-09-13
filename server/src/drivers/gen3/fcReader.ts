@@ -2,6 +2,7 @@
 // the sub-0x1b live value channel, and the raw sparse bulk read used for FC / Modifier blocks (whose
 // params carry no display range). Split out of gen3.ts.
 import type { FcSwitchState, FcReadState } from '../types.js';
+import { driverConfig } from '../types.js';
 import { enc14, gen3Frame, unpackF32 } from '../shared/gen3Frame.js';
 import type { Gen3Host } from './host.js';
 
@@ -28,7 +29,7 @@ export class FcReader {
         });
         const f = frames.find((fr) => fr[5] === 0x01 && fr[6] === 0x01 && fr[7] === 0x00 && (fr[8]! | (fr[9]! << 7)) === eid && (fr[10]! | (fr[11]! << 7)) === pid);
         if (f) {
-          if (process.env.FORGEFX_GETDUMP) console.log(`GETDUMP eid=${eid} pid=${pid} raw=${f.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`);
+          if (driverConfig(this.#host.ctx).getDump) console.log(`GETDUMP eid=${eid} pid=${pid} raw=${f.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`);
           out[pid] = unpackF32(f.slice(12, 17));
         }
       } catch {
@@ -52,7 +53,7 @@ export class FcReader {
         const frames = await dev.request(buildGet(eid, pid), { timeoutMs: 800, quietMs: 50, match: (fs) => fs.some(match) });
         const f = frames.find(match);
         if (f) {
-          if (process.env.FORGEFX_GETDUMP) console.log(`RANGEDUMP eid=${eid} pid=${pid} raw=${f.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`);
+          if (driverConfig(this.#host.ctx).getDump) console.log(`RANGEDUMP eid=${eid} pid=${pid} raw=${f.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`);
           out[pid] = unpackF32(f.slice(12, 17));
         }
       } catch {
@@ -91,7 +92,7 @@ export class FcReader {
         const f = frames.find(match);
         if (!f) return { present: false, raw: [] };
         const body = f.slice(7, -2);
-        if (process.env.FORGEFX_GETDUMP) console.log(`FCDUMP sel=${sel} body=${body.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`);
+        if (driverConfig(this.#host.ctx).getDump) console.log(`FCDUMP sel=${sel} body=${body.map((b) => b.toString(16).padStart(2, '0')).join(' ')}`);
         // validate the config/side echo (body[14]=config, body[15] bit 0x40 = HOLD)
         const echoCfg = body[14] ?? -1;
         const echoSide = (body[15] ?? 0) & 0x40 ? 1 : 0;

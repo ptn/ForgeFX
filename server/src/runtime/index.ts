@@ -13,7 +13,8 @@ export { createRouter, type RouterResponse, type RuntimeDeps, type RouterLocalDe
 export { createRegistry, DeviceRegistry, type RegistryDeps, type ConnInfo } from '../drivers/registryCore.js';
 export { createGen3Driver } from '../drivers/gen3.js';
 export { createAm4Driver, type Am4Driver } from '../drivers/am4.js';
-export type { DeviceDriver, DriverCapabilities, DriverCtx, DeviceEvent } from '../drivers/types.js';
+export type { DeviceDriver, DriverCapabilities, DriverCtx, DeviceEvent, DriverConfig } from '../drivers/types.js';
+export { DEFAULT_DRIVER_CONFIG } from '../drivers/types.js';
 export type { Transport, RequestOpts, Conn, ConnKind } from '../transport/types.js';
 export { PROFILES, DEFAULT_PROFILE, profileForModel, profileForKey, SLUG_FAMILY, type DeviceProfile } from '../devices.js';
 

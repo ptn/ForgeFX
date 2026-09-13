@@ -208,6 +208,34 @@ export interface DriverCapabilities {
   deviceEditPush?: boolean;
 }
 
+/** Runtime knobs the host injects into every driver through DriverCtx.config. Drivers must NEVER read
+ *  process.env themselves: that would make the browser runtime depend on esbuild's build-time env
+ *  substitution and leave the flags untestable. The Node host derives these from the existing FORGEFX_*
+ *  vars (drivers/registry.ts); a browser runtime supplies its own or takes the defaults. */
+export interface DriverConfig {
+  /** FM3 front-panel edit poll: the registry polls the FM3 (which does not push) for out-of-band edits.
+   *  FORGEFX_FM3_EDITSYNC !== '0'. The FM9 / Axe-Fx III push, so this never enables a poll on them. */
+  fm3EditSync: boolean;
+  /** AM4 fn-0x1F structure hex-dump logging (AM4_DEBUG !== '0'). */
+  am4Debug: boolean;
+  /** Raw gen-3 GET / range / FC frame dump logging (FORGEFX_GETDUMP set). */
+  getDump: boolean;
+}
+
+/** Defaults when a host injects no config — the same values the drivers previously read from the env:
+ *  edit-sync + AM4 debug on, raw frame dumping off. */
+export const DEFAULT_DRIVER_CONFIG: DriverConfig = {
+  fm3EditSync: true,
+  am4Debug: true,
+  getDump: false,
+};
+
+/** Resolve a ctx's driver config, falling back to the defaults — the sole way drivers read these flags,
+ *  so no driver module ever touches process.env. */
+export function driverConfig(ctx: DriverCtx): DriverConfig {
+  return ctx.config ?? DEFAULT_DRIVER_CONFIG;
+}
+
 /** What the registry hands each driver: the ONE shared transport (a single exclusive MIDI/serial
  *  connection — drivers must never open their own) and the SSE event bus emit. */
 export interface DriverCtx {
@@ -217,6 +245,8 @@ export interface DriverCtx {
    *  run their own edit-watch cadence (the AM4 redesign uses `editRehashMs`) read it here instead of
    *  hardcoding intervals, so a mode switch reaches them without a re-wire. */
   getCadence(): CadenceProfile;
+  /** Host-injected runtime knobs. Absent → DEFAULT_DRIVER_CONFIG. See DriverConfig. */
+  config?: DriverConfig;
 }
 
 /**

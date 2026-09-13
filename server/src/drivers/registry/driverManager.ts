@@ -20,7 +20,7 @@ import { PROFILES, profileForModel, runtimeProfileFrom, type DeviceProfile } fro
 import { DEVICE_CATALOG, modelIdForForcedKey } from '../deviceCatalog.js';
 import { capabilitiesDto } from './capabilities.js';
 import { deviceCacheKey } from '../../services/deviceCacheKey.js';
-import type { DeviceDriver, DeviceEvent, DriverCtx } from '../types.js';
+import { DEFAULT_DRIVER_CONFIG, type DeviceDriver, type DeviceEvent, type DriverConfig, type DriverCtx } from '../types.js';
 import type { CadenceProfile } from '../telemetryProfiles.js';
 
 /** The Node/browser-injected deps the manager needs (a structural subset of RegistryDeps). */
@@ -32,6 +32,8 @@ export interface DriverManagerDeps {
   /** Load a persisted device cache for the given key, or null when none exists. Absent → the manager
    *  never swaps in a runtime profile. */
   loadDeviceCache?(key: string): BuiltCache | null | Promise<BuiltCache | null>;
+  /** Runtime knobs handed to every driver through DriverCtx.config. Absent → DEFAULT_DRIVER_CONFIG. */
+  driverConfig?: Partial<DriverConfig>;
 }
 
 /** What the manager needs from the registry facade / telemetry supervisor. */
@@ -57,6 +59,7 @@ export class DriverManager {
   #deps: DriverManagerDeps;
   #host: DriverManagerHost;
   #ctx: DriverCtx;
+  #config: DriverConfig;
   // The active driver — set ONLY by detect()/onActivate from a positively identified (or forced) model.
   // No identification → no active driver → the telemetry supervisor never fires a frame at an unknown
   // unit (this replaces the old `#modelId === -1` wait-loop AND every #isAm4() gate).
@@ -72,7 +75,8 @@ export class DriverManager {
   constructor(deps: DriverManagerDeps, host: DriverManagerHost) {
     this.#deps = deps;
     this.#host = host;
-    this.#ctx = { transport: () => host.transport(), emit: (e) => host.emit(e), getCadence: () => host.getCadence() };
+    this.#config = { ...DEFAULT_DRIVER_CONFIG, ...deps.driverConfig };
+    this.#ctx = { transport: () => host.transport(), emit: (e) => host.emit(e), getCadence: () => host.getCadence(), config: this.#config };
   }
 
   get activeDriver(): DeviceDriver | null { return this.#active; }

@@ -22,6 +22,7 @@ import type {
   PresetGridDTO, PresetBlockDTO, PresetSummary, NamedParam, EnumParam,
   FcSwitchState, FcReadState
 } from './types.js';
+import { driverConfig } from './types.js';
 
 import {
   BLOCK_META, CH_LETTERS, paramLabel,
@@ -92,9 +93,10 @@ class Gen3Driver implements DeviceDriver {
       //  • FM9 / Axe-Fx III / VP4 push an unsolicited 0x74/0x75/0x76 burst → registry LISTENS (deviceEditPush).
       //  • FM3 (0x11) proven NOT to push (tap 2026-07-04: a front-panel knob emitted zero unsolicited
       //    frames) → registry POLLS the open block instead (deviceEditWatch → readDeviceEditState below),
-      //    the same poll-fallback shape as the AM4. Disable in the field via FORGEFX_FM3_EDITSYNC=0.
+      //    the same poll-fallback shape as the AM4. Disable in the field via DriverCtx.config.fm3EditSync
+      //    (Node reads FORGEFX_FM3_EDITSYNC into it).
       deviceEditPush: profile.model !== 0x11,
-      deviceEditWatch: profile.model === 0x11 && process.env.FORGEFX_FM3_EDITSYNC !== '0'
+      deviceEditWatch: profile.model === 0x11 && driverConfig(ctx).fm3EditSync
     };
   }
 

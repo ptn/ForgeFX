@@ -26,6 +26,7 @@ import { runFm3CabIrTests, FM3_CAB_IR_CASE_COUNT } from './drivers/fm3-cab-irs.t
 import { runModifierSlotsTests, MODIFIER_SLOTS_CASE_COUNT } from './drivers/modifier-slots.test.js';
 import { runGen3ModifierSlotTests, GEN3_MODIFIER_SLOT_CASE_COUNT } from './drivers/gen3-modifier-slot.test.js';
 import { runGen3CollaboratorTests, GEN3_COLLABORATOR_CASE_COUNT } from './drivers/gen3-collaborators.test.js';
+import { runDriverConfigTests, DRIVER_CONFIG_CASE_COUNT } from './drivers/driver-config.test.js';
 import { runAliasParityTests, ALIAS_PARITY_CASE_COUNT } from './api/alias-parity.test.js';
 import { runRouteGoldenTests, ROUTE_GOLDEN_CASE_COUNT } from './api/route-golden.test.js';
 import { runCapsTests, CAPS_CASE_COUNT } from './api/caps.test.js';
@@ -72,6 +73,7 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `drivers/modifier-slots (${MODIFIER_SLOTS_CASE_COUNT} cases, pure target→slot selection)`, run: runModifierSlotsTests },
   { name: `drivers/gen3-modifier-slot (${GEN3_MODIFIER_SLOT_CASE_COUNT} cases, read-only slot resolution, mocked FM3)`, run: runGen3ModifierSlotTests },
   { name: `drivers/gen3-collaborators (${GEN3_COLLABORATOR_CASE_COUNT} cases, FcReader/Meters/EditSync characterization)`, run: runGen3CollaboratorTests },
+  { name: `drivers/driver-config (${DRIVER_CONFIG_CASE_COUNT} cases, DriverCtx.config injection for edit-sync/debug/dump flags)`, run: runDriverConfigTests },
   { name: `api/alias-parity (${ALIAS_PARITY_CASE_COUNT} alias↔unified twins, mocked AM4)`, run: runAliasParityTests },
   { name: `api/route-golden (${ROUTE_GOLDEN_CASE_COUNT} app JSON snapshots, mocked FM3)`, run: runRouteGoldenTests },
   { name: `api/caps (${CAPS_CASE_COUNT} device capability matrices)`, run: runCapsTests },

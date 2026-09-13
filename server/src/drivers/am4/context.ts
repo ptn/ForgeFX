@@ -20,6 +20,8 @@ export interface Am4ContextHost {
   openTransport(): Promise<Transport>;
   getCadence(): CadenceProfile;
   log(s: string): void;
+  /** Dump the unpacked fn-0x1F structure (DriverCtx.config.am4Debug). Injected, not read from env. */
+  am4Debug: boolean;
 }
 
 export interface Am4Structure {
@@ -91,7 +93,7 @@ export class Am4Context {
       const f = frames.find(isStructResponse);
       if (!f) return null;
       const b = unpackMsb(f.slice(16, f.length - 2), STRUCT_BYTES); // 16-byte header … <septets> cksum F7
-      if (process.env.AM4_DEBUG !== '0') {
+      if (this.#host.am4Debug) {
         for (const line of am4StructDebugLines(b)) this.#host.log(line);
       }
       const s = parseAm4Structure(b);

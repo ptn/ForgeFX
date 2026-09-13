@@ -8,10 +8,19 @@ import { listConnections, resolveConn, openConn, getConnOverride, setConnOverrid
 import { midiAvailable } from '../transport/midi.js';
 import * as store from '../store.js';
 import { createRegistry, type DeviceRegistry, type RegistryDeps } from './registryCore.js';
+import type { DriverConfig } from './types.js';
 import type { BuiltCache } from 'forgefx-midi/cache';
 import { CACHE_SCHEMA } from 'forgefx-midi/cache';
 
 export type { DeviceRegistry, RegistryDeps, ConnInfo } from './registryCore.js';
+
+/** The driver runtime knobs, read from the process env ONCE here in the Node-only wiring — the driver
+ *  modules themselves never touch process.env, so the browser runtime bundle needs no env substitution. */
+const nodeDriverConfig: DriverConfig = {
+  fm3EditSync: process.env.FORGEFX_FM3_EDITSYNC !== '0',
+  am4Debug: process.env.AM4_DEBUG !== '0',
+  getDump: !!process.env.FORGEFX_GETDUMP,
+};
 
 /** The real Node deps: transport/connection.ts resolution + overrides, serial autodetect, MIDI probe. */
 const nodeDeps: RegistryDeps = {
@@ -26,7 +35,8 @@ const nodeDeps: RegistryDeps = {
   midiAvailable,
   // On-connect device-cache lookup: the registry swaps in the device-true runtime profile when a
   // build exists for the attached model+firmware. Reads the same fs store the /device/cache routes write.
-  loadDeviceCache: (key) => { const d = store.getDoc('deviceCaches', key); return d && !d.deleted && (d.data as BuiltCache)?.meta?.schema === CACHE_SCHEMA ? (d.data as BuiltCache) : null; }
+  loadDeviceCache: (key) => { const d = store.getDoc('deviceCaches', key); return d && !d.deleted && (d.data as BuiltCache)?.meta?.schema === CACHE_SCHEMA ? (d.data as BuiltCache) : null; },
+  driverConfig: nodeDriverConfig
 };
 
 export const registry = createRegistry(nodeDeps);

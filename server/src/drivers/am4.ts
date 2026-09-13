@@ -43,6 +43,7 @@ import {
 import type { PresetSnapshot } from 'forgefx-midi/core';
 import type { Transport } from '../transport/types.js';
 import type { DeviceDriver, DriverCapabilities, DriverCtx, PresetGridDTO, PresetBlockDTO, Am4Slot } from './types.js';
+import { driverConfig } from './types.js';
 import type { TypeModel } from '../devices.js';
 import { midiNoteName } from './shared/notes.js';
 import { Am4Context } from './am4/context.js';
@@ -93,6 +94,7 @@ class Am4Driver implements DeviceDriver {
       openTransport: () => this.#openTransport(),
       getCadence: () => this.#ctx.getCadence(),
       log: (s) => this.#log(s),
+      am4Debug: driverConfig(this.#ctx).am4Debug,
     });
     this.#editSync = new Am4EditSync(this.#context, {
       getCadence: () => this.#ctx.getCadence(),

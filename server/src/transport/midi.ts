@@ -10,7 +10,7 @@ import type { Transport, RequestOpts } from './types.js';
 // .node may be missing/incompatible; a static import would throw at module load and take down the
 // whole server (and with it the serial/FM3 path). Loading it lazily + guarded means MIDI simply
 // degrades to "no MIDI ports" while serial keeps working.
-type MidiMod = { Input: new () => MidiInput; Output: new () => MidiOutput };
+export type MidiMod = { Input: new () => MidiInput; Output: new () => MidiOutput };
 let _midi: MidiMod | null | undefined;
 function midi(): MidiMod | null {
   if (_midi === undefined) {
@@ -76,9 +76,8 @@ function findPort(p: PortLister, id: string): number {
 
 /** All MIDI ports visible to the OS — inputs and outputs listed SEPARATELY (USB-MIDI devices like
  *  the Axe-Fx III / FM9 expose distinct In and Out endpoints), Fractal ones flagged. */
-export function listMidiPorts(): MidiPortInfo[] {
+export function listMidiPorts(m: MidiMod | null = midi()): MidiPortInfo[] {
   const out: MidiPortInfo[] = [];
-  const m = midi();
   if (!m) return out; // MIDI native binding unavailable → no MIDI ports (serial still works)
   const collect = (p: PortLister, dir: 'input' | 'output') => {
     for (let i = 0; i < p.getPortCount(); i++) {
@@ -113,18 +112,21 @@ export class MidiTransport implements Transport {
   readonly label: string;
   #inId: string;
   #outId: string;
+  /** Test/embedding seam: override the native binding (undefined = use the lazy global loader). */
+  #midi: MidiMod | null | undefined;
 
   /** Open a USB-MIDI device by its (independent) input + output port names. */
-  constructor(inId: string, outId: string) {
+  constructor(inId: string, outId: string, deps: { midi?: MidiMod | null } = {}) {
     this.#inId = inId;
     this.#outId = outId;
+    this.#midi = deps.midi;
     this.label = inId === outId ? inId : `${inId} ⇄ ${outId}`;
     this.slow = !FRACTAL_RE.test(inId) && !FRACTAL_RE.test(outId);
   }
 
   async open(): Promise<void> {
     if (this.#in && this.#out) return;
-    const m = midi();
+    const m = this.#midi !== undefined ? this.#midi : midi();
     if (!m) throw new Error('MIDI transport unavailable (native binding @julusian/midi not loaded)');
     const inp = new m.Input();
     const out = new m.Output();

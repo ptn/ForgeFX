@@ -14,7 +14,20 @@ export interface TransportOpts {
   /** explicit device path; otherwise auto-detected */
   path?: string;
   baudRate?: number;
+  /** Test/embedding seam: construct the underlying serial port. Defaults to `new SerialPort(...)`. */
+  portFactory?: SerialFactory;
 }
+
+/** The subset of serialport's SerialPort the transport relies on — lets tests inject a fake port. */
+export interface SerialPortLike {
+  isOpen: boolean;
+  write(data: Uint8Array): unknown;
+  close(cb: () => void): void;
+  on(event: 'data', cb: (buf: Buffer) => void): void;
+  on(event: 'error', cb: (err: Error) => void): void;
+}
+export type SerialFactory = (opts: { path: string; baudRate: number }, onOpen: (err: Error | null) => void) => SerialPortLike;
+const defaultSerialFactory: SerialFactory = (opts, onOpen) => new SerialPort(opts, onOpen) as unknown as SerialPortLike;
 
 /** Resolve the device path. An explicit FORGEFX_SERIAL wins (e.g. /dev/fm3 in Docker); otherwise
  * prefer the stable by-id Fractal if03 node (survives ttyACM renumbering), then fall back to ttyACM0. */
@@ -103,7 +116,8 @@ export async function detectPath(): Promise<string | null> {
 }
 
 export class FractalSerial implements Transport {
-  #port: SerialPort | null = null;
+  #port: SerialPortLike | null = null;
+  #portFactory: SerialFactory = defaultSerialFactory;
   #rx: number[] = [];
   #frameHandlers = new Set<(frame: number[]) => void>();
   readonly kind = 'serial' as const;
@@ -118,6 +132,7 @@ export class FractalSerial implements Transport {
     if (!path) throw new Error('No FM3 serial port found (looked for by-id Fractal if03, then /dev/ttyACM0)');
     this.path = path;
     this.#baud = opts.baudRate ?? 115200;
+    if (opts.portFactory) this.#portFactory = opts.portFactory;
   }
   #baud: number;
 
@@ -137,7 +152,7 @@ export class FractalSerial implements Transport {
   async open(): Promise<void> {
     if (this.#port?.isOpen) return;
     await new Promise<void>((resolve, reject) => {
-      const port = new SerialPort({ path: this.path, baudRate: this.#baud }, (err) => (err ? reject(err) : resolve()));
+      const port = this.#portFactory({ path: this.path, baudRate: this.#baud }, (err) => (err ? reject(err) : resolve()));
       port.on('data', (buf: Buffer) => this.#ingest(buf));
       port.on('error', () => {});
       this.#port = port;

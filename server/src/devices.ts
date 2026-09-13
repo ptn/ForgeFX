@@ -388,11 +388,6 @@ const AXE3_MOD_MODEL: ModModel = {
 // Per-block monitor (meter) parameter tables — read-only pids + dB ranges, by parameterName.
 // Surfaced via /preset/monitors so Axis can render meters from the standard per-block reads.
 export type MonitorParams = Readonly<Record<string, { family: string; pid: number; role: string; minDb?: number; maxDb?: number; widgetConfirmed: boolean }>>;
-const MONITOR_PARAMS_BY_MODEL: Record<number, MonitorParams> = {
-  0x10: AXE3_MONITOR_PARAMS,
-  0x11: FM3_MONITOR_PARAMS,
-  0x12: FM9_MONITOR_PARAMS,
-};
 
 // The model-roster entry shape ForgeFX surfaces to the UI (value + name + lineage). FM3's
 // fractal-midi rosters already carry this exact shape (Fm3TypeModel); FM9/III synthesize it.

@@ -19,13 +19,10 @@ import {
   buildLooperControl,
   buildRequestGridLayout,
   parseGen3GridLayout,
-  FN_PARAMETER_SETGET,
-  SUB_ACTION_GRID_LAYOUT,
   type ModernFractalCodec
 } from 'forgefx-midi/gen3/axe-fx-iii';
 import { wireToDisplay } from 'forgefx-midi/shared';
 import {
-  parsePresetDump, decodeRawPatch, decodeGen3Body,
   readBlockParamsForModel, modelsFromBlocks,
   effectRoster, blockRefForEid, slugForEffectId, blockInstances, effectName,
   retargetPresetDumpToEditBuffer,
@@ -34,160 +31,22 @@ import {
 import { SLUG_FAMILY, MODEL_SELECTOR_OVERRIDES, type DeviceProfile, type TypeModel, type DeviceLayout, type SelectorValues } from '../devices.js';
 import { blockHelpBySlug } from '../help.js';
 import { selectModifierSlot } from './modifierSlots.js';
+import { enc14, unpackF32, gen3Frame } from './shared/gen3Frame.js';
 import type {
   DeviceDriver, DriverCapabilities, DriverCtx,
   PresetGridDTO, PresetBlockDTO, PresetSummary, NamedParam, EnumParam, MeterVal,
   FcSwitchState, FcReadState
 } from './types.js';
 
-// slug → { name, page=base effect id } from the authoritative codec base table (replaces the old
-// defs.js pack lookup; block names + base ids are codec facts, not editor-cache definitions).
-const BLOCK_META: Record<string, { name: string; page: number }> = (() => {
-  const out: Record<string, { name: string; page: number }> = {};
-  for (const e of effectRoster()) out[e.slug] = { name: e.name, page: e.page };
-  return out;
-})();
+import {
+  BLOCK_META, EDIT_BUFFER, FM3_MODEL, GEN3_SHUNT_ID_BASE, SHUNT_INDEX_OFFSET, GEN3_SCENES,
+  rowsFromMask, isGridLayoutResponse, CH_LETTERS, UNIT_LABEL, KNOB_UNITS, paramLabel,
+  clamp01, round3, type ParamCandidate,
+} from './gen3/support.js';
+import { decodeDump, decodeRawBody, type DecodedDump, type DecodedDumpDTO } from './gen3/dump.js';
 
-const EDIT_BUFFER = 0x3fff; // preset number sentinel = current edit buffer
-
-/** FM3 model byte. The live grid-layout decode (forgefx-midi gridLayout.ts) is byte-exact against
- *  real FM3 responses ONLY; the III/FM9 branch is community-beta, so they keep the dump path. */
-const FM3_MODEL = 0x11;
-/** Gen-3 shunt effect-id base: a routing cell's stored id is `SHUNT_BASE + n` (the dump decoder's
- *  `eid > 1000` shunt test and Axis's shunt allocator both key off this). */
-const SHUNT_BASE = 1023;
-const GEN3_SCENES = 8;
-
-/** Incoming-cable bitmask → source rows of the previous column (bit r = row r), the dump decoder's
- *  `from_rows` convention. */
-function rowsFromMask(mask: number, rows: number): number[] {
-  const out: number[] = [];
-  for (let r = 0; r < rows; r++) if (mask & (1 << r)) out.push(r);
-  return out;
-}
-
-/** True for a live grid-layout (fn 0x01 / sub 0x2E) response frame. Matches the predicate the
- *  hardware calibration probe used (src/probes/grid-2e.ts). */
-function isGridLayoutResponse(f: readonly number[]): boolean {
-  return f[5] === FN_PARAMETER_SETGET && f[6] === SUB_ACTION_GRID_LAYOUT;
-}
-
-// ── preset-dump decode (forgefx-midi devices/gen3 pipeline) ──
-// Adapter producing the exact DTO the pre-Phase-4 server-local codec (fm3PresetGrid.ts
-// decodePresetDump) returned — field-level parity was proven over 429 real FM3 dumps
-// (scripts/diff-decoders.ts, Phase 2). The JSON shapes downstream are the HTTP contract
-// Axis consumes and must not drift.
-
-/** The old decodePresetDump DTO, byte-identical on the HTTP surface. */
-interface DecodedDumpDTO {
-  modelId: number;
-  modelName: string;
-  name: string;
-  crcValid: boolean;
-  /** Stored CRC16 of the preset body — a content fingerprint (changes when the preset changes). */
-  crc: number;
-  rows: number;
-  cols: number;
-  grid: { effectId: number; row: number; col: number; routeFlag: number; name: string; isShunt: boolean; fromRows: number[] }[];
-  sceneNames: string[];
-}
-/** Decoded dump: the DTO plus the decompressed body (per-block param decode source). */
-interface DecodedDump {
-  dump: DecodedDumpDTO;
-  body: Uint8Array;
-  decompSize: number;
-}
-
-/** Keep only the dump frames (0x77 header / 0x78 chunks / 0x79 footer) and flatten to the byte
- *  stream the package parser takes. The live request window can interleave unrelated frames
- *  (beacons, other replies) that the strict frame-walking parser would reject; the old decoder
- *  skipped them the same way. */
-function dumpBytesFromFrames(frames: readonly (readonly number[])[]): Uint8Array {
-  const chunks: (readonly number[])[] = [];
-  let total = 0;
-  for (const f of frames) {
-    if (f.length < 8 || f[0] !== 0xf0 || f[1] !== 0x00 || f[2] !== 0x01 || f[3] !== 0x74) continue;
-    const fn = f[5];
-    if (fn === 0x77 || fn === 0x78 || fn === 0x79) { chunks.push(f); total += f.length; }
-  }
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const f of chunks) { out.set(f, off); off += f.length; }
-  return out;
-}
-
-/** Full dump decode via the package pipeline (parse → raw_patch/CRC/Huffman → structured body),
- *  mapped to the old server DTO. rows/cols/modelName come from the profile — the same values the
- *  old codec's DIMS dict held; the preset name is the raw_patch header ASCII at 0x08..0x28
- *  (NUL-stop, trimmed), exactly the old decoder's source. */
-function decodeDump(frames: readonly (readonly number[])[], prof: DeviceProfile): DecodedDump {
-  const parsed = parsePresetDump(dumpBytesFromFrames(frames), 0, prof.model);
-  const raw = decodeRawPatch(parsed.chunkPayloads);
-  const body3 = decodeGen3Body(raw.body, prof.model);
-  let name = '';
-  for (let i = 0x08; i < 0x28; i++) {
-    const b = raw.rawPatch[i] ?? 0;
-    if (b === 0) break;
-    name += String.fromCharCode(b);
-  }
-  const grid = (body3.grid ?? []).map((c) => ({
-    effectId: c.effect_id,
-    row: c.row,
-    col: c.col,
-    routeFlag: c.route_flag,
-    name: c.name,
-    isShunt: c.is_shunt ?? false,
-    fromRows: c.from_rows ?? []
-  }));
-  return {
-    dump: {
-      modelId: prof.model,
-      modelName: prof.name,
-      name: name.trim(),
-      crcValid: raw.crcValid,
-      crc: raw.storedCrc,
-      rows: prof.rows,
-      cols: prof.cols,
-      grid,
-      sceneNames: body3.scene_names ?? []
-    },
-    body: raw.body,
-    decompSize: raw.decompSize
-  };
-}
-
-const CH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-
-// catalog unit code → display label (blank = show the bare number)
-const UNIT_LABEL: Record<string, string> = {
-  db: 'dB', hz: 'Hz', ms: 'ms', seconds: 's', percent: '%', bipolar_percent: '%',
-  degrees: '°', semitones: 'st', cents: 'ct', pf: 'pF', ratio: ':1'
-};
-// units that mark a musician-facing knob. 'numeric' = a plain unitless knob (Drive, Tone, Level,
-// cut freqs…) — primary controls in many families; only 'unverified'/'count'/'enum' are non-knobs.
-const KNOB_UNITS = new Set([
-  'numeric', 'knob_0_10', 'knob_0_20', 'db', 'hz', 'ms', 'seconds', 'percent', 'bipolar_percent', 'ratio', 'semitones', 'cents', 'degrees'
-]);
-
-/** Friendly param label: the catalog displayLabel, else tidy the raw NAME (strip family prefix, _→space).
- *  Served UNCHANGED (Phase 1.3) — this used to be overwritten by `applyLayoutLabels` with the resolved
- *  layout's own control label, then `dedupeLabels` appended " 1"/" 2" to whatever repeated; that pipeline
- *  is deleted, which is the fix for served labels drifting from the official app. The layout's own
- *  `control.label` is what actually gets rendered (Axis draws by layout, not by this name) and is
- *  already unique per placement; this stays the catalog-only name on `named`/`enums` for consumers that
- *  key off them directly (the contract test, deep param search). Duplicate names across a block's params
- *  (e.g. the cab's 4× "Low Cut") are therefore expected here now. */
-function paramLabel(p: { displayLabel?: string; name: string }): string {
-  return p.displayLabel ?? p.name.replace(/^[A-Z0-9]+_/, '').replace(/_/g, ' ');
-}
-
-/** A catalog def paired with its resolved range (if any) and usability verdict — what the
- *  knob/enum classification pass in `blockParams` builds before it has live wire values to read. */
-interface ParamCandidate {
-  p: { paramId: number; name: string; displayLabel?: string; unit?: string };
-  range?: { kind: 'enum' | 'float'; displayMin: number; displayMax: number; step?: number; defaultRaw?: number; taper?: 'linear' | 'log' | 'flat' | 'custom'; taperPoints?: ReadonlyArray<readonly [number, number]> };
-  unusable: NamedParam['unusable'];
-}
+// Preserved public export path (registryCore imports GEN3_SHUNT_ID_BASE from './gen3.js').
+export { GEN3_SHUNT_ID_BASE } from './gen3/support.js';
 
 class Gen3Driver implements DeviceDriver {
   #prof: DeviceProfile;
@@ -207,7 +66,6 @@ class Gen3Driver implements DeviceDriver {
       channels: true,
       presetDump: true,
       presetConvert: true, // full gen-3 lift (routing grid + per-scene block state + amp knobs)
-      blockParamDecode: profile.model === 0x11, // per-block body decode is FM3-only today
       telemetry: { tuner: true, outputMeters: true, cpu: true },
       fcModel: !!profile.fcModel,
       fcLiveRead: !!profile.fcModel?.liveState,
@@ -399,7 +257,7 @@ class Gen3Driver implements DeviceDriver {
     const f = frames.find(isGridLayoutResponse);
     if (!f) throw new Error('no sub-0x2E grid-layout reply');
     return {
-      model: 'fm3',
+      model: this.#prof.key,
       name: ref.name,
       crcValid: false, // no CRC over the live read (unlike the dump's verified body)
       rows: this.#prof.rows,
@@ -412,13 +270,13 @@ class Gen3Driver implements DeviceDriver {
         // a "sequential index" — accept either: a value already in the shunt range passes through,
         // a small index is rebased. Both readings then produce dump-compatible ids.
         const raw = (c.isShunt ? c.shuntIndex : c.effectId) ?? 0;
-        const effectId = c.isShunt ? (raw > SHUNT_BASE ? raw : SHUNT_BASE + raw) : raw;
+        const effectId = c.isShunt ? (raw >= GEN3_SHUNT_ID_BASE ? raw : SHUNT_INDEX_OFFSET + raw) : raw;
         return {
           row: c.row,
           col: c.col,
           effectId,
           // same naming convention as the dump decoder's parseGrid (presetBody.ts)
-          name: c.isShunt ? `Shunt ${effectId - SHUNT_BASE}` : (effectName(effectId) ?? `eid_${effectId}`),
+          name: c.isShunt ? `Shunt ${effectId - SHUNT_INDEX_OFFSET}` : (effectName(effectId) ?? `eid_${effectId}`),
           isShunt: c.isShunt,
           routeFlag: c.cableInputMask,
           // FM3's mask is normalized to "bit r = fed from row r of the previous column" and is
@@ -464,7 +322,7 @@ class Gen3Driver implements DeviceDriver {
     console.log(`[forgefx] presetDump: frames=${frames.length} bytes=${bytes} fns=[${fns.join(',')}] terminator=${frames.some((f) => f[5] === 0x79)}`);
     const d = decodeDump(frames, this.#prof).dump;
     return {
-      model: 'fm3',
+      model: this.#prof.key,
       name: d.name,
       crcValid: d.crcValid,
       rows: d.rows,
@@ -567,8 +425,7 @@ class Gen3Driver implements DeviceDriver {
       quietMs: 180,
       match: (fs) => fs.some((f) => f[5] === 0x79)
     });
-    const parsed = parsePresetDump(dumpBytesFromFrames(frames), 0, this.#prof.model);
-    const { body } = decodeRawPatch(parsed.chunkPayloads);
+    const body = decodeRawBody(frames, this.#prof.model);
     return { len: body.length, hex: Buffer.from(body).toString('hex') };
   }
 
@@ -799,20 +656,10 @@ class Gen3Driver implements DeviceDriver {
   async readParams(eid: number, pids: number[]): Promise<Record<number, number>> {
     const dev = await this.#conn();
     const out: Record<number, number> = {};
-    const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
-    const unpackF32 = (b: number[]): number => {
-      const v = ((b[0] ?? 0) | ((b[1] ?? 0) << 7) | ((b[2] ?? 0) << 14) | ((b[3] ?? 0) << 21) | ((b[4] ?? 0) << 28)) >>> 0;
-      return new Float32Array(new Uint32Array([v]).buffer)[0]!;
-    };
     // Proper gen-3 GET: fn 0x01 with sub 01 00 + EMPTY value (NOT buildGetParameter, which uses the
     // SET-typed sub 09 00 and therefore WRITES 0). Frame: F0 00 01 74 <model> 01 01 00 <eid> <pid> 0*9 cs F7.
-    const buildGet = (e: number, p: number): number[] => {
-      const f = [0xf0, 0x00, 0x01, 0x74, this.#prof.model, 0x01, 0x01, 0x00, ...enc14(e), ...enc14(p), 0, 0, 0, 0, 0, 0, 0, 0, 0];
-      let cs = 0;
-      for (const b of f) cs ^= b;
-      f.push(cs & 0x7f, 0xf7);
-      return f;
-    };
+    const buildGet = (e: number, p: number): number[] =>
+      gen3Frame(this.#prof.model, 0x01, 0x01, 0x00, [...enc14(e), ...enc14(p), 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     for (const pid of pids) {
       try {
         const frames = await dev.request(buildGet(eid, pid), {
@@ -838,18 +685,8 @@ class Gen3Driver implements DeviceDriver {
   async readRange(eid: number, pids: number[]): Promise<Record<number, number>> {
     const dev = await this.#conn();
     const out: Record<number, number> = {};
-    const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
-    const unpackF32 = (b: number[]): number => {
-      const v = ((b[0] ?? 0) | ((b[1] ?? 0) << 7) | ((b[2] ?? 0) << 14) | ((b[3] ?? 0) << 21) | ((b[4] ?? 0) << 28)) >>> 0;
-      return new Float32Array(new Uint32Array([v]).buffer)[0]!;
-    };
-    const buildGet = (e: number, p: number): number[] => {
-      const f = [0xf0, 0x00, 0x01, 0x74, this.#prof.model, 0x01, 0x1a, 0x00, ...enc14(e), ...enc14(p), 0, 0, 0, 0, 0, 0, 0, 0, 0];
-      let cs = 0;
-      for (const b of f) cs ^= b;
-      f.push(cs & 0x7f, 0xf7);
-      return f;
-    };
+    const buildGet = (e: number, p: number): number[] =>
+      gen3Frame(this.#prof.model, 0x01, 0x1a, 0x00, [...enc14(e), ...enc14(p), 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     for (const pid of pids) {
       try {
         const match = (f: number[]) => f[5] === 0x01 && f[6] === 0x1a && f[7] === 0x00 && (f[8]! | (f[9]! << 7)) === eid && (f[10]! | (f[11]! << 7)) === pid;
@@ -905,14 +742,8 @@ class Gen3Driver implements DeviceDriver {
     if (!model) throw new Error('device has no decoded Foot Controller model');
     if (!model.liveState) throw new Error('live FC switch read is not supported for this device model (FM3 only); the address model is available via GET /fc/model');
     const config = layout * model.configsPerLayout! + view * model.switches! + sw;
-    const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
-    const buildSelRead = (sel: number): number[] => {
-      const f = [0xf0, 0x00, 0x01, 0x74, this.#prof.model, 0x01, 0x01, 0x00, ...enc14(sel), 0, 0, 0, 0, 0, 0, 0, 0, 0];
-      let cs = 0;
-      for (const b of f) cs ^= b;
-      f.push(cs & 0x7f, 0xf7);
-      return f;
-    };
+    const buildSelRead = (sel: number): number[] =>
+      gen3Frame(this.#prof.model, 0x01, 0x01, 0x00, [...enc14(sel), 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     // body = frame bytes after the 7-byte header (F0 00 01 74 <model> 01 01), minus checksum+F7
     const readSide = async (side: 0 | 1): Promise<{ present: boolean; raw: number[] }> => {
       const sel = config * 2 + side;
@@ -967,14 +798,8 @@ class Gen3Driver implements DeviceDriver {
     if (!model.liveState) throw new Error('live FC state read is not supported for this device model (FM3 only); the address model is available via GET /fc/model');
     const eid = model.effectId;
     const config = layout * model.configsPerLayout! + view * model.switches! + sw;
-    const enc14 = (n: number) => [n & 0x7f, (n >> 7) & 0x7f];
-    const build = (pid: number): number[] => {
-      const f = [0xf0, 0x00, 0x01, 0x74, this.#prof.model, 0x01, 0x1b, 0x00, ...enc14(eid), ...enc14(pid), 0, 0, 0, 0, 0, 0, 0, 0, 0];
-      let cs = 0;
-      for (const b of f) cs ^= b;
-      f.push(cs & 0x7f, 0xf7);
-      return f;
-    };
+    const build = (pid: number): number[] =>
+      gen3Frame(this.#prof.model, 0x01, 0x1b, 0x00, [...enc14(eid), ...enc14(pid), 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     const read = async (pid: number): Promise<number | null> => {
       const match = (f: number[]) =>
         f[5] === 0x01 && f[6] === 0x1b && f[7] === 0x00 && (f[8]! | (f[9]! << 7)) === eid && (f[10]! | (f[11]! << 7)) === pid;
@@ -1714,9 +1539,6 @@ class Gen3Driver implements DeviceDriver {
     return { blockId, itemCount: values.length, values, activeChannel: xyState, slug, payload };
   }
 }
-
-function clamp01(v: number) { return Math.max(0, Math.min(1, v)); }
-function round3(v: number) { return Math.round(v * 1000) / 1000; }
 
 /** Create a gen-3 driver bound to one device profile (Axe-Fx III / FM3 / FM9). */
 export function createGen3Driver(profile: DeviceProfile, ctx: DriverCtx): Gen3Driver {

@@ -43,12 +43,11 @@ export class TransportConn implements MidiConnection {
 
   #waitFor(pred: (bytes: number[]) => boolean, timeoutMs: number): Promise<number[]> {
     return new Promise<number[]>((resolve, reject) => {
-      let unsub: (() => void) | undefined;
-      const timer = setTimeout(() => { unsub?.(); reject(new Error(`descriptor receiveSysEx timeout after ${timeoutMs}ms`)); }, timeoutMs);
-      unsub = this.#t.onFrame((frame) => {
+      const timer = setTimeout(() => { unsub(); reject(new Error(`descriptor receiveSysEx timeout after ${timeoutMs}ms`)); }, timeoutMs);
+      const unsub = this.#t.onFrame((frame) => {
         if (!pred(frame)) return;
         clearTimeout(timer);
-        unsub?.();
+        unsub();
         resolve(frame);
       });
     });

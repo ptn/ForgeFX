@@ -40,55 +40,22 @@ import {
 // Per-device capability declarations (the package's single source of truth: scenes, channels, slot
 // model, save, …). Surfaced via /device so Axis drives its UI from what each model actually supports,
 // instead of hardcoded per-model assumptions.
-import { FM3_DESCRIPTOR, FM9_DESCRIPTOR, AXEFX3_DESCRIPTOR, VP4_DESCRIPTOR } from 'forgefx-midi/devices/gen3';
-import { AM4_DESCRIPTOR } from 'forgefx-midi/devices/am4';
-import { AXEFX2_DESCRIPTOR } from 'forgefx-midi/devices/gen2';
-import { AXEFXGEN1_DESCRIPTOR } from 'forgefx-midi/devices/gen1';
 import type { Transport, Conn, ConnKind } from '../transport/types.js';
 import { DEFAULT_PROFILE, PROFILES, profileForModel, profileForKey, runtimeProfileFrom, type DeviceProfile } from '../devices.js';
-import { createGen3Driver } from './gen3.js';
-import { createAm4Driver, type Am4Driver } from './am4.js';
-import { createGen2Driver } from './gen2.js';
-import { createGen1Driver } from './gen1.js';
-import { createVp4Driver } from './vp4.js';
+import { DEVICE_CATALOG, modelIdForForcedKey } from './deviceCatalog.js';
+import { capabilitiesDto } from './registry/capabilities.js';
+import { TransportInstrumentation } from './registry/instrumentation.js';
+import { deviceCacheKey } from '../services/deviceCacheKey.js';
 import type { DeviceDriver, DeviceEvent, DriverCtx, DriverCapabilities } from './types.js';
 import { cadenceFor, isTelemetryMode, TELEMETRY_MODES, type TelemetryMode, type CadenceProfile } from './telemetryProfiles.js';
-
-/** Device-cache doc key for the deviceCaches store collection: `<model-hex>_<major>p<minor>`
- *  (e.g. FM3 fw 12.0 → `11_12p0`). Shared by the registry (runtime profile swap) + the deviceCache
- *  service (status / build / delete) so both address the exact same doc. */
-export function deviceCacheKey(modelId: number, major: number, minor: number): string {
-  return `${modelId.toString(16).padStart(2, '0')}_${major}p${minor}`;
-}
+import { midiNoteName } from './shared/notes.js';
 
 /** The /telemetry/config DTO both surfaces serve: the current mode, its resolved cadence, and the
  *  full mode list. Cumulative-counter-free — traffic rides the SSE `traffic` event + /diag. */
 export interface TelemetryConfigDto { mode: TelemetryMode; effective: CadenceProfile; modes: readonly TelemetryMode[]; }
 
-const DESCRIPTOR_BY_MODEL: Record<number, { capabilities: Record<string, unknown> }> = {
-  0x01: AXEFXGEN1_DESCRIPTOR as never,
-  0x07: AXEFX2_DESCRIPTOR as never,
-  0x10: AXEFX3_DESCRIPTOR as never,
-  0x11: FM3_DESCRIPTOR as never,
-  0x12: FM9_DESCRIPTOR as never,
-  0x14: VP4_DESCRIPTOR as never,
-  0x15: AM4_DESCRIPTOR as never
-};
-
-// Gen-3 virtual effects Axis exposes as rail screens (ToolRail's VIRTUAL map + the Modifier flyout's
-// effectId 3) — surfaced in the capabilities DTO so the client stops hardcoding them per model.
-const GEN3_VIRTUAL_EFFECTS: readonly { eid: number; slug: string; name: string }[] = [
-  { eid: 1, slug: 'global', name: 'Setup' },
-  { eid: 2, slug: 'controllers', name: 'Controllers' },
-  { eid: 3, slug: 'modifier', name: 'Modifier' },
-  { eid: 199, slug: 'fc', name: 'Footswitches' }
-];
-// gen-3 grid shunt effect-id base (shunt eids = 1024+); the AM4's linear chain has no shunts.
-const GEN3_SHUNT_BASE = 1024;
-
-// Per-transport-instance idempotency flag for #instrumentTransport (double-wrapping would double-count
-// the fn-0x1F echo guard and silently break front-panel edit reflection).
-const INSTRUMENTED = Symbol('forgefx.transport.instrumented');
+// Per-transport instrumentation (traffic counters + echo guard + in-flight tracking) lives in
+// registry/instrumentation.ts; the registry drives it via #inst.
 
 /** One selectable connection as the deps' lister reports it (serial + MIDI, Fractal flagged) —
  *  structurally identical to transport/connection.ts's ConnInfo, re-declared here so the core stays
@@ -132,15 +99,13 @@ export interface RegistryDeps {
   loadDeviceCache?(key: string): BuiltCache | null | Promise<BuiltCache | null>;
 }
 
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-
 /** Detected frequency (Hz) → musical note + cents offset (equal temperament, A4=440). */
 function freqToNote(f: number): { note: string; cents: number; octave: number } | null {
   if (!(f > 0) || !Number.isFinite(f)) return null;
   const midi = 69 + 12 * Math.log2(f / 440);
   const nearest = Math.round(midi);
   return {
-    note: NOTE_NAMES[((nearest % 12) + 12) % 12]!,
+    note: midiNoteName(nearest),
     cents: Math.round((midi - nearest) * 100),
     octave: Math.floor(nearest / 12) - 1
   };
@@ -223,22 +188,13 @@ export class DeviceRegistry {
   /** The accepted mode set — the route uses it to 400 an unknown value before calling the setter. */
   telemetryModes(): readonly TelemetryMode[] { return TELEMETRY_MODES; }
 
-  /** Driver factory: model byte → per-device driver over the shared transport. */
+  /** Driver factory: model byte → per-device driver over the shared transport (deviceCatalog). */
   #driverFor(modelId: number): DeviceDriver | null {
     const cached = this.#drivers.get(modelId);
     if (cached) return cached;
-    const make: Record<number, () => DeviceDriver> = {
-      0x01: () => createGen1Driver(this.#ctx),
-      0x07: () => createGen2Driver(this.#ctx),
-      0x10: () => createGen3Driver(PROFILES[0x10]!, this.#ctx),
-      0x11: () => createGen3Driver(PROFILES[0x11]!, this.#ctx),
-      0x12: () => createGen3Driver(PROFILES[0x12]!, this.#ctx),
-      0x14: () => createVp4Driver(this.#ctx),
-      0x15: () => createAm4Driver(this.#ctx)
-    };
-    const f = make[modelId];
-    if (!f) return null;
-    const d = f();
+    const entry = DEVICE_CATALOG.get(modelId);
+    if (!entry) return null;
+    const d = entry.create(this.#ctx);
     this.#drivers.set(modelId, d);
     return d;
   }
@@ -256,10 +212,10 @@ export class DeviceRegistry {
     return this.#active ?? this.#driverFor(this.#prof.model)!;
   }
 
-  /** The AM4 driver instance — used by the /preset/decode model-byte dispatch (offline decode of an
-   *  AM4 .syx works whatever unit is attached) and pre-fold by the /am4/* singleton routes. */
-  am4(): Am4Driver {
-    return this.#driverFor(0x15) as Am4Driver;
+  /** The driver for a specific model byte, whatever unit is attached — for offline, transport-free
+   *  work (e.g. decoding an AM4 .syx on a gen-3 host). Null when the model has no driver. */
+  driverForModel(modelId: number): DeviceDriver | null {
+    return this.#driverFor(modelId);
   }
 
   /** TEST-ONLY seam (see __setDriverForTest): pre-seed the driver cache for one model byte so the
@@ -281,17 +237,10 @@ export class DeviceRegistry {
    *  no-op — double-wrapping would double-count the fn-0x1F echo guard and break edit reflection). */
   __instrumentTransportForTest(t: Transport): void { this.#instrumentTransport(t); }
 
-  /** Map a manual profile-override key to a model byte. Gen-3 keys resolve via profileForKey; AM4 has no
-   *  gen-3 profile (it uses the separate am4 codec) so it maps to its model byte directly. -1 = unknown. */
+  /** Map a manual profile-override key to a model byte via the deviceCatalog (gen-3 keys match the
+   *  profile key; descriptor devices carry their own aliases). -1 = unknown. */
   #forcedModelId(key: string): number {
-    const p = profileForKey(key);
-    if (p) return p.model;
-    // Descriptor-based devices have no gen-3 DeviceProfile (their codec is separate), so map directly.
-    if (key === 'am4') return 0x15;
-    if (key === 'axe2') return 0x07;
-    if (key === 'vp4') return 0x14;
-    if (key === 'gen1') return 0x01;
-    return -1;
+    return modelIdForForcedKey(key);
   }
 
   // ── event bus (SSE source): live tuner/scene/tempo/cpu pushes ──
@@ -392,7 +341,7 @@ export class DeviceRegistry {
       // Cumulative device-link traffic since the connection was instrumented (matches the SSE `traffic`
       // event's counters); telemetryMode surfaces the active cadence mode + its currently-active loops.
       telemetryMode: this.#telemetryMode,
-      traffic: { ...this.#traffic, since: this.#trafficSince, loops: this.#activeLoops() },
+      traffic: { ...this.#inst.traffic, since: this.#inst.since, loops: this.#activeLoops() },
       listError
     };
   }
@@ -428,87 +377,9 @@ export class DeviceRegistry {
     return { ok: true, chosen: await this.#deps.resolveConn(), profileOverride: this.#deps.getProfileOverride() };
   }
 
-  /** Phase-6 extended capability matrix for a model byte — the ADDITIVE superset fields merged into
-   *  the curated descriptor subset (see #capabilitiesDto). Derived from the driver's own
-   *  DriverCapabilities + which optional driver methods it implements (capability-, never
-   *  model-gated), so the DTO can't drift from what the routes actually answer. Null when no driver
-   *  exists for the model (e.g. VP4) — the curated subset is then served alone. */
-  #extendedCaps(mid: number): Record<string, unknown> | null {
-    const d = this.#driverFor(mid);
-    if (!d) return null;
-    const c = d.capabilities;
-    const grid = c.slotModel === 'grid';
-    const prof = grid ? profileForModel(mid) : null;
-    return {
-      presets: {
-        count: grid ? 512 : 104, // 512 slots on every gen-3 unit; 104 (A01..Z04) on the AM4
-        addressing: grid ? 'numeric' : 'bankLetter',
-        canRename: !!d.setPresetName,
-        canScanNames: !!d.scanPresets,
-        canDeepScan: c.presetDump,
-        liveQuery: !!d.presetRef
-      },
-      // Routing = rewiring the signal path with CABLES, which is a real driver method (d.cable) — NOT the
-      // same as being able to place/clear blocks. The AM4 edits its chain (d.placeCell) but has a fixed
-      // linear route with no cables, so gridRouting is false there while block placement still works.
-      gridRouting: !!d.cable,
-      gridCursorSelect: !!d.selectCell,
-      shuntBase: grid ? GEN3_SHUNT_BASE : null,
-      // both codecs serve full param catalogs server-side (gen-3 tables + AM4 KNOWN_PARAMS) — Axis
-      // can drop its client-side `!c.pack` gates on either device.
-      paramsWithoutPack: true,
-      tempo: !!d.getTempo,
-      tuner: c.telemetry.tuner,
-      meters: {
-        blockMeters: !!d.meters,
-        liveMonitors: !!d.liveMonitors && !!prof?.monitorParams,
-        outputLevels: c.telemetry.outputMeters,
-        cpu: c.telemetry.cpu
-      },
-      sceneNamesWritable: !!d.setSceneName,
-      fc: { model: c.fcModel, liveState: c.fcLiveRead },
-      modifiers: { model: (d.modifierModel?.() ?? null) != null, bind: c.modBind },
-      cabIrs: c.cabIrs,
-      // On-connect device-cache self-describe build (POST /device/cache/build). Gen-3 grid units only.
-      selfDescribe: c.selfDescribe,
-      // Official-editor .cache import (POST /device/cache/import). Tracks selfDescribe (gen-3 grid units).
-      cacheImport: c.cacheImport,
-      // FULL-mode self-describe write-sweep (POST /device/cache/build with mode:'full'). True only for the
-      // CaptureRig-proven gen-3 trio (III/FM3/FM9); false on VP4/AM4/gen-1/gen-2. Derived from the driver
-      // cap so the DTO can't drift. Inserted after cacheImport (additive-only ordering — see #capabilitiesDto).
-      fullCapture: c.fullCapture,
-      editorLayouts: c.editorLayouts,
-      firmwareValidate: !!d.validateFirmware,
-      // Cross-device preset conversion (POST /preset/convert with no source): the current preset can be
-      // dumped + lifted into the converter IR. Derived from DriverCapabilities so the DTO can't drift.
-      presetConvert: c.presetConvert,
-      backupDump: !!d.backupPreset,
-      restoreDump: !!d.restorePreset,
-      versionStore: !!d.dumpRaw && !!d.loadPresetBytes,
-      deviceParams: !!d.setParamByKey,
-      virtualEffects: grid ? GEN3_VIRTUAL_EFFECTS : []
-    };
-  }
-
-  /** The capabilities object /device and /device/detect serve: the curated descriptor subset
-   *  (unchanged keys, byte-compatible) with the Phase-6 extended matrix merged in BEFORE
-   *  `supportsSave`, so a pretty-printed JSON diff against the pre-Phase-6 sweep stays
-   *  additive-only (appending after the last key would rewrite its comma line). */
+  /** The capabilities object /device and /device/detect serve — see registry/capabilities.ts. */
   #capabilitiesDto(mid: number): Record<string, unknown> | null {
-    const c = DESCRIPTOR_BY_MODEL[mid]?.capabilities as Record<string, unknown> | undefined;
-    if (!c) return null;
-    // curated subset (drop the RegExp preset_location_format — not JSON-clean, not needed by the UI)
-    return {
-      slotModel: c.slot_model, slotCount: c.slot_count, grid: c.grid,
-      hasScenes: !!c.has_scenes, sceneCount: c.scene_count ?? 0,
-      hasChannels: !!c.has_channels, channelNames: c.channel_names ?? [], channelBlocks: c.channel_blocks ?? [],
-      ...(this.#extendedCaps(mid) ?? {}),
-      // Registry-level cadence-mode control (GET/PUT /telemetry/config) — advertised on every device so
-      // Axis can surface the control unconditionally. Placed before supportsSave so the pretty-printed
-      // caps diff stays additive-only (see #capabilitiesDto's ordering contract).
-      telemetryControl: true,
-      supportsSave: !!c.supports_save
-    };
+    return capabilitiesDto(this.#driverFor(mid), mid);
   }
 
   async deviceInfo() {
@@ -668,19 +539,21 @@ export class DeviceRegistry {
 
   /** Swap the active driver's profile for a device-cache-derived RUNTIME profile when a cache doc
    *  exists for the attached model+firmware. Called on a fresh detect AND by the deviceCache service
-   *  after a build completes. No-op without a loadDeviceCache hook, a selfDescribe driver, known
-   *  firmware, or a stored cache. Never throws. */
+   *  after a build/import completes. No-op without a loadDeviceCache hook, a driver that can ADOPT a
+   *  runtime profile (selfDescribe walk OR cacheImport byte-source), known firmware, or a stored cache.
+   *  Never throws. */
   async applyRuntimeCache(): Promise<void> {
     if (!this.#deps.loadDeviceCache) return;
     const d = this.#active;
     const mid = this.#modelId;
-    if (mid < 0 || !d || !d.capabilities.selfDescribe || !d.applyRuntimeProfile || !this.#firmware) return;
+    const canAdopt = !!d && (d.capabilities.selfDescribe || d.capabilities.cacheImport) && !!d.applyRuntimeProfile;
+    if (mid < 0 || !canAdopt || !this.#firmware) return;
     const key = deviceCacheKey(mid, this.#firmware.major, this.#firmware.minor);
     let built: BuiltCache | null = null;
     try { built = (await this.#deps.loadDeviceCache(key)) ?? null; } catch { built = null; }
     if (!built) return;
     const runtime = runtimeProfileFrom(built, PROFILES[mid] ?? this.#prof);
-    d.applyRuntimeProfile(runtime);
+    d.applyRuntimeProfile!(runtime);
     if (PROFILES[mid]) this.#prof = runtime; // keep /diag + reporting profile in sync for gen-3
   }
 
@@ -973,69 +846,22 @@ export class DeviceRegistry {
   // genuine front-panel edit. Crucially this counts ONLY fn-0x1F reads: gen-3 also runs a 60ms OUTPUT-
   // meter poll (fn 0x19) + tempo/scene/writes, none of which elicit a 0x74 burst — gating on those would
   // wrongly drop a front-panel edit that lands during the meter poll (the bug that broke gen-3 sync).
-  #pendingBulkReads = 0;
   #editPushUnsub: (() => void) | null = null;
   #burst: number[][] | null = null;
   #burstTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── traffic counters (FORGEFX-27) + interactive-request tracking (FORGEFX-28) ──
-  // Cumulative since the connection was instrumented; survive across reconnects (each new transport
-  // re-instruments and keeps counting into the same totals). Emitted ~1×/s over SSE + folded into /diag.
-  #traffic = { txMsgs: 0, txBytes: 0, rxMsgs: 0, rxBytes: 0 };
-  #trafficSince = Date.now();
-  // ALL requests currently awaiting a reply (route-driven AND supervisor polls); #supervisorInFlight is
-  // the subset the telemetry supervisor itself issued (wrapped in #supervised). interactive = the
-  // difference → the supervisor yields to genuine route traffic without counting its own polls (28).
-  #inFlightRequests = 0;
-  #supervisorInFlight = 0;
+  #inst = new TransportInstrumentation();
 
-  /** Wrap a freshly-opened transport with: (1) the edit-push ECHO GUARD — each in-flight fn-0x1F
-   *  bulk-read (bytes[5]===0x1f) bumps #pendingBulkReads so the edit-push listener drops our own poll
-   *  replies; (2) TX traffic counting on every outgoing frame (send/sendQueued/sendPaced/request);
-   *  (3) ONE persistent onFrame handler for RX counting; (4) an all-requests in-flight counter for the
-   *  interactive-yield logic. IDEMPOTENT per transport instance (a Symbol flag) so a re-wrap is a
-   *  no-op — double-wrapping would double-count the echo guard and silently break edit reflection. */
-  #instrumentTransport(t: Transport) {
-    const inst = t as Transport & { [INSTRUMENTED]?: boolean };
-    if (inst[INSTRUMENTED]) return; // already wrapped — never double-wrap (breaks the echo guard)
-    inst[INSTRUMENTED] = true;
-
-    const countTx = (bytes: readonly number[]) => { this.#traffic.txMsgs++; this.#traffic.txBytes += bytes.length; };
-
-    const origRequest = t.request.bind(t);
-    t.request = (bytes, opts) => {
-      countTx(bytes);
-      this.#inFlightRequests++;
-      const bulk = bytes[5] === 0x1f; // only a bulk read can elicit a 0x74 burst → echo guard counts it
-      if (bulk) this.#pendingBulkReads++;
-      return origRequest(bytes, opts).finally(() => {
-        this.#inFlightRequests = Math.max(0, this.#inFlightRequests - 1);
-        if (bulk) this.#pendingBulkReads = Math.max(0, this.#pendingBulkReads - 1);
-      });
-    };
-    const origSend = t.send.bind(t);
-    t.send = (bytes) => { countTx(bytes); return origSend(bytes); };
-    const origSendQueued = t.sendQueued.bind(t);
-    t.sendQueued = (bytes, settleMs) => { countTx(bytes); return origSendQueued(bytes, settleMs); };
-    if (t.sendPaced) {
-      const origSendPaced = t.sendPaced.bind(t);
-      t.sendPaced = (bytes, chunk, delayMs) => { countTx(bytes); return origSendPaced(bytes, chunk, delayMs); };
-    }
-    // RX: one persistent handler for the transport's life (additive — coexists with request() waiters
-    // and the edit-push listener, which register their own onFrame handlers).
-    t.onFrame((frame) => { this.#traffic.rxMsgs++; this.#traffic.rxBytes += frame.length; });
-  }
+  /** Instrument a freshly-opened transport (traffic counters + echo guard + in-flight tracking). */
+  #instrumentTransport(t: Transport) { this.#inst.instrument(t); }
 
   /** Run a supervisor-issued device call while marking it so it doesn't register as INTERACTIVE traffic
    *  (both meters and edit-watch poll concurrently — without this, one loop's request would make the
    *  other yield). */
-  async #supervised<T>(fn: () => Promise<T>): Promise<T> {
-    this.#supervisorInFlight++;
-    try { return await fn(); }
-    finally { this.#supervisorInFlight = Math.max(0, this.#supervisorInFlight - 1); }
-  }
+  async #supervised<T>(fn: () => Promise<T>): Promise<T> { return this.#inst.supervised(fn); }
   /** Route-driven (non-supervisor) requests currently in flight — the supervisor yields to these. */
-  #interactiveInFlight(): number { return Math.max(0, this.#inFlightRequests - this.#supervisorInFlight); }
+  #interactiveInFlight(): number { return this.#inst.interactiveInFlight(); }
 
   // Consecutive skips per yielding loop — a starvation guard forces a poll after MAX_SKIPS so a busy
   // UI never fully starves the front-panel watches.
@@ -1055,11 +881,11 @@ export class DeviceRegistry {
     this.#trafficTimer = null;
   }
   #emitTraffic() {
-    const t = this.#traffic;
+    const t = this.#inst.traffic;
     const p = this.#lastTrafficEmit;
     if (t.txMsgs === p.txMsgs && t.txBytes === p.txBytes && t.rxMsgs === p.rxMsgs && t.rxBytes === p.rxBytes) return; // no change → stay quiet
     this.#lastTrafficEmit = { ...t };
-    this.#emit({ type: 'traffic', ...t, since: this.#trafficSince, loops: this.#activeLoops() });
+    this.#emit({ type: 'traffic', ...t, since: this.#inst.since, loops: this.#activeLoops() });
   }
   /** The currently-live supervisor loops, derived from which timers/listeners are active. */
   #activeLoops(): string[] {
@@ -1095,7 +921,7 @@ export class DeviceRegistry {
     const d = this.#active;
     if (!d?.capabilities.deviceEditPush || !d.decodeEditBurst) return;
     // Reply to our own fn-0x1F bulk-read — the request()'s own handler owns it; skip (+ drop any partial).
-    if (this.#pendingBulkReads > 0) { this.#resetBurst(); return; }
+    if (this.#inst.pendingBulkReads > 0) { this.#resetBurst(); return; }
     const fn = frame[5];
     if (fn === 0x74) { this.#burst = [frame]; this.#armBurstTimer(); return; } // burst head (new supersedes partial)
     if (!this.#burst) return; // stray body/end/other with no head we own

@@ -97,6 +97,12 @@ export interface FcReadState {
   fields: Record<string, number | null>;
   tapLabel: string; holdLabel: string;
 }
+/** Offline decode of a raw .syx bank/dump at stored locations (AM4 slot/bank decoder) — the generic
+ *  capability the /preset/decode model-byte dispatch calls instead of reaching for a concrete driver. */
+export interface OfflinePresetBank {
+  count: number;
+  presets: { index: number; location: number | null; code: string | null; name: string; sceneNames?: string[]; crcValid?: boolean }[];
+}
 
 // Live pushes streamed to Axis over SSE.
 export type DeviceEvent =
@@ -161,8 +167,6 @@ export interface DriverCapabilities {
    *  structure blob) / AM4 (partial). False where no liftable current-preset decode is reachable
    *  (gen-2's preset binary is opaque through the codec's public exports; gen-1 has no lift adapter). */
   presetConvert: boolean;
-  /** Full per-block param decode from the preset body (FM3 only today). */
-  blockParamDecode: boolean;
   /** Gen-3 live telemetry polls the supervisor may run against this device. */
   telemetry: { tuner: boolean; outputMeters: boolean; cpu: boolean };
   /** Foot Controller address model available. */
@@ -246,6 +250,10 @@ export interface DeviceDriver {
   /** Raw .syx bytes (the backup blob) + decoded summary for one slot — the backups service's source. */
   dumpRaw?(n: number): Promise<{ bytes: Uint8Array; summary: PresetSummary }>;
   decodePresetBytes?(bytes: Uint8Array): PresetSummary;
+  /** Offline decode of a raw .syx bank/dump that is NOT a gen-3 PresetSummary — the AM4 slot/bank
+   *  decoder (location + name per preset, no transport). Capability-gated: the /preset/decode
+   *  model-byte dispatch calls it for model 0x15 so the route needs no concrete Am4Driver cast. */
+  decodePresetBank?(bytes: number[]): OfflinePresetBank;
   presetBodyHex?(): Promise<{ len: number; hex: string }>;
   placedBlocks?(): Promise<PresetBlockDTO[]>;
 

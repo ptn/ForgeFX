@@ -216,6 +216,104 @@ function isGen3Target(d: string): d is Gen3DeviceId {
   return d === 'fm3' || d === 'fm9' || d === 'axe-fx-iii';
 }
 
+type AuthorResult = ReturnType<typeof authorGen3PresetFromIRFull>;
+
+/** Resolve the synthesis scaffold: an optional caller base (validated as the SAME target device) or the
+ *  codec's bundled default scaffold. Base pre-validation applies ONLY when a base is supplied. */
+function resolveScaffold(base: Uint8Array | undefined, modelId: number, deviceName: string): Uint8Array {
+  if (!base || base.length === 0) return defaultScaffoldSyx(modelId);
+  if (sniffModelByte(base) !== modelId) {
+    throw new ConvertError(400, `the base override must be a ${deviceName} preset`);
+  }
+  const baseValidation = validateGen3Preset(base, modelId);
+  if (!baseValidation.ok) {
+    throw new ConvertError(
+      400,
+      `base override is not a valid ${deviceName} preset: ${baseValidation.issues.join('; ')}. ` +
+        'Omit the base to use the bundled default scaffold, or pick a different one.',
+    );
+  }
+  return base;
+}
+
+/** Resolve the IR to author from. PREFERRED: the caller's EDITED converter preset — authored DIRECTLY so
+ *  the user's grid routing/cables and block/param edits are carried verbatim (no re-lift/re-convert).
+ *  FALLBACK: lift the source (offline upload or connected device) and convert to the target IR. Returns
+ *  the IR plus the source blocks used for the join/fidelity report. */
+async function resolveSourceIr(opts: {
+  preset?: ConverterPreset;
+  sourceSyx?: Uint8Array;
+  driver?: DeviceDriver;
+  targetDevice: ConverterDeviceId;
+}): Promise<{ ir: SynthPreset; irBlocks: ConverterPreset['blocks'] }> {
+  if (opts.preset) return { ir: opts.preset as unknown as SynthPreset, irBlocks: opts.preset.blocks };
+  let source: ConverterPreset;
+  if (opts.sourceSyx && opts.sourceSyx.length > 0) {
+    source = liftFromSyx(opts.sourceSyx);
+  } else {
+    if (!opts.driver) throw new ConvertError(400, 'no source: supply an edited preset, source.syx, or connect a device');
+    source = await liftCurrentPreset(opts.driver);
+  }
+  const converted = convertPreset(source, opts.targetDevice);
+  return { ir: converted.target, irBlocks: converted.target.blocks };
+}
+
+/** Synthesize the whole body from `ir` onto `scaffold` and validate the AUTHORED OUTPUT before it can
+ *  leave the process. A synthesis that produced an incoherent preset (bad CRC, garbage block/type,
+ *  undecodable scene name) is refused with 422 — never hand back bytes that fail our own decode. */
+function synthesize(scaffold: Uint8Array, ir: SynthPreset, modelId: number): { result: AuthorResult; validation: { ok: boolean; issues: string[] } } {
+  const result = authorGen3PresetFromIRFull(scaffold, ir, modelId);
+  const validation = validateGen3Preset(result.syx, modelId);
+  if (!validation.ok) {
+    // Permanent operational diagnostic: a 422 here means synthesis produced an incoherent preset.
+    // The IR shape (block/cell counts, placed eids, skip reasons, a grid sample) is what pins the cause.
+     
+    console.error('[convert/export] 422 authored preset failed validation', {
+      issues: validation.issues,
+      irBlocks: ir.blocks?.length,
+      irGridCells: ir.routing?.gridCells?.length,
+      irSceneNames: ir.sceneNames?.length ?? 0,
+      placed: result.blocks.length,
+      placedEids: result.blocks.map((b) => b.eid),
+      skipped: result.skipped.length,
+      skipReasons: [...new Set(result.skipped.map((s) => s.reason))],
+      gridSample: (ir.routing?.gridCells ?? []).slice(0, 20).map((c: { row: number; col: number; effectId?: number; routeFlag?: number; blockKey?: string; isShunt?: boolean }) => ({ r: c.row, c: c.col, eid: c.effectId, rf: c.routeFlag, k: c.blockKey, sh: c.isShunt })),
+    });
+    throw new ConvertError(422, `authored preset failed validation: ${validation.issues.join('; ')}`);
+  }
+  return { result, validation };
+}
+
+/** Fold the synthesized result + source IR into the written/skipped/fidelity report. The join names the
+ *  family/instance the UI shows; fidelity counts full-synthesis landings vs template-less drops. */
+function buildLandedReport(result: AuthorResult, irBlocks: ConverterPreset['blocks']): Pick<ExportConvertedSyxResult, 'written' | 'skipped' | 'fidelity'> {
+  const byKey = new Map(irBlocks.map((b) => [b.key, b] as const));
+  const written: LandedBlockRecord[] = result.blocks.map((pb) => {
+    const src = byKey.get(pb.key);
+    return {
+      blockKey: pb.key,
+      family: src?.family ?? '',
+      displayName: pb.displayName,
+      instance: src?.instance ?? 0,
+      eid: pb.eid,
+      ...(pb.typeWritten != null ? { typeWritten: pb.typeWritten } : {}),
+      params: pb.params,
+    };
+  });
+  const droppedNoTemplate = result.skipped.filter((s: SynthSkip) =>
+    s.reason.startsWith('no harvested template') || s.reason.startsWith('no template or geometry'),
+  ).length;
+  return {
+    written,
+    skipped: result.skipped.map((s) => ({
+      ...(s.key != null ? { blockKey: s.key } : {}),
+      ...(s.family != null ? { family: s.family } : {}),
+      reason: s.reason,
+    })),
+    fidelity: { sourceBlocks: irBlocks.length, landedBlocks: result.blocks.length, droppedNoTemplate },
+  };
+}
+
 /**
  * Author a target-device `.syx` from a converted preset by FULL-BODY SYNTHESIS — the whole FM3 body
  * (scene names + grid + block chain) is synthesized fresh from the converted IR onto a clean FM3 scaffold,
@@ -264,110 +362,17 @@ export async function exportConvertedSyx(opts: {
   const modelId = GEN3_MODEL_BY_DEVICE[targetDevice];
   const deviceName = GEN3_DEVICE_NAME[targetDevice];
 
-  // Resolve the SCAFFOLD: an optional caller base override (must be a valid dump of the SAME target device)
-  // or the codec's bundled default scaffold for that device. Base pre-validation applies ONLY when supplied.
-  let scaffold: Uint8Array;
-  if (base && base.length > 0) {
-    if (sniffModelByte(base) !== modelId) {
-      throw new ConvertError(400, `the base override must be a ${deviceName} preset`);
-    }
-    const baseValidation = validateGen3Preset(base, modelId);
-    if (!baseValidation.ok) {
-      throw new ConvertError(
-        400,
-        `base override is not a valid ${deviceName} preset: ${baseValidation.issues.join('; ')}. ` +
-          'Omit the base to use the bundled default scaffold, or pick a different one.',
-      );
-    }
-    scaffold = base;
-  } else {
-    scaffold = defaultScaffoldSyx(modelId);
-  }
+  const scaffold = resolveScaffold(base, modelId, deviceName);
+  const { ir, irBlocks } = await resolveSourceIr({ preset, sourceSyx, driver, targetDevice });
 
-  // Resolve the IR to author from. PREFERRED: the caller's EDITED converter preset — author it
-  // DIRECTLY so the user's grid routing/cables and block/param edits are carried verbatim (no
-  // re-lift/re-convert, which would discard them). FALLBACK: lift the source (offline upload or the
-  // connected device) and convert to the FM3 target IR. Either way the IR is structurally a
-  // `SynthPreset` (name, sceneNames, blocks-with-target-paramId, routing.gridCells w/ routeFlag).
-  let ir: SynthPreset;
-  let irBlocks: ConverterPreset['blocks'];
-  if (preset) {
-    ir = preset as unknown as SynthPreset;
-    irBlocks = preset.blocks;
-  } else {
-    let source: ConverterPreset;
-    if (sourceSyx && sourceSyx.length > 0) {
-      source = liftFromSyx(sourceSyx);
-    } else {
-      if (!driver) throw new ConvertError(400, 'no source: supply an edited preset, source.syx, or connect a device');
-      source = await liftCurrentPreset(driver);
-    }
-    const converted = convertPreset(source, targetDevice);
-    ir = converted.target;
-    irBlocks = converted.target.blocks;
-  }
-
-  // SYNTHESIZE the whole body from the IR onto the scaffold.
+  // SYNTHESIZE the whole body from the IR onto the scaffold, then validate the authored output.
   const effectiveName = name?.trim() || ir.name || '';
-  const result = authorGen3PresetFromIRFull(scaffold, { ...ir, name: effectiveName }, modelId);
-
-  // GATE — validate the AUTHORED OUTPUT before returning. A synthesis that produced an incoherent preset
-  // (bad CRC, garbage block/type, undecodable scene name) is refused with 422 — we NEVER hand back bytes
-  // that fail our own decode.
-  const outValidation = validateGen3Preset(result.syx, modelId);
-  if (!outValidation.ok) {
-    // Permanent operational diagnostic: a 422 here means synthesis produced an incoherent preset.
-    // The IR shape (block/cell counts, placed eids, skip reasons, a grid sample) is what pins the
-    // cause (e.g. FORGEFXMID-43: cross-device cells with undefined effectId collapsing onto one block).
-    // eslint-disable-next-line no-console
-    console.error('[convert/export] 422 authored preset failed validation', {
-      issues: outValidation.issues,
-      irBlocks: ir.blocks?.length,
-      irGridCells: ir.routing?.gridCells?.length,
-      irSceneNames: ir.sceneNames?.length ?? 0,
-      placed: result.blocks.length,
-      placedEids: result.blocks.map((b) => b.eid),
-      skipped: result.skipped.length,
-      skipReasons: [...new Set(result.skipped.map((s) => s.reason))],
-      gridSample: (ir.routing?.gridCells ?? []).slice(0, 20).map((c: { row: number; col: number; effectId?: number; routeFlag?: number; blockKey?: string; isShunt?: boolean }) => ({ r: c.row, c: c.col, eid: c.effectId, rf: c.routeFlag, k: c.blockKey, sh: c.isShunt })),
-    });
-    throw new ConvertError(422, `authored preset failed validation: ${outValidation.issues.join('; ')}`);
-  }
-
-  // Join the synthesized placed blocks back to the converted IR (by stable key) so the report names the
-  // family/instance the UI shows.
-  const byKey = new Map(irBlocks.map((b) => [b.key, b] as const));
-  const written: LandedBlockRecord[] = result.blocks.map((pb) => {
-    const src = byKey.get(pb.key);
-    return {
-      blockKey: pb.key,
-      family: src?.family ?? '',
-      displayName: pb.displayName,
-      instance: src?.instance ?? 0,
-      eid: pb.eid,
-      ...(pb.typeWritten != null ? { typeWritten: pb.typeWritten } : {}),
-      params: pb.params,
-    };
-  });
-
-  // FIDELITY — full synthesis reproduces the ENTIRE block chain from the IR (not bounded by any base's
-  // blocks). The only drops are families whose FM3 template has not been harvested yet.
-  const sourceBlocks = irBlocks.length;
-  const landedBlocks = result.blocks.length;
-  const droppedNoTemplate = result.skipped.filter((s: SynthSkip) =>
-    s.reason.startsWith('no harvested template') || s.reason.startsWith('no template or geometry'),
-  ).length;
+  const { result, validation } = synthesize(scaffold, { ...ir, name: effectiveName }, modelId);
 
   return {
     syx: Array.from(result.syx),
-    written,
-    skipped: result.skipped.map((s) => ({
-      ...(s.key != null ? { blockKey: s.key } : {}),
-      ...(s.family != null ? { family: s.family } : {}),
-      reason: s.reason,
-    })),
+    ...buildLandedReport(result, irBlocks),
     name: result.nameWritten ?? effectiveName ?? '',
-    validation: { ok: outValidation.ok, issues: outValidation.issues },
-    fidelity: { sourceBlocks, landedBlocks, droppedNoTemplate },
+    validation: { ok: validation.ok, issues: validation.issues },
   };
 }

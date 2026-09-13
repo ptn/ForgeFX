@@ -1,5 +1,5 @@
 // Device-cache build orchestration — the runtime on-connect self-describe cache (FORGEFX-15 / A3).
-// One background build at a time per registry (module-level WeakMap job state), driving the codec's
+// One background build at a time per registry (BuildJobs-owned WeakMap), driving the codec's
 // live self-describe walk over the registry's shared transport into a `BuiltCache`, persisting it to
 // the `deviceCaches` store collection, and swapping the driver's profile to the device-true runtime
 // one. Progress is streamed as `cacheBuild` SSE events. Endpoints (both twins) are thin wrappers over
@@ -14,7 +14,9 @@ import { FM9_PARAMS } from 'forgefx-midi/gen3/fm9';
 import { PARAMS as AXE3_PARAMS } from 'forgefx-midi/gen3/axe-fx-iii';
 import { isFractalHeaderFrame } from 'forgefx-midi/shared';
 import { AM4_CACHE_PARAMS, AM4_SEEDS } from 'forgefx-midi/am4';
-import { deviceCacheKey, type DeviceRegistry } from '../drivers/registryCore.js';
+import { type DeviceRegistry } from '../drivers/registryCore.js';
+import { deviceCacheKey } from './deviceCacheKey.js';
+import type { ServiceResult } from './serviceResult.js';
 import type { Store } from '../runtime/store.js';
 import type { Transport } from '../transport/types.js';
 
@@ -36,12 +38,31 @@ interface CacheJob {
   promise: Promise<void>;
 }
 
-/** At most ONE build per registry. Module-level so status/cancel see the running job without the
- *  registry having to own build state. */
-const JOBS = new WeakMap<DeviceRegistry, CacheJob>();
+/** Owns the at-most-one in-flight build per registry, so build state lives with the builder instead
+ *  of a free-floating module global (status/cancel/promise all read it here). */
+class BuildJobs {
+  readonly #jobs = new WeakMap<DeviceRegistry, CacheJob>();
+  get(registry: DeviceRegistry): CacheJob | undefined { return this.#jobs.get(registry); }
+  has(registry: DeviceRegistry): boolean { return this.#jobs.has(registry); }
+  set(registry: DeviceRegistry, job: CacheJob): void { this.#jobs.set(registry, job); }
+  /** Drop `job` only if it is still the registered one (a later build must not be evicted by an old finisher). */
+  clear(registry: DeviceRegistry, job: CacheJob): void {
+    if (this.#jobs.get(registry) === job) this.#jobs.delete(registry);
+  }
+}
+const JOBS = new BuildJobs();
+
+/** Per-registry walk override. This is an embedding/test seam so a suite can drive the build from
+ *  canned records without septet-encoding wire frames; production always uses the codec's `liveWalk`.
+ *  Kept off the public startCacheBuild signature so route callers can't supply their own walk. */
+const WALK_OVERRIDES = new WeakMap<DeviceRegistry, WalkImpl>();
+export function setCacheWalkOverride(registry: DeviceRegistry, impl: WalkImpl | null): void {
+  if (impl) WALK_OVERRIDES.set(registry, impl);
+  else WALK_OVERRIDES.delete(registry);
+}
 
 /** The result a build-start returns to the (thin) endpoint: an HTTP status + the JSON body. */
-export interface StartResult { code: number; body: unknown }
+export type StartResult = ServiceResult;
 
 export interface CacheStatus {
   key: string | null;
@@ -118,12 +139,14 @@ export function adaptRequest(transport: Transport, query: Uint8Array): Promise<U
 
 /** The detached build task: pause telemetry, walk → build → persist → swap profile, emit terminal
  *  event, resume telemetry. Never rejects (all outcomes are emitted, not thrown). */
-async function runBuild(store: Store, registry: DeviceRegistry, job: CacheJob, walkImpl: WalkImpl): Promise<void> {
+async function runBuild(store: Store, registry: DeviceRegistry, job: CacheJob): Promise<void> {
   const { key, model, firmware, mode, controller } = job;
   const full = mode === 'full';
-  const resume = registry.pauseTelemetry(); // synchronous — telemetry is off before the first await
-  registry.emitEvent({ type: 'cacheBuild', phase: 'walking', done: 0, total: 0, key, model, firmware });
+  const walkImpl = WALK_OVERRIDES.get(registry) ?? liveWalk;
+  let resume: () => void = () => {};
   try {
+    resume = registry.pauseTelemetry(); // synchronous — telemetry is off before the first await
+    registry.emitEvent({ type: 'cacheBuild', phase: 'walking', done: 0, total: 0, key, model, firmware });
     const transport = await registry.transport();
     const adapter: LiveTransport = { request: (q) => adaptRequest(transport, q) };
     // FULL mode writes: the codec BUILDS the continuous-SET frame and hands us finished bytes → we just
@@ -225,8 +248,8 @@ export async function cacheStatus(store: Store, registry: DeviceRegistry): Promi
 
 /** POST /device/cache/build — start a background build (or report already-built / gated). Returns
  *  immediately; the build runs detached. `mode` (default 'read-only') selects the HW-proven read-only
- *  sweep or the fullCapture-gated write-sweep. `walkImpl` is a test seam (defaults to the codec's liveWalk). */
-export async function startCacheBuild(store: Store, registry: DeviceRegistry, opts?: { force?: boolean; mode?: BuildMode; walkImpl?: WalkImpl }): Promise<StartResult> {
+ *  sweep or the fullCapture-gated write-sweep. */
+export async function startCacheBuild(store: Store, registry: DeviceRegistry, opts?: { force?: boolean; mode?: BuildMode }): Promise<StartResult> {
   await registry.driver(); // ensure detection ran
   const caps = registry.activeCapabilities();
   if (!caps?.selfDescribe) return { code: 501, body: { error: 'unsupported', capability: 'selfDescribe' } };
@@ -251,8 +274,8 @@ export async function startCacheBuild(store: Store, registry: DeviceRegistry, op
     promise: Promise.resolve()
   };
   JOBS.set(registry, job);
-  job.promise = runBuild(store, registry, job, opts?.walkImpl ?? liveWalk).finally(() => {
-    if (JOBS.get(registry) === job) JOBS.delete(registry);
+  job.promise = runBuild(store, registry, job).finally(() => {
+    JOBS.clear(registry, job);
   });
   return { code: 200, body: { ok: true, key, started: true } };
 }

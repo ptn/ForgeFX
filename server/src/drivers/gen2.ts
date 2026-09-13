@@ -4,7 +4,7 @@
 //
 // Reads reuse the VERIFIED forgefx-midi descriptor reader (AXEFX2_DESCRIPTOR.reader.getPreset does the
 // full grid + per-block fn 0x1F param dump + name/scene/bypass read in one orchestrated pass) driven
-// over the shared registry Transport via the descriptorConn bridge, serialized behind #withReader (the
+// over the shared registry Transport via the descriptorConn bridge, serialized behind the shared reader lock (the
 // reader drives the RAW transport, so overlapping reads would interleave their fn 0x1F bursts). Writes
 // use the low-level wire builders directly (mirrors AM4) so setParam(eid,paramId,…) stays wire-precise
 // and byte-testable. Community-beta: the read path is hardware-verified upstream on an Axe-Fx II XL+
@@ -30,8 +30,9 @@ import {
   type AxeFxIIBlock,
 } from 'forgefx-midi/gen2/axe-fx-ii';
 import { AXEFX2_DESCRIPTOR } from 'forgefx-midi/devices/gen2';
-import { resolveParamKind, type DispatchCtx, type PresetSnapshot } from 'forgefx-midi/core';
-import { dispatchCtx } from './descriptorConn.js';
+import { resolveParamKind, type PresetSnapshot } from 'forgefx-midi/core';
+import { ReaderCache, PRESET_TTL_MS } from './shared/readerCache.js';
+import { dedupeById, enumOrdinal, normOf, paramLookup, slotParamValues, bypassEnum } from './shared/params.js';
 import type { Transport } from '../transport/types.js';
 import type {
   DeviceDriver, DriverCapabilities, DriverCtx,
@@ -71,7 +72,6 @@ class Gen2Driver implements DeviceDriver {
     channels: true,
     presetDump: false, // gen-2 dump is an opaque .syx blob (no gen-3 decode) → backup via backupPreset, not the gen-3 service
     presetConvert: false, // the gen-2 preset-parse decoder isn't reachable through the codec's public exports (only the descriptor barrel); the lift is name-only anyway
-    blockParamDecode: false, // params come from the fn 0x1F dump, not a preset-body decode (that path is FM3-only)
     telemetry: { tuner: false, outputMeters: false, cpu: false }, // no gen-3 telemetry frames on gen-2
     fcModel: false,
     fcLiveRead: false,
@@ -92,44 +92,21 @@ class Gen2Driver implements DeviceDriver {
   #log(s: string) { console.log(`[forgefx][axe2] ${s}`); }
   #openTransport(): Promise<Transport> { return this.#ctx.transport(); }
 
-  // ── reader plumbing (mirrors the AM4 driver) ──────────────────────────────────────────────────
-  #reader = AXEFX2_DESCRIPTOR.reader;
-  #readerLock: Promise<unknown> = Promise.resolve();
-  #presetCache: { snap: PresetSnapshot; at: number } | null = null;
-  static #PRESET_TTL_MS = 500;
-  #lastTransport: Transport | null = null;
-
-  async #withReader<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.#readerLock.then(fn, fn);
-    this.#readerLock = run.catch(() => undefined);
-    return run;
-  }
-
-  #dispatchCtx(): DispatchCtx { return dispatchCtx(AXEFX2_DESCRIPTOR, this.#lastTransport!); }
+  // ── reader plumbing (shared ReaderCache: lock + TTL preset cache) ─────────────────────────────
+  #rc = new ReaderCache({
+    descriptor: AXEFX2_DESCRIPTOR,
+    openTransport: () => this.#openTransport(),
+    ttlMs: () => PRESET_TTL_MS,
+    log: (s) => this.#log(s),
+    onLoaded: (snap) => this.#log(`readPreset: ${snap.slots.length} placed block(s), scene ${snap.active_scene ?? '?'}`),
+  });
 
   /** ONE atomic getPreset dump (grid + per-block fn 0x1F params + name/scene/bypass), TTL-cached so a
-   *  grid + block-param page load reuses a single read. Serialized behind #withReader. */
-  async readPreset(): Promise<PresetSnapshot | null> {
-    const now = Date.now();
-    if (this.#presetCache && now - this.#presetCache.at < Gen2Driver.#PRESET_TTL_MS) return this.#presetCache.snap;
-    return this.#withReader(async () => {
-      const t = Date.now();
-      if (this.#presetCache && t - this.#presetCache.at < Gen2Driver.#PRESET_TTL_MS) return this.#presetCache.snap;
-      this.#lastTransport = await this.#openTransport();
-      try {
-        const snap = await this.#reader.getPreset!(this.#dispatchCtx(), {});
-        this.#presetCache = { snap, at: Date.now() };
-        this.#log(`readPreset: ${snap.slots.length} placed block(s), scene ${snap.active_scene ?? '?'}`);
-        return snap;
-      } catch (e) {
-        this.#log(`readPreset failed: ${e instanceof Error ? e.message : String(e)}`);
-        return null;
-      }
-    });
-  }
+   *  grid + block-param page load reuses a single read. Serialized behind the reader lock. */
+  readPreset(): Promise<PresetSnapshot | null> { return this.#rc.readPreset(); }
 
   /** Drop the preset cache after any device write so the next read reflects the change. */
-  #invalidate() { this.#presetCache = null; }
+  #invalidate() { this.#rc.invalidate(); }
 
   /** Match a snapshot slot to a block effectId (via its slug+instance). */
   #slotForEid(snap: PresetSnapshot | null, eid: number): PresetSnapshot['slots'][number] | undefined {
@@ -137,15 +114,6 @@ class Gen2Driver implements DeviceDriver {
     if (!block || !snap) return undefined;
     const { slug, instance } = slugInstance(block);
     return snap.slots.find((s) => s.block_type === slug && (s.instance ?? 1) === instance);
-  }
-
-  /** The decoded (display-value) param dict for a slot: flat `params`, else the single active-channel dict. */
-  #slotParamValues(slot: PresetSnapshot['slots'][number] | undefined): Record<string, number | string> {
-    if (!slot) return {};
-    if (slot.params) return slot.params as Record<string, number | string>;
-    const byCh = slot.params_by_channel;
-    if (byCh) { const first = Object.values(byCh)[0]; if (first) return first as Record<string, number | string>; }
-    return {};
   }
 
   // ── grid / blocks ─────────────────────────────────────────────────────────────────────────────
@@ -216,10 +184,8 @@ class Gen2Driver implements DeviceDriver {
     const { slug } = slugInstance(block);
     const snap = await this.readPreset();
     const slot = this.#slotForEid(snap, eid);
-    const decoded = this.#slotParamValues(slot);
-    const norm = (s: string) => s.toLowerCase().replace(/[\s_]+/g, '');
-    const decByNorm = new Map(Object.entries(decoded).map(([k, v]) => [norm(k), v]));
-    const lookup = (name: string) => (name in decoded ? decoded[name] : decByNorm.get(norm(name)));
+    const decoded = slotParamValues(slot);
+    const lookup = paramLookup(decoded);
 
     const params = Object.values(KNOWN_PARAMS).filter((p) => (p as AxeFxIIParam).groupCode === block.groupCode) as AxeFxIIParam[];
     const named: NamedParam[] = [];
@@ -231,7 +197,7 @@ class Gen2Driver implements DeviceDriver {
       const isEnum = p.controlType === 'select' || p.enumValues !== undefined;
       if (isEnum) {
         const options = Object.entries(p.enumValues ?? {}).map(([v, label]) => ({ value: Number(v), label }));
-        const value = this.#enumOrdinal(p, display);
+        const value = enumOrdinal(p, display);
         if (p.name === 'type') { type = { value, name: p.enumValues?.[value] ?? String(display) }; continue; }
         enums.push({ id: p.paramId, name: paramLabel(p), value, options });
       } else {
@@ -240,7 +206,7 @@ class Gen2Driver implements DeviceDriver {
           id: p.paramId,
           name: paramLabel(p),
           value,
-          norm: this.#normOf(p, value),
+          norm: normOf(p, value),
           unit: UNIT_LABEL[unitOf(p)] ?? undefined,
           min: p.displayMin,
           max: p.displayMax,
@@ -248,35 +214,17 @@ class Gen2Driver implements DeviceDriver {
         });
       }
     }
-    const dedupe = <T extends { id: number }>(list: T[]): T[] => {
-      const seen = new Set<number>();
-      return list.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
-    };
-    const namedOut = dedupe(named);
-    const enumsOut = dedupe(enums);
+    const namedOut = dedupeById(named);
+    const enumsOut = dedupeById(enums);
     // bypass as a leading virtual enum (id 0xffff — its own route /preset/blocks/:eid/bypass; never setParam)
     if (slot && slot.bypassed !== undefined) {
-      enumsOut.unshift({ id: 0xffff, name: 'Bypass', value: slot.bypassed ? 1 : 0, options: [{ value: 0, label: 'Engaged' }, { value: 1, label: 'Bypassed' }] });
+      enumsOut.unshift(bypassEnum(slot.bypassed));
     }
     this.#log(`blockParams ${block.name} (eid ${eid}): ${namedOut.length} knobs, ${enumsOut.length} enums${type ? ` type=${type.name}` : ''}`);
     return { block: block.name, slug, page: -1, named: namedOut, enums: enumsOut, type };
   }
 
-  #enumOrdinal(p: AxeFxIIParam, display: number | string): number {
-    if (typeof display === 'number') return display;
-    for (const [ord, label] of Object.entries(p.enumValues ?? {})) if (label === display) return Number(ord);
-    return Number(display) || 0;
-  }
-  #normOf(p: AxeFxIIParam, value: number): number {
-    const lo = p.displayMin, hi = p.displayMax;
-    if (lo === undefined || hi === undefined) return 0;
-    let n: number;
-    if (p.displayScale === 'log10' && lo > 0 && hi > 0 && hi !== lo) n = Math.log(value / lo) / Math.log(hi / lo);
-    else if (hi !== lo) n = (value - lo) / (hi - lo);
-    else n = 0;
-    return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
-  }
-  /** Inverse of #normOf: a display value from a 0..1 knob position (for the fn 0x2e display-float write). */
+  /** Inverse of normOf: a display value from a 0..1 knob position (for the fn 0x2e display-float write). */
   #displayFromNorm(p: AxeFxIIParam, norm: number): number | null {
     const lo = p.displayMin, hi = p.displayMax;
     if (lo === undefined || hi === undefined) return null;
@@ -394,9 +342,9 @@ class Gen2Driver implements DeviceDriver {
 
   /** Back up the active buffer as a verbatim 66-frame .syx (POST /preset/backup). Blob backup, not a decode. */
   async backupPreset(): Promise<{ location: number | null; code: string | null; name: string; bytes: number[] }> {
-    const dump = await this.#withReader(async () => {
-      this.#lastTransport = await this.#openTransport();
-      return this.#reader.dumpActivePresetBinary!(this.#dispatchCtx());
+    const dump = await this.#rc.withReader(async () => {
+      await this.#rc.transport();
+      return this.#rc.reader.dumpActivePresetBinary!(this.#rc.dispatchCtx());
     });
     this.#log(`backup "${dump.name ?? ''}" ${dump.byte_length}B`);
     return { location: null, code: null, name: dump.name ?? '', bytes: [...dump.bytes] };
@@ -406,9 +354,9 @@ class Gen2Driver implements DeviceDriver {
   async restorePreset(bytes: number[]): Promise<{ ok: boolean; location: number | null; code: string | null }> {
     const restore = AXEFX2_DESCRIPTOR.writer.restorePresetBinary;
     if (!restore) { const e = new Error('restore unsupported') as Error & { statusCode?: number }; e.statusCode = 501; throw e; }
-    await this.#withReader(async () => {
-      this.#lastTransport = await this.#openTransport();
-      return restore(this.#dispatchCtx(), Uint8Array.from(bytes), {});
+    await this.#rc.withReader(async () => {
+      await this.#rc.transport();
+      return restore(this.#rc.dispatchCtx(), Uint8Array.from(bytes), {});
     });
     this.#invalidate();
     return { ok: true, location: null, code: null };

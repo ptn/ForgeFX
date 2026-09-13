@@ -39,7 +39,6 @@ class Gen1Driver implements DeviceDriver {
     channels: false, // no X/Y channels
     presetDump: false, // the dump's param region is opaque (byte count only) — not a gen-3-style decode
     presetConvert: false, // no gen-1 lift adapter (its dump decode is minimal); gen-1 is a converter TARGET only
-    blockParamDecode: false,
     telemetry: { tuner: false, outputMeters: false, cpu: false },
     fcModel: false,
     fcLiveRead: false,

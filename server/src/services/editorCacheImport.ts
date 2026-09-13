@@ -12,8 +12,10 @@
 // runtime router's import graph (the DISK-scanning half lives in the Node-only editorCacheDiscovery.ts,
 // which the router never imports). check-browser-safe.ts enforces it.
 import { buildCache, type BuiltCache } from 'forgefx-midi/cache';
-import { deviceCacheKey, type DeviceRegistry } from '../drivers/registryCore.js';
+import { type DeviceRegistry } from '../drivers/registryCore.js';
+import { deviceCacheKey } from './deviceCacheKey.js';
 import { catalogForModel, resolveCacheKey } from './deviceCache.js';
+import type { ServiceResult } from './serviceResult.js';
 import type { Store } from '../runtime/store.js';
 
 /** Parsed identity of an `effectDefinitions_<modelHex>_<fwMajor>p<fwMinor>.cache` filename. */
@@ -21,7 +23,7 @@ export interface EditorCacheFileInfo { model: number; fwMajor: number; fwMinor: 
 
 /** The result an import returns to the (thin) endpoint: an HTTP status + the JSON body — mirrors
  *  deviceCache.StartResult so the routes stay one-liners over both twins. */
-export interface ImportResult { code: number; body: unknown }
+export type ImportResult = ServiceResult;
 
 // e.g. `effectDefinitions_11_12p0.cache` (FM3 fw 12.0), `effectDefinitions_15_2p1.cache` (AM4 fw 2.1).
 const FILENAME_RE = /^effectDefinitions_([0-9a-fA-F]{1,2})_(\d+)p(\d+)\.cache$/;

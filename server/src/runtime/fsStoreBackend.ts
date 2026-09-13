@@ -50,7 +50,6 @@ export function createFsStoreBackend(dataDir: string): StoreBackend {
     getDoc: (c, id) => loadColl(c)[id] ?? null,
     listDocs: (c) => Object.values(loadColl(c)),
     putDoc: (doc) => { const m = loadColl(doc.collection); m[doc.id] = doc; saveColl(doc.collection, m); },
-    deleteDoc: (c, id) => { const m = loadColl(c); if (id in m) { delete m[id]; saveColl(c, m); } },
 
     listVersions: () => loadIndex(),
     putVersion: (v) => { const all = loadIndex(); const i = all.findIndex((x) => x.id === v.id); if (i >= 0) all[i] = v; else all.push(v); saveIndex(all); },

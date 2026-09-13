@@ -64,6 +64,30 @@ function baseDirs(platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEn
   return users.map((u) => join(wineUsers, u, 'AppData', 'Roaming', 'Fractal Audio'));
 }
 
+/** Walk each `Fractal Audio/<Editor>/` dir and `visit` every file whose name passes `match`.
+ *  Missing/unreadable dirs are silently skipped (the shared idiom the two discoverers duplicated). */
+function forEachEditorFile(
+  fs: DiscoveryFs,
+  bases: string[],
+  match: (file: string) => boolean,
+  visit: (path: string, editor: string, file: string) => void,
+): void {
+  for (const base of bases) {
+    if (!fs.existsSync(base)) continue;
+    let editors: string[];
+    try { editors = fs.readdirSync(base); } catch { continue; }
+    for (const editor of editors) {
+      const dir = join(base, editor);
+      let files: string[];
+      try { files = fs.readdirSync(dir); } catch { continue; } // not a dir / unreadable
+      for (const file of files) {
+        if (!match(file)) continue;
+        visit(join(dir, file), editor, file);
+      }
+    }
+  }
+}
+
 /** Scan the OS-conventional editor dirs for `effectDefinitions_*.cache` files. Pure fs walking (no
  *  byte parsing) — silently skips missing/unreadable dirs and unparseable filenames. */
 export function discoverEditorCaches(opts: DiscoverOpts = {}): EditorCacheCandidate[] {
@@ -73,25 +97,18 @@ export function discoverEditorCaches(opts: DiscoverOpts = {}): EditorCacheCandid
   const fs = opts.fs ?? REAL_FS;
 
   const out: EditorCacheCandidate[] = [];
-  for (const base of baseDirs(platform, home, env, fs)) {
-    if (!fs.existsSync(base)) continue;
-    let editors: string[];
-    try { editors = fs.readdirSync(base); } catch { continue; }
-    for (const editor of editors) {
-      const dir = join(base, editor);
-      let files: string[];
-      try { files = fs.readdirSync(dir); } catch { continue; } // not a dir / unreadable
-      for (const file of files) {
-        if (!file.startsWith('effectDefinitions_') || !file.endsWith('.cache')) continue;
-        const info = parseEditorCacheFilename(file);
-        if (!info) continue;
-        const path = join(dir, file);
-        let st: { size: number; mtimeMs: number };
-        try { st = fs.statSync(path); } catch { continue; }
-        out.push({ path, file, model: info.model, fwMajor: info.fwMajor, fwMinor: info.fwMinor, size: st.size, mtime: new Date(st.mtimeMs).toISOString() });
-      }
-    }
-  }
+  forEachEditorFile(
+    fs,
+    baseDirs(platform, home, env, fs),
+    (file) => file.startsWith('effectDefinitions_') && file.endsWith('.cache'),
+    (path, _editor, file) => {
+      const info = parseEditorCacheFilename(file);
+      if (!info) return;
+      let st: { size: number; mtimeMs: number };
+      try { st = fs.statSync(path); } catch { return; }
+      out.push({ path, file, model: info.model, fwMajor: info.fwMajor, fwMinor: info.fwMinor, size: st.size, mtime: new Date(st.mtimeMs).toISOString() });
+    },
+  );
   return out;
 }
 
@@ -113,31 +130,30 @@ export function discoverColorAssignments(opts: DiscoverOpts = {}): ColorAssignme
   const fs = opts.fs ?? REAL_FS;
 
   const out: ColorAssignmentsCandidate[] = [];
-  for (const base of baseDirs(platform, home, env, fs)) {
-    if (!fs.existsSync(base)) continue;
-    let editors: string[];
-    try { editors = fs.readdirSync(base); } catch { continue; }
-    for (const editor of editors) {
-      const dir = join(base, editor);
-      let files: string[];
-      try { files = fs.readdirSync(dir); } catch { continue; } // not a dir / unreadable
-      for (const file of files) {
-        if (!file.startsWith('color-assignments') || !file.endsWith('.dat')) continue;
-        const path = join(dir, file);
-        let st: { size: number; mtimeMs: number };
-        try { st = fs.statSync(path); } catch { continue; }
-        out.push({ path, editor, size: st.size, mtime: new Date(st.mtimeMs).toISOString() });
-      }
-    }
-  }
+  forEachEditorFile(
+    fs,
+    baseDirs(platform, home, env, fs),
+    (file) => file.startsWith('color-assignments') && file.endsWith('.dat'),
+    (path, editor) => {
+      let st: { size: number; mtimeMs: number };
+      try { st = fs.statSync(path); } catch { return; }
+      out.push({ path, editor, size: st.size, mtime: new Date(st.mtimeMs).toISOString() });
+    },
+  );
   return out;
 }
 
 /** Read a discovered candidate off disk (for the `{ path }` import body). Returns the basename +
- *  raw bytes; throws if the file is missing/unreadable. Node-only (real fs). */
-export function readCandidateFile(path: string): { name: string; bytes: Uint8Array } {
-  const buf = readFileSync(path);
-  return { name: basename(path), bytes: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) };
+ *  raw bytes; throws if the file is missing/unreadable. `read` is injectable for tests; defaults to
+ *  node:fs. Node-only. */
+export function readCandidateFile(
+  path: string,
+  read: (p: string) => Uint8Array = (p) => {
+    const buf = readFileSync(p);
+    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  },
+): { name: string; bytes: Uint8Array } {
+  return { name: basename(path), bytes: read(path) };
 }
 
 // ── `.blk` block-file library discovery ───────────────────────────────────

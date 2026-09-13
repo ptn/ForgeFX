@@ -3,7 +3,7 @@
 // chain (NOT the gen-3 6×14 grid), with 4 scenes, A-D channels, A01..Z04 locations, and no amp/cab.
 //
 // Reads go through the shared gen-3 descriptor reader (VP4_DESCRIPTOR.reader.getPreset) over the
-// descriptorConn bridge, serialized behind #withReader. Writes use the VP4-specific wire builders
+// descriptorConn bridge, serialized behind the shared ReaderCache lock. Writes use the VP4-specific wire builders
 // (buildVp4SetParam / buildVp4SetBypass / buildVp4Save — their own frame shape: no sub-action, a `tc`
 // sub-opcode, a swapped-septet float). COMMUNITY-BETA, UNTESTED ON HARDWARE:
 //   - grid() lists the blocks the device REPORTS as present, in DISCOVERY ORDER — NOT their true
@@ -23,8 +23,8 @@ import {
 } from 'forgefx-midi/gen3/vp4';
 import { VP4_DESCRIPTOR, slugForEffectId } from 'forgefx-midi/devices/gen3';
 import { resolveBlock } from 'forgefx-midi/gen3/axe-fx-iii';
-import type { DispatchCtx, PresetSnapshot } from 'forgefx-midi/core';
-import { dispatchCtx } from './descriptorConn.js';
+import type { PresetSnapshot } from 'forgefx-midi/core';
+import { ReaderCache, PRESET_TTL_MS } from './shared/readerCache.js';
 import type { Transport } from '../transport/types.js';
 import type {
   DeviceDriver, DriverCapabilities, DriverCtx,
@@ -57,7 +57,6 @@ class Vp4Driver implements DeviceDriver {
     channels: false, // A-D exist but channel-switch writes are undecoded; reads use channel A only
     presetDump: false,
     presetConvert: true, // skeleton lift (name + scenes + 4-slot chain identity) via readStructure()
-    blockParamDecode: false,
     telemetry: { tuner: false, outputMeters: false, cpu: false },
     fcModel: false,
     fcLiveRead: false,
@@ -82,40 +81,18 @@ class Vp4Driver implements DeviceDriver {
   #log(s: string) { console.log(`[forgefx][vp4] ${s}`); }
   #openTransport(): Promise<Transport> { return this.#ctx.transport(); }
 
-  // ── reader plumbing (mirrors the AM4 / gen2 drivers) ──────────────────────────────────────────
-  #reader = VP4_DESCRIPTOR.reader;
-  #readerLock: Promise<unknown> = Promise.resolve();
-  #presetCache: { snap: PresetSnapshot; at: number } | null = null;
+  // ── reader plumbing (shared ReaderCache: lock + TTL preset cache) ─────────────────────────────
   #structureCache: { blob: Vp4StructureBlob; at: number } | null = null;
-  static #PRESET_TTL_MS = 500;
-  #lastTransport: Transport | null = null;
+  #rc = new ReaderCache({
+    descriptor: VP4_DESCRIPTOR,
+    openTransport: () => this.#openTransport(),
+    ttlMs: () => PRESET_TTL_MS,
+    log: (s) => this.#log(s),
+    onLoaded: (snap) => this.#log(`readPreset: ${snap.slots.length} block(s) present (discovery order)`),
+  });
 
-  async #withReader<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.#readerLock.then(fn, fn);
-    this.#readerLock = run.catch(() => undefined);
-    return run;
-  }
-  #dispatchCtx(): DispatchCtx { return dispatchCtx(VP4_DESCRIPTOR, this.#lastTransport!); }
-
-  async readPreset(): Promise<PresetSnapshot | null> {
-    const now = Date.now();
-    if (this.#presetCache && now - this.#presetCache.at < Vp4Driver.#PRESET_TTL_MS) return this.#presetCache.snap;
-    return this.#withReader(async () => {
-      const t = Date.now();
-      if (this.#presetCache && t - this.#presetCache.at < Vp4Driver.#PRESET_TTL_MS) return this.#presetCache.snap;
-      this.#lastTransport = await this.#openTransport();
-      try {
-        const snap = await this.#reader.getPreset!(this.#dispatchCtx(), {});
-        this.#presetCache = { snap, at: Date.now() };
-        this.#log(`readPreset: ${snap.slots.length} block(s) present (discovery order)`);
-        return snap;
-      } catch (e) {
-        this.#log(`readPreset failed: ${e instanceof Error ? e.message : String(e)}`);
-        return null;
-      }
-    });
-  }
-  #invalidate() { this.#presetCache = null; this.#structureCache = null; }
+  readPreset(): Promise<PresetSnapshot | null> { return this.#rc.readPreset(); }
+  #invalidate() { this.#rc.invalidate(); this.#structureCache = null; }
 
   /** True when `f` is a well-formed VP4 structure-blob response (parseVp4StructureBlob accepts it). */
   #isStructure(f: number[]): boolean {
@@ -128,7 +105,7 @@ class Vp4Driver implements DeviceDriver {
    *  chain. TTL-cached; null on a silent/malformed response so grid() falls back to the legacy read. */
   async readStructure(): Promise<Vp4StructureBlob | null> {
     const now = Date.now();
-    if (this.#structureCache && now - this.#structureCache.at < Vp4Driver.#PRESET_TTL_MS) return this.#structureCache.blob;
+    if (this.#structureCache && now - this.#structureCache.at < PRESET_TTL_MS) return this.#structureCache.blob;
     const dev = await this.#openTransport();
     try {
       const req = buildVp4GetStructureBlob();
@@ -197,7 +174,7 @@ class Vp4Driver implements DeviceDriver {
 
   /** Reverse effectId → slug via the cached snapshot's block list. */
   #slugForEid(eid: number): string {
-    const snap = this.#presetCache?.snap ?? null;
+    const snap = this.#rc.cached;
     return snap?.slots.find((s) => this.#eidFor(s.block_type) === eid)?.block_type ?? `0x${eid.toString(16)}`;
   }
   #nameForEid(eid: number): string {

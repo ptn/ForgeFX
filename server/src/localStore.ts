@@ -34,7 +34,7 @@ export function registerLocalRoutes(app: FastifyInstance, decode: DecodeFn): voi
 
   /** Map a service result onto the Fastify reply (raw bytes → application/octet-stream Buffer). */
   const send = (reply: { code(n: number): unknown; header(k: string, v: string): unknown }, r: LocalResult): unknown => {
-    reply.code(r.status);
+    reply.code(r.code);
     if (r.body instanceof Uint8Array) {
       void reply.header('content-type', 'application/octet-stream');
       return Buffer.from(r.body);

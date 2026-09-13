@@ -7,6 +7,8 @@
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { writeGen3BlockFile } from 'forgefx-midi/devices/gen3';
+import type { DeviceDriver } from '../drivers/types.js';
+import type { ServiceResult } from './serviceResult.js';
 
 /** effectTypeId + the category folder a block of that family saves under. */
 export interface EffectTypeInfo {
@@ -149,4 +151,81 @@ export function writeBlockLibraryFile(
   }
   writeFileSync(path, bytes);
   return { path, category: info.folder, name };
+}
+
+/** Request body for POST /fm3edit/blocks/save. */
+export interface SaveBlockRequest {
+  libraryPath?: string;
+  name?: string;
+  effectId?: number;
+  mode?: 'current' | 'all';
+  overwrite?: boolean;
+}
+
+/** The shared service result: HTTP status code + JSON body (`code < 400` = success). */
+export type SaveBlockOutcome = ServiceResult;
+
+/** Orchestrate POST /fm3edit/blocks/save: validate the request, capture the placed block off the
+ *  connected device, author the `.blk`, and write it. `driver` is the active driver, `firmware` the
+ *  connected unit's reported version (null → 400 — a foreign block's version makes the editor refuse
+ *  or silently migrate the file), and `expandHome` resolves a leading ~ in libraryPath. */
+export async function saveBlockToLibrary(
+  driver: DeviceDriver,
+  firmware: { major: number; minor: number } | null,
+  expandHome: (p: string) => string,
+  body: SaveBlockRequest,
+): Promise<SaveBlockOutcome> {
+  const b = body ?? {};
+  const { libraryPath, name, effectId, mode, overwrite } = b;
+  if (typeof libraryPath !== 'string' || !libraryPath.trim()) {
+    return { code: 400, body: { error: 'libraryPath is required' } };
+  }
+  const safeName = sanitizeBlockName(name ?? '');
+  if (!safeName) return { code: 400, body: { error: 'name is required and must be a safe filename' } };
+  if (!Number.isInteger(effectId) || (effectId as number) < 0) {
+    return { code: 400, body: { error: 'effectId is required' } };
+  }
+  const scope: 'current' | 'all' = mode === 'all' ? 'all' : 'current';
+
+  if (!driver.captureBlockForSave) return { code: 501, body: { error: 'unsupported', capability: 'blockLibrarySave' } };
+  if (!firmware) {
+    return { code: 400, body: { error: 'firmware-not-reported', message: 'the connected device did not report its firmware version' } };
+  }
+
+  let captured: Awaited<ReturnType<NonNullable<DeviceDriver['captureBlockForSave']>>>;
+  try {
+    captured = await driver.captureBlockForSave(effectId as number, scope);
+  } catch (e) {
+    return { code: 503, body: { error: 'block-capture-failed', message: (e as Error).message } };
+  }
+
+  const info = effectTypeForSlug(captured.slug);
+  if (!info) {
+    return {
+      code: 422,
+      body: {
+        error: 'unsaved-family',
+        slug: captured.slug,
+        message: `${slugLabel(captured.slug)} blocks can't be saved — this family has no confirmed editor effect-type id`,
+      },
+    };
+  }
+
+  const bytes = buildBlockLibraryFile({
+    modelId: driver.modelId,
+    firmware: { major: firmware.major, minor: firmware.minor },
+    effectTypeId: info.effectTypeId,
+    activeChannel: captured.activeChannel,
+    name: safeName,
+    payload: captured.payload,
+  });
+
+  try {
+    const result = writeBlockLibraryFile(expandHome(libraryPath), info, safeName, bytes, !!overwrite);
+    return { code: 200, body: { ok: true, ...result } };
+  } catch (e) {
+    const err = e as { code?: string; path?: string; message?: string };
+    if (err.code === 'EXISTS') return { code: 409, body: { error: 'block-exists', path: err.path } };
+    return { code: 500, body: { error: 'block-save-failed', message: err.message } };
+  }
 }

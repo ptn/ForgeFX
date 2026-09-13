@@ -40,7 +40,6 @@ export interface Store {
 
 export function createStore(backend: StoreBackend, codec: StoreCodec): Store {
   // ─────────────────────────── documents (config · metadata · layouts) ───────────────────────────
-  const getDoc = (collection: string, id: string): Doc | null => backend.getDoc(collection, id);
   const listDocs = (collection: string): Doc[] => backend.listDocs(collection).filter((d) => !d.deleted);
   const putDoc = (collection: string, id: string, data: unknown): Doc => {
     const doc: Doc = { id, collection, data, updatedAt: Date.now(), rev: (backend.getDoc(collection, id)?.rev ?? 0) + 1 };
@@ -138,7 +137,7 @@ export function createStore(backend: StoreBackend, codec: StoreCodec): Store {
   };
 
   return {
-    getDoc, listDocs, putDoc, delDoc, putDocRaw, docsChangedSince,
+    getDoc: backend.getDoc.bind(backend), listDocs, putDoc, delDoc, putDocRaw, docsChangedSince,
     addPresetVersion, listPresetVersions, getPresetVersion, getPresetVersionBytes, getPresetVersionPacked,
     hasPresetVersion, addVersionRaw, importVersion,
     listBackups, createBackup, setBackupCount

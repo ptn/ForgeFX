@@ -17,7 +17,6 @@ export function createMemStoreBackend(): StoreBackend {
     getDoc: (c, id) => { const d = coll(c).get(id); return d ? clone(d) : null; },
     listDocs: (c) => [...coll(c).values()].map(clone),
     putDoc: (doc) => { coll(doc.collection).set(doc.id, clone(doc)); },
-    deleteDoc: (c, id) => { coll(c).delete(id); },
 
     listVersions: () => versions.map(clone),
     putVersion: (v) => { const i = versions.findIndex((x) => x.id === v.id); if (i >= 0) versions[i] = clone(v); else versions.push(clone(v)); },

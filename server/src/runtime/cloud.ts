@@ -9,6 +9,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Store } from './store.js';
 import { planVersionSync, type FreeLimits, type PlanVersion } from '../syncPlan.js';
+import type { ServiceBody, ServiceResult } from '../services/serviceResult.js';
 
 /** Cloud endpoint + gate. Publishable key only; never a secret. `enabled` is the operator gate the
  *  server reads from AXIS_CLOUD (checked per call, so a flag flip needs no new instance). */
@@ -26,18 +27,46 @@ export interface CloudConfig {
 }
 
 /** Reject if a promise doesn't settle in time. storage-js runs its own fetch (no client timeout), so a
- *  stalled blob upload/download would otherwise hang the whole sync forever. */
+ *  stalled blob upload/download would otherwise hang the whole sync forever. The timer is always
+ *  cleared once `p` settles, so a long sync doesn't leave one pending timer per call behind. */
 function withTimeout<T>(p: PromiseLike<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    Promise.resolve(p),
-    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms))
-  ]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((_, rej) => {
+    timer = setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([Promise.resolve(p), timeout]).finally(() => { if (timer) clearTimeout(timer); });
 }
+
+/** Supabase caps an unpaginated select at ~1000 rows; page through until a short page arrives so a
+ *  large library is fully listed (and fully considered by the reconcile planner). */
+async function selectAll<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const PAGE = 1000;
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    const rows = data ?? [];
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
+/** A `preset_versions` row as selected by the sync paths (snake_case columns). */
+type PresetVersionRow = {
+  id: string; location: number; crc: number; name: string; model: string;
+  captured_at: number; source: 'auto' | 'manual' | 'backup'; backup_id: string | null; bytes: number; stored: number; blob_path: string;
+};
 
 export class Cloud {
   #cfg: CloudConfig;
   #store: Store;
   #client: SupabaseClient | null = null;
+  /** Serializes full syncs: a second sync() waits for the in-flight one instead of racing its
+   *  reconcile plan against partially-uploaded rows. */
+  #syncChain: Promise<unknown> = Promise.resolve();
   constructor(cfg: CloudConfig, store: Store) {
     this.#cfg = cfg;
     this.#store = store;
@@ -97,14 +126,16 @@ export class Cloud {
   }
   /** Read a user's subscription (RLS: they can only read their own; only the service role can write it, so
    *  the flag can't be spoofed client-side). `active` also honours an expiry if `current_period_end` is set.
-   *  No row / no subscription → free tier. */
-  async #subscription(userId: string): Promise<{ active: boolean; plan: string | null }> {
+   *  No row → free tier. A READ FAILURE returns null ("unknown") so callers never mistake a transient
+   *  error for a downgrade to free (which would let the reconcile plan prune a paid user's history). */
+  async #subscription(userId: string): Promise<{ active: boolean; plan: string | null } | null> {
     try {
-      const { data } = await this.#c().from('subscriptions').select('active,plan,current_period_end').eq('user_id', userId).maybeSingle();
+      const { data, error } = await this.#c().from('subscriptions').select('active,plan,current_period_end').eq('user_id', userId).maybeSingle();
+      if (error) return null;
       if (!data) return { active: false, plan: null };
       const notExpired = !data.current_period_end || new Date(data.current_period_end as string).getTime() > Date.now();
       return { active: !!data.active && notExpired, plan: (data.plan as string) ?? null };
-    } catch { return { active: false, plan: null }; }
+    } catch { return null; }
   }
   /** Free-tier quota readout via the preset_quota() RPC (deployed with the quota migration). Null when
    *  signed out or the server predates the migration — callers treat null as "no quota UI, no limits". */
@@ -123,7 +154,11 @@ export class Cloud {
     if (!this.#enabled()) return { enabled: false, user: null };
     const { data } = await this.#c().auth.getUser();
     const user = data.user ? { id: data.user.id, email: data.user.email } : null;
-    const subscription = user ? await this.#subscription(user.id) : { active: false, plan: null };
+    // A subscription read failure is "unknown", not "free" — surface it additively so Axis can avoid
+    // showing a paid user as downgraded (the sync path likewise refuses to prune on unknown).
+    const subscription = user
+      ? ((await this.#subscription(user.id)) ?? { active: false, plan: null, unknown: true })
+      : { active: false, plan: null };
     const quota = user ? await this.quota() : null;
     return { enabled: true, url: this.#cfg.url, user, subscription, quota };
   }
@@ -145,7 +180,7 @@ export class Cloud {
   /** Publish a derived profile to the shared store. The edge fn verifies the caller's JWT, so this
    *  requires a signed-in session (401 otherwise). Returns the fn's HTTP outcome verbatim — the route
    *  passes code+body straight through (200/201 ok, `{deduped:true}` on an identical existing row). */
-  async deviceProfilePublish(body: { model: number; firmware: string; source: 'live-walk' | 'editor-cache'; profile: unknown }): Promise<{ code: number; body: unknown }> {
+  async deviceProfilePublish(body: { model: number; firmware: string; source: 'live-walk' | 'editor-cache'; profile: unknown }): Promise<ServiceResult> {
     if (!this.#enabled()) return { code: 503, body: { error: 'cloud disabled' } };
     const { data: s } = await this.#c().auth.getSession();
     const token = s.session?.access_token;
@@ -157,7 +192,7 @@ export class Cloud {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(30000)
       });
-      return { code: res.status, body: await res.json().catch(() => ({})) };
+      return { code: res.status, body: await res.json().catch(() => ({})) as ServiceBody };
     } catch (e) { return { code: 503, body: { error: (e as Error).message } }; }
   }
 
@@ -185,8 +220,12 @@ export class Cloud {
     const user = (await c.auth.getUser()).data.user;
     if (!user) throw new Error('not logged in');
 
-    const { data: remoteRows, error: rerr } = await c.from('documents').select('id,data,updated_at,rev,deleted').eq('collection', 'config');
-    if (rerr) throw new Error(`pull: ${rerr.message}`);
+    let remoteRows: { id: string; data: unknown; updated_at: number; rev: number; deleted: boolean }[];
+    try {
+      remoteRows = await selectAll((from, to) =>
+        c.from('documents').select('id,data,updated_at,rev,deleted').eq('collection', 'config').range(from, to)
+      );
+    } catch (e) { throw new Error(`pull: ${(e as Error).message}`); }
     const remote = new Map((remoteRows ?? []).map((r) => [r.id as string, r]));
     const localAll = this.#store.docsChangedSince('config', 0); // all local config docs, including tombstones
 
@@ -221,10 +260,12 @@ export class Cloud {
     const blobPath = (hash: string) => `${user.id}/blobs/${hash}.syx.br`;
 
     console.log('[cloud] syncVersions: listing remote…');
-    const { data: remoteRows, error: rerr } = await c.from('preset_versions').select('*');
-    if (rerr) throw new Error(`versions pull-list: ${rerr.message}`);
+    let remoteRows: PresetVersionRow[];
+    try {
+      remoteRows = await selectAll((from, to) => c.from('preset_versions').select('*').range(from, to));
+    } catch (e) { throw new Error(`versions pull-list: ${(e as Error).message}`); }
     const local = this.#store.listPresetVersions();
-    console.log(`[cloud] syncVersions: ${remoteRows?.length ?? 0} remote, ${local.length} local`);
+    console.log(`[cloud] syncVersions: ${remoteRows.length} remote, ${local.length} local`);
 
     // Union view for the planner (dedup all size accounting by blob_path — content-addressed blobs
     // are shared across versions). RPC failure (server predates the quota migration) → no limits.
@@ -315,10 +356,14 @@ export class Cloud {
     const c = this.#c();
     const user = (await c.auth.getUser()).data.user;
     if (!user) return { versions: [] };
-    const { data, error } = await c.from('preset_versions').select('id,location,crc,name,model,captured_at,source,bytes,stored');
-    if (error) throw new Error(`cloud index: ${error.message}`);
+    let data: Pick<PresetVersionRow, 'id' | 'location' | 'crc' | 'name' | 'model' | 'captured_at' | 'source' | 'bytes' | 'stored'>[];
+    try {
+      data = await selectAll((from, to) =>
+        c.from('preset_versions').select('id,location,crc,name,model,captured_at,source,bytes,stored').range(from, to)
+      );
+    } catch (e) { throw new Error(`cloud index: ${(e as Error).message}`); }
     return {
-      versions: (data ?? []).map((r) => ({
+      versions: data.map((r) => ({
         id: r.id as string, location: r.location as number, crc: r.crc as number, name: r.name as string,
         model: r.model as string, capturedAt: r.captured_at as number, source: r.source as string,
         bytes: r.bytes as number, stored: r.stored as number
@@ -328,19 +373,28 @@ export class Cloud {
 
   /** Full sync: config + preset versions/blobs. `scopes` gates which halves run (per the account
    *  panel's sync toggles); omitted = both. `config` covers tags/collections/favorites/filters/layouts;
-   *  `presets` covers version snapshots + blobs. */
+   *  `presets` covers version snapshots + blobs. Concurrent calls serialize (a second call waits for the
+   *  first) so two reconcile plans can't race the same rows. */
   async sync(scopes?: { config?: boolean; presets?: boolean }) {
+    const run = this.#syncChain.then(() => this.#runSync(scopes), () => this.#runSync(scopes));
+    this.#syncChain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+  async #runSync(scopes?: { config?: boolean; presets?: boolean }) {
     const doConfig = scopes?.config ?? true;
     // Preset sync is open to every tier since 0.7.1 — the free tier is quota-limited (3 MB / 1 full
     // backup / N snapshots), enforced by syncVersions' reconcile-to-target plan client-side and the
     // preset_quota DB trigger as the server backstop. Paid = unlimited (yesterday's behavior).
     const user = (await this.#c().auth.getUser()).data.user;
     const sub = user ? await this.#subscription(user.id) : { active: false, plan: null };
+    // Unknown subscription (read failed) → treat as paid for the PLAN so the reconcile never prunes a
+    // paid user's remote history; the DB quota trigger remains the backstop on push.
+    const paid = sub === null ? true : sub.active;
     const doPresets = scopes?.presets ?? true;
-    console.log(`[cloud] sync: start (config=${doConfig} presets=${doPresets} plan=${sub.plan ?? 'free'} paid=${sub.active})`);
+    console.log(`[cloud] sync: start (config=${doConfig} presets=${doPresets} plan=${sub?.plan ?? (sub === null ? 'unknown' : 'free')} paid=${paid})`);
     const config = doConfig ? await this.syncConfig() : { pushed: 0, pulled: 0 };
     console.log('[cloud] sync: config done, versions…');
-    const versions = doPresets ? await this.syncVersions(sub.active) : { pushed: 0, pulled: 0, pruned: 0 };
+    const versions = doPresets ? await this.syncVersions(paid) : { pushed: 0, pulled: 0, pruned: 0 };
     console.log('[cloud] sync: done');
     return { config, versions };
   }

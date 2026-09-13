@@ -8,16 +8,18 @@
 //
 // Browser-safe: registry/store/cloud are type-only or structural imports; the fetch work lives in
 // runtime/cloud.ts (itself browser-safe). check-browser-safe.ts enforces it.
-import { deviceCacheKey, type DeviceRegistry } from '../drivers/registryCore.js';
+import { type DeviceRegistry } from '../drivers/registryCore.js';
+import { deviceCacheKey } from './deviceCacheKey.js';
 import { resolveCacheKey } from './deviceCache.js';
 import type { Store } from '../runtime/store.js';
 import type { ImportResult } from './editorCacheImport.js';
+import type { ServiceResult } from './serviceResult.js';
 
 /** The slice of the Cloud service these functions need — structural so tests fake it in two lines
  *  (and so the browser twin can pass its own Cloud instance through RuntimeDeps.cloud). */
 export interface DeviceProfileCloud {
   deviceProfileGet(model: number, firmware: string): Promise<{ profile: unknown; contentHash: string; source: string; recordCount: number | null; createdAt: string } | null>;
-  deviceProfilePublish(body: { model: number; firmware: string; source: 'live-walk' | 'editor-cache'; profile: unknown }): Promise<{ code: number; body: unknown }>;
+  deviceProfilePublish(body: { model: number; firmware: string; source: 'live-walk' | 'editor-cache'; profile: unknown }): Promise<ServiceResult>;
 }
 
 /** check's GET result caches here so an immediately following pull doesn't refetch the (possibly

@@ -45,7 +45,6 @@ export interface StoreBackend {
   getDoc(collection: string, id: string): Doc | null;
   listDocs(collection: string): Doc[];
   putDoc(doc: Doc): void;
-  deleteDoc(collection: string, id: string): void; // hard delete (store policy only ever tombstones)
 
   // preset-version index entries (insertion-ordered — the store sorts by capturedAt where it matters)
   listVersions(): PresetVersion[];

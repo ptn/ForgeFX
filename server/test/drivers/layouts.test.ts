@@ -3,7 +3,8 @@
 //   • variant selection: type-value match, amp firmware-pin preference, null/first fallback;
 //   • v2 passthrough: pages → rows → controls carry widget/rawWidget/placement/crossBlock verbatim;
 //   • AM4 gets a layout for the first time (family mapping via am4LayoutFor).
-import { PROFILES, am4LayoutFor, resolveLayoutPages, type DeviceLayout, type SelectorValues } from '../../src/devices.js';
+import { PROFILES } from '../../src/devices.js';
+import { am4LayoutFor, resolveLayoutPages, type DeviceLayout, type SelectorValues } from '../../src/layouts.js';
 import { EDITOR_WIDGET_KINDS, type EditorLayoutPage } from 'forgefx-midi/gen3/fm3';
 
 const fm3 = PROFILES[0x11]!;

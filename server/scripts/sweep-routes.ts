@@ -1,14 +1,15 @@
 /**
- * Route-sweep snapshot (migration Phase 0/3/4/6 verification).
+ * Route-sweep snapshot (live-device verification).
  *
  * Hits every safe GET route on a running server with a live device and writes
  * the JSON responses under test/fixtures/route-sweep/<label>/. Diff two sweeps
- * to prove a refactor changed nothing (Phase 3/4: byte-identical; Phase 6:
- * additive-only).
+ * to prove a live-device refactor changed nothing. The historical migration
+ * phases (phase0/3/4/5/6) were collapsed to the single canonical `baseline/`
+ * directory; older phases live in git history.
  *
  * Usage: tsx scripts/sweep-routes.ts <label> [--base http://localhost:5056]
- *   e.g. tsx scripts/sweep-routes.ts phase0-baseline
- * Diff:  diff -ru test/fixtures/route-sweep/phase0-baseline test/fixtures/route-sweep/phase3
+ *   e.g. tsx scripts/sweep-routes.ts baseline
+ * Diff:  diff -ru test/fixtures/route-sweep/baseline test/fixtures/route-sweep/<label>
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

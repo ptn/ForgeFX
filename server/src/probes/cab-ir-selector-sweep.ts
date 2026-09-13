@@ -9,8 +9,6 @@ const MODEL = 0x11;
 const FN = 0x01;
 const SUB = 0x4b;
 
-const hex = (b: readonly number[]) => b.map((x) => x.toString(16).padStart(2, '0')).join(' ');
-
 function checksum(frame: readonly number[]): number {
   let acc = 0;
   for (const b of frame) acc ^= b;

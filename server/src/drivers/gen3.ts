@@ -237,7 +237,20 @@ class Gen3Driver implements DeviceDriver {
   /** Adopt a device-cache-derived runtime profile (device-true rosters / enum labels / ranges). The
    *  model byte is unchanged so the codec bound at construction stays valid; only the data the reads
    *  resolve through (#prof) is swapped. Idempotent — re-applying a fresh profile just replaces it. */
-  applyRuntimeProfile(profile: DeviceProfile): void { this.#prof = profile; }
+  applyRuntimeProfile(profile: DeviceProfile): void { this.#prof = profile; this.#unitIndex.clear(); }
+
+  /** family → (paramId → catalog unit code). Built once per family and dropped whenever the profile
+   *  swaps, so #display resolves a param's unit in O(1) instead of scanning the family's param list. */
+  #unitIndex = new Map<string, Map<number, string | undefined>>();
+  #units(family: string): Map<number, string | undefined> {
+    let m = this.#unitIndex.get(family);
+    if (!m) {
+      m = new Map();
+      for (const p of this.#prof.params[family] ?? []) m.set(p.paramId, p.unit);
+      this.#unitIndex.set(family, m);
+    }
+    return m;
+  }
 
   #gridCache: { grid: PresetGridDTO; at: number } | null = null;
   #gridInflight: Promise<PresetGridDTO> | null = null;
@@ -1302,7 +1315,7 @@ class Gen3Driver implements DeviceDriver {
         // Prefer the DEVICE-TRUE unit captured by the live-walk (RangeDef.unit, view 0x00)
         // over the AM4-name-overlay catalog code; fall back to the overlay when absent
         // (byte-source/.cache profiles carry no device-true unit).
-        const unitCode = family ? this.#prof.params[family]?.find((x) => x.paramId === paramId)?.unit : undefined;
+        const unitCode = family ? this.#units(family).get(paramId) : undefined;
         return { value: round3(v), norm, unit: range.unit ?? ((unitCode && UNIT_LABEL[unitCode]) || undefined), min: range.displayMin, max: range.displayMax, log: log || undefined };
       } catch {
         /* fall through to 0..10 position */

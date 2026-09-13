@@ -10,6 +10,7 @@ import { createFsFolderAdapter } from './runtime/fsFolderAdapter.js';
 import { nodeCodec } from './runtime/fsStoreBackend.js';
 import { createLocalService, type LocalResult } from './runtime/localService.js';
 import type { DecodeFn, ScanCache, ScanCachePersistence } from './runtime/localFolder.js';
+import { expandHomePath } from './services/editorCacheDiscovery.js';
 
 export type { DecodeFn, LocalPresetEntry } from './runtime/localFolder.js';
 
@@ -22,9 +23,9 @@ const scanCache: ScanCachePersistence = {
 // ─────────────────────────── routes ───────────────────────────
 export function registerLocalRoutes(app: FastifyInstance, decode: DecodeFn): void {
   const svc = createLocalService({
-    adapterFor: (root) => createFsFolderAdapter(root),
-    isAbsolute,
-    resolveRoot: (root) => resolve(root),
+    adapterFor: (root) => createFsFolderAdapter(expandHomePath(root)),
+    isAbsolute: (root) => isAbsolute(expandHomePath(root)),
+    resolveRoot: (root) => resolve(expandHomePath(root)),
     scanCache,
     sha256Hex: nodeCodec.sha256Hex,
     store: store.defaultStore,

@@ -110,6 +110,11 @@ async function endpoints(): Promise<void> {
 
     const bad = await app.inject({ method: 'POST', url: '/fm3edit/color-labels/import', payload: { path: '/does/not/exist.dat' } });
     assertEqual(bad.statusCode, 400, 'unreadable path → 400');
+
+    // an existing, readable file that is NOT a discovered color-assignments file must be rejected
+    const traversal = await app.inject({ method: 'POST', url: '/fm3edit/color-labels/import', payload: { path: `${process.cwd()}/package.json` } });
+    assertEqual(traversal.statusCode, 400, 'arbitrary existing path → 400');
+    assertEqual((traversal.json() as { error: string }).error, 'path is not a discovered color-assignments file', 'names the containment guard');
   } finally {
     await app.close();
   }

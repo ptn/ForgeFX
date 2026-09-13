@@ -14,7 +14,7 @@ import { FM3_PARAMS_BY_FAMILY } from 'forgefx-midi/gen3/fm3';
 import { AM4_CACHE_PARAMS, AM4_SEEDS } from 'forgefx-midi/am4';
 import { MockTransport, handshakeReply, isIdentifyBroadcast, assert, assertEqual } from '../helpers/mock.js';
 
-export const EDITOR_CACHE_IMPORT_CASE_COUNT = 7;
+export const EDITOR_CACHE_IMPORT_CASE_COUNT = 8;
 
 const FM3 = 0x11;
 const KEY = '11_12p0'; // FM3 fw 12.0
@@ -276,6 +276,19 @@ async function discovery(): Promise<void> {
   }
 }
 
+// ── 7. a JSON { path } may only name a discovered editor cache (no arbitrary file read) ──
+async function pathTraversalRejected(): Promise<void> {
+  const { app } = await makeApp(FM3, [12, 0]);
+  try {
+    // an existing, readable file that is NOT a discovered editor cache
+    const res = await app.inject({ method: 'POST', url: '/device/cache/import', payload: { path: `${process.cwd()}/package.json` } });
+    assertEqual(res.statusCode, 400, 'arbitrary existing path → 400');
+    assertEqual((res.json() as { error: string }).error, 'path is not a discovered editor cache', 'names the containment guard');
+  } finally {
+    await app.close();
+  }
+}
+
 export async function runEditorCacheImportTests(): Promise<void> {
   filenameParsing();
   await happyPath();
@@ -284,4 +297,5 @@ export async function runEditorCacheImportTests(): Promise<void> {
   await noCacheImport();
   await am4Import();
   await discovery();
+  await pathTraversalRejected();
 }

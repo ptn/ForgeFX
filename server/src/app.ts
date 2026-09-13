@@ -129,6 +129,10 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     let bytes: Uint8Array;
     let name: string;
     if (b && !Buffer.isBuffer(b) && typeof b.path === 'string' && b.path) {
+      const candidates = editorCacheDiscovery.discoverEditorCaches();
+      if (!candidates.some((c) => c.path === b.path)) {
+        reply.code(400); return { error: 'path is not a discovered editor cache' };
+      }
       try { const read = editorCacheDiscovery.readCandidateFile(b.path); bytes = read.bytes; name = read.name; }
       catch (e) { reply.code(400); return { error: 'cannot read path', message: (e as Error).message }; }
     } else if (Buffer.isBuffer(b)) {
@@ -153,6 +157,10 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     const b = req.body;
     let bytes: Uint8Array;
     if (b && !Buffer.isBuffer(b) && typeof b.path === 'string' && b.path) {
+      const candidates = editorCacheDiscovery.discoverColorAssignments();
+      if (!candidates.some((c) => c.path === b.path)) {
+        reply.code(400); return { error: 'path is not a discovered color-assignments file' };
+      }
       try { const read = editorCacheDiscovery.readCandidateFile(b.path); bytes = read.bytes; }
       catch (e) { reply.code(400); return { error: 'cannot read path', message: (e as Error).message }; }
     } else if (Buffer.isBuffer(b)) {

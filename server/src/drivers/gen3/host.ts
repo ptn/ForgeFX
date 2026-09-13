@@ -7,8 +7,13 @@ import type { DeviceProfile } from '../../devices.js';
 import type { Transport } from '../../transport/types.js';
 import type { DeviceEvent, DriverCtx } from '../types.js';
 
+type EffectStatus = { bypassed: boolean; channel: number };
+
 export class Gen3Host {
   #profile: DeviceProfile;
+  #statusCache: { map: Map<number, EffectStatus>; at: number } | null = null;
+  #statusInflight: Promise<Map<number, EffectStatus>> | null = null;
+  static STATUS_TTL_MS = 500; // coalesce the placedBlocks/sceneState/meters burst on one load or tick
 
   constructor(
     readonly codec: ModernFractalCodec,
@@ -50,10 +55,27 @@ export class Gen3Host {
     return { number: r.presetNumber, name: r.name };
   }
 
-  /** Live active-channel + bypass per placed block (fn 0x13 status dump). */
-  async statusByEffectId(): Promise<Map<number, { bypassed: boolean; channel: number }>> {
+  /** Bust the cached status map after a bypass/channel/scene/preset change. */
+  invalidateStatus(): void { this.#statusCache = null; }
+
+  /** Live active-channel + bypass per placed block (fn 0x13 status dump). Deduped + short-TTL cached
+   *  so the placedBlocks/sceneState/activeChannels/meters burst shares ONE serialized round-trip. */
+  async statusByEffectId(): Promise<Map<number, EffectStatus>> {
+    if (this.#statusInflight) return this.#statusInflight; // coalesce concurrent callers
+    if (this.#statusCache && Date.now() - this.#statusCache.at < Gen3Host.STATUS_TTL_MS) return this.#statusCache.map;
+    this.#statusInflight = this.#readStatus();
+    try {
+      const map = await this.#statusInflight;
+      this.#statusCache = { map, at: Date.now() };
+      return map;
+    } finally {
+      this.#statusInflight = null;
+    }
+  }
+
+  async #readStatus(): Promise<Map<number, EffectStatus>> {
     const dev = await this.conn();
-    const map = new Map<number, { bypassed: boolean; channel: number }>();
+    const map = new Map<number, EffectStatus>();
     try {
       // fractal-midi's isStatusDumpResponse is locked to model 0x10 (III), so match the
       // 0x13 frame ourselves (any model) and parse the id-id-dd triples inline.

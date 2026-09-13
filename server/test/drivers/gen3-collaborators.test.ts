@@ -14,7 +14,7 @@ import { MockTransport, assert, assertEqual } from '../helpers/mock.js';
 const MODEL = 0x11; // FM3
 const FM3 = PROFILES[MODEL]!;
 
-export const GEN3_COLLABORATOR_CASE_COUNT = 10;
+export const GEN3_COLLABORATOR_CASE_COUNT = 11;
 
 const compactHex = (f: readonly number[]) => f.map((b) => b.toString(16).padStart(2, '0')).join('');
 const enc14 = (v: number): [number, number] => [v & 0x7f, (v >> 7) & 0x7f];
@@ -282,6 +282,30 @@ async function editSyncTests(): Promise<void> {
   assertEqual(pollMock.sent.length, sentAfterWrite, 'a paused poll performs no device read');
 }
 
+// ── Gen3Host status coalescing ──────────────────────────────────────────────
+
+async function statusCacheTests(): Promise<void> {
+  const amp = rosterEid('amp');
+  const statusDump = compactHex(createModernFractalCodec(MODEL).buildStatusDump());
+  const mock = new MockTransport('serial', 'mock-status-cache');
+  mock.reply = (req) => (compactHex(req) === statusDump ? [statusFrame(amp, 1)] : []);
+  const driver = makeDriver(mock);
+  const statusReads = () => mock.sent.filter((f) => compactHex(f) === statusDump).length;
+
+  // Concurrent consumers on one load (placedBlocks/sceneState/activeChannels) share ONE fn-0x13 read.
+  await Promise.all([driver.sceneState(), driver.getActiveChannels(), driver.sceneState()]);
+  assertEqual(statusReads(), 1, 'concurrent status consumers coalesce onto one fn-0x13 round-trip');
+
+  // The short TTL keeps the next consumer off the wire (no re-read inside the burst window).
+  await driver.getActiveChannels();
+  assertEqual(statusReads(), 1, 'a repeated status read inside the TTL is served from cache');
+
+  // A bypass/channel write must bust the cache so the follow-up read reflects it.
+  await driver.setBypass!(amp, true);
+  await driver.getActiveChannels();
+  assertEqual(statusReads(), 2, 'a bypass write busts the status cache');
+}
+
 export async function runGen3CollaboratorTests(): Promise<void> {
   await fcReaderTests();
   console.log('  drivers/gen3-collaborators: FcReader GET/range/switch/state decodes locked');
@@ -289,4 +313,6 @@ export async function runGen3CollaboratorTests(): Promise<void> {
   console.log('  drivers/gen3-collaborators: MetersService monitor/looper reads + control locked');
   await editSyncTests();
   console.log('  drivers/gen3-collaborators: EditSync burst diff + poll fallback locked');
+  await statusCacheTests();
+  console.log('  drivers/gen3-collaborators: Gen3Host status dump coalesced + busted on writes');
 }

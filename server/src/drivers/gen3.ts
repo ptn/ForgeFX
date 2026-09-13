@@ -437,6 +437,7 @@ class Gen3Driver implements DeviceDriver {
   }
   async setBypass(eid: number, bypassed: boolean) {
     const r = await this.#send(this.#codec.buildSetBypass(eid, bypassed)); // instant toggle
+    this.#host.invalidateStatus(); // the fn-0x13 dump now reports the new bypass
     this.#emit({ type: 'changed', scope: 'grid' });
     return r;
   }
@@ -448,6 +449,7 @@ class Gen3Driver implements DeviceDriver {
       ? this.#codec.buildSetChannelNative(eid, wireChannel)
       : this.#codec.buildSetChannel(eid, wireChannel);
     const r = await this.#send(frame); // instant
+    this.#host.invalidateStatus(); // the block's active channel is part of the fn-0x13 dump
     this.#emit({ type: 'blockState', effectId: eid });
     return r;
   }
@@ -548,8 +550,9 @@ class Gen3Driver implements DeviceDriver {
       ? this.#codec.buildSetSceneNative(index)
       : this.#codec.buildSetScene(index);
     const r = await this.#send(frame);
-    // scene selects per-scene bypass/channel; status is read fresh each placedBlocks() call, so no
-    // cache to bust — just notify subscribers so the UI follows.
+    // A scene selects its own per-block bypass/channel → bust the cached fn-0x13 status so the next
+    // placedBlocks()/sceneState() reflects the new scene; then notify subscribers so the UI follows.
+    this.#host.invalidateStatus();
     this.#emit({ type: 'scene', index });
     return r;
   }
@@ -603,11 +606,13 @@ class Gen3Driver implements DeviceDriver {
   }
   async selectPreset(n: number) {
     this.#grid.invalidate();
+    this.#host.invalidateStatus();
     const r = await this.#write(this.#codec.buildSwitchPresetSysEx(n));
-    // Clear AGAIN after the write: a grid read that landed while the switch was in flight would
-    // otherwise have re-cached the OUTGOING preset's layout for the rest of the TTL — visible now
+    // Clear AGAIN after the write: a grid/status read that landed while the switch was in flight would
+    // otherwise have re-cached the OUTGOING preset's layout/state for the rest of the TTL — visible now
     // that the live path makes the follow-up read fast enough to hit that window.
     this.#grid.invalidate();
+    this.#host.invalidateStatus();
     this.#emit({ type: 'changed', scope: 'preset' });
     return r;
   }
@@ -639,6 +644,7 @@ class Gen3Driver implements DeviceDriver {
     else await dev.sendQueued(bytes);
     this.#grid.invalidate(); // edit buffer changed → next grid/blocks read reflects it
     this.#grid.invalidateScenes(); // …including its scene names
+    this.#host.invalidateStatus(); // …and the per-block bypass/channel dump
     return { ok: true };
   }
 

@@ -171,7 +171,6 @@ Repos live in the workspace: `Axis/` (UI), `ForgeFX/` (Fastify :5056), `forgefx-
   (opens `FractalSerial` directly; `buildRead()` + `nameOf()` proven working).
 - `ForgeFX/server/scripts/capture-fm3-edit-all.js` — frida hook of FM3-Edit
   `write()`/`read()`, dumps all SysEx both directions.
-- `ForgeFX/server/scripts/capture-fm3-edit.js` — frida, write-class frames only.
 - `ForgeFX/server/scripts/sweep-cab-ir-selector.js` — frida, injects `sub=0x4b`
   via FM3-Edit's own midi fd (older, pre-probe approach).
 

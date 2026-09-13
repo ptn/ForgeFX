@@ -13,7 +13,7 @@ The headline feature: ForgeFX decodes the **full preset live from the device** �
 routing grid, block placement, and cabling — not just a flat list of effects.
 
 > **Status:** community **beta**. The gen-3 preset/grid codec, device client, and HTTP API run
-> on **Node 20** (Fastify + the [`fractal-midi`](#credits--thanks) codec) and are hardware-verified
+> on **Node 20** (Fastify + the [`forgefx-midi`](#credits--thanks) codec) and are hardware-verified
 > on **FM3 firmware 12.0**. Looking for field testers — see [DISCLAIMER.md](./DISCLAIMER.md).
 
 > ⚠️ **Independent, third-party project — not affiliated with or endorsed by Fractal Audio
@@ -131,7 +131,7 @@ consumes this API — and ships a desktop app that bundles ForgeFX into one inst
 
 The gen-3 preset/grid format was a wall until these open projects lit the way — huge thanks:
 
-- **[fractal-midi](https://www.npmjs.com/package/fractal-midi)** (Apache-2.0) — the codec engine
+- **[forgefx-midi](https://www.npmjs.com/package/forgefx-midi)** (Apache-2.0) — the codec engine
   ForgeFX is built on: SysEx framing, value model, and the gen-3 preset/grid decoder.
 - **[mcp-midi-control](https://github.com/TheAndrewStaker/mcp-midi-control)** (Apache-2.0) — its
   gen-3 codec documented the dump framing, the compressed patch body, and the grid layout.

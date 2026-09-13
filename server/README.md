@@ -1,8 +1,8 @@
 # ForgeFX server (Node)
 
-Open HTTP API for Fractal devices. Wire protocol via [`fractal-midi`](https://www.npmjs.com/package/fractal-midi);
-catalog/rosters/params from the repo's `definitions/`. Replaces the retired C# server,
-keeping the same REST contract so [Axis](https://github.com/sKuhLight/Axis) is unchanged.
+Open HTTP API for Fractal devices. Wire protocol via the bundled `forgefx-midi` package
+(Apache-2.0); catalog/rosters/params from the repo's `definitions/`. The REST contract is
+consumed by [Axis](https://github.com/sKuhLight/Axis) and the server's own browser runtime.
 
 ## Run
 
@@ -13,7 +13,7 @@ the packaged Axis app, which hosts this server in-process.
 
 ```bash
 cd server
-npm install          # native serialport + fractal-midi
+npm install          # native serialport + @julusian/midi; forgefx-midi linked as a workspace package
 npm run dev          # tsx watch, http://localhost:5056
 # or: npm run build && npm start
 ```
@@ -30,13 +30,14 @@ Axis's Vite proxy already points `/api` → `:5056`, so no Axis change is needed
 
 ## Notes
 
-- **Grid read** uses the hardware-validated dump→Huffman→grid decoder (`src/codec/fm3PresetGrid.ts`,
-  verified against the `.syx` fixtures). The lighter live `sub=0x2E` read is a future optimization
-  (`src/probes/grid-read.ts` — FM3 format still being calibrated for an upstream contribution).
-- **Writes** go through fractal-midi builders and watch for a `0x64` rejection.
+- **Grid read** uses the hardware-validated dump→Huffman→grid decoder in the `forgefx-midi`
+  package (`src/core/**`, `src/gen3/**`), verified against the `.syx` fixtures. The lighter live
+  `sub=0x2E` read is a future optimization (`src/probes/grid-read.ts` — FM3 format still being
+  calibrated for an upstream contribution).
+- **Writes** go through `forgefx-midi` builders and watch for a `0x64` rejection.
 - Param read scaling is best-effort (norm ≈ raw/65535) pending per-param ranges.
 
 ## Credits
 
-Codec: `fractal-midi` (Apache-2.0, Stephen Staker). Grid decoder ported from ForgeFX's own
-validated implementation, itself from the Apache-2.0 reference in mcp-midi-control. See `../NOTICE`.
+Codec and device descriptors: the `forgefx-midi` package (Apache-2.0, Stephen Staker), itself
+derived from the Apache-2.0 references in mcp-midi-control and fractal-syx-codec. See `../NOTICE`.

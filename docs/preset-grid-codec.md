@@ -2,8 +2,8 @@
 
 How ForgeFX turns a live preset dump into the real routing grid. This is the gen-3 Fractal
 format (Axe-Fx III `0x10`, FM3 `0x11`, FM9 `0x12`); the envelope is shared across the family
-and only the model byte and grid dimensions differ. Implemented in
-`src/ForgeFX.Core/Fm3PresetCodec.cs`.
+and only the model byte and grid dimensions differ. Implemented in the `forgefx-midi` workspace
+package (`src/core/**`, `src/gen3/**`).
 
 ## The pipeline
 
@@ -80,8 +80,8 @@ cell's `effectId`, `name`, `isShunt`, `routeFlag`, and the decoded `fromRows`.
 
 ## Provenance & credits
 
-This format knowledge comes from two open-source projects, and ForgeFX's codec is an
-**independent C# reimplementation** of the format they document (not a copy of their code):
+This format knowledge comes from two open-source projects, and the `forgefx-midi` codec is a
+**clean-room reimplementation** of the format they document (not a copy of their code):
 
 - [mcp-midi-control](https://github.com/TheAndrewStaker/mcp-midi-control) (Apache-2.0) —
   `packages/fractal-gen3` implements the dump framing, the Huffman body, the CRC, and the grid
@@ -90,4 +90,4 @@ This format knowledge comes from two open-source projects, and ForgeFX's codec i
   `FORMAT.md` those decoders are built from.
 
 Attribution is retained in [`../NOTICE`](../NOTICE) per Apache-2.0. The decoder is regression-
-tested against real FM3 preset dumps in `tests/ForgeFX.Core.Tests/Fm3PresetCodecTests.cs`.
+tested against real FM3 preset dumps in `forgefx-midi/test/` and the ForgeFX golden suites.

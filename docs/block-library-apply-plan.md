@@ -1,5 +1,9 @@
 # Plan: fast "apply saved block" (bulk EFFECT_DUMP write)
 
+> **Repository path note (2026-09).** This plan predates the workspace split. Paths are
+> repo-qualified below: `forgefx-midi/…` is the sibling protocol package, `Axis/…` is the UI
+> repo, and `ForgeFX/server/…` is this server. The plan has since been implemented.
+
 ## Goal
 
 Replace the ~10s per-param apply (one `setChannel`/`setType`/`setParam` round-trip
@@ -35,7 +39,7 @@ end  = F0 00 01 74 <model> 76 cs F7
 ```
 
 Values are channel-blocked (`index = channel × stride + paramId`);
-`packValue16`/`encode14` come from `shared/septet16.ts` (already re-exported in
+`packValue16`/`encode14` come from `forgefx-midi/src/shared/septet16.ts` (already re-exported in
 `setParam.ts`). `assembleGen3BlockBulkRead` is the exact inverse (it concatenates
 `0x75` bodies and ignores bytes 6–7, which is why the read path already works).
 `simResponders.ts#buildBroadcastBurst` uses `[0x00,0x00]` for that field (latent,
@@ -44,7 +48,7 @@ harmless for reads — the codec ignores it); the new builder must emit
 
 ## Step 1 — forgefx-midi: write builder
 
-`src/gen3/axe-fx-iii/setParam.ts` (next to `assembleGen3BlockBulkRead`, ~line 846):
+`forgefx-midi/src/gen3/axe-fx-iii/setParam.ts` (next to `assembleGen3BlockBulkRead`, ~line 846):
 
 - Add `FN_BROADCAST_HEAD = 0x74`, `FN_BROADCAST_BODY = 0x75`, `FN_BROADCAST_END = 0x76`.
 - Add type `Gen3BlockBulkWrite { blockId: number; itemCount: number; values: number[] }`.
@@ -55,22 +59,22 @@ harmless for reads — the codec ignores it); the new builder must emit
   2364) and bind it in `createModernFractalCodec` (~line 2436):
   `buildGen3BlockBulkWrite: (s) => buildGen3BlockBulkWrite(s, modelByte)`.
 
-`src/gen3/axe-fx-iii/index.ts`: export `buildGen3BlockBulkWrite` +
+`forgefx-midi/src/gen3/axe-fx-iii/index.ts`: export `buildGen3BlockBulkWrite` +
 `Gen3BlockBulkWrite` type.
 
-Tests (`test/gen3/`):
+Tests (`forgefx-midi/test/gen3/`):
 
 - Round-trip: `assembleGen3BlockBulkRead(buildGen3BlockBulkWrite(m, spec)).values`
   deep-equals `spec.values`.
 - Byte-golden vs fixtures: rebuild the FM3 Drive RAT (single section) and
   Axe-Fx III Delay DD2 (multi-section paging) bursts and diff byte-for-byte
-  against the frames in `test/gen3/fm3/fixtures/blockfile/*.blk` and
-  `test/gen3/modern-family/fixtures/blockfile-axe3-delay-dd2.blk`. This pins
+  against the frames in `forgefx-midi/test/gen3/fm3/fixtures/blockfile/*.blk` and
+  `forgefx-midi/test/gen3/modern-family/fixtures/blockfile-axe3-delay-dd2.blk`. This pins
   `encode14(pageLen)` + paging.
 
 ## Step 2 — ForgeFX server
 
-`src/drivers/gen3.ts`:
+`ForgeFX/server/src/drivers/gen3.ts`:
 
 - Add `applyBlock(eid, block: { itemCount: number; values: number[] }, activeChannel: number)`:
   - `const burst = this.#codec.buildGen3BlockBulkWrite(this.#prof.model, { blockId: eid, itemCount, values })`
@@ -81,11 +85,11 @@ Tests (`test/gen3/`):
   - clear `#gridCache`, set `#lastLocalEditAt = Date.now()`, emit
     `changed{scope:'grid'}`, return `{ ok: true }`.
 
-`src/drivers/types.ts`: add
+`ForgeFX/server/src/drivers/types.ts`: add
 `applyBlock?(eid: number, block: { itemCount: number; values: number[] }, activeChannel: number): Promise<{ ok: boolean }>`
 to `DeviceDriver` (near `loadPresetBytes`, ~line 263).
 
-`src/runtime/handlers.ts` (`applySavedBlockH`, ~line 99):
+`ForgeFX/server/src/runtime/handlers.ts` (`applySavedBlockH`, ~line 99):
 
 - Replace the `SavedBlock` interface with
   `{ device: string; slug: string; activeChannel: number; itemCount: number; values: number[] }`;
@@ -96,16 +100,16 @@ to `DeviceDriver` (near `loadPresetBytes`, ~line 263).
 - Gate `d.applyBlock` → 501 `unsupported`; call it and return
   `{ ok: true, channels: <derive or omit>, params: itemCount, activeChannel }`.
 
-`src/services/blockLibraryImport.ts`: `decodeBlockFile` also returns `blockId`,
+`ForgeFX/server/src/services/blockLibraryImport.ts`: `decodeBlockFile` also returns `blockId`,
 `itemCount`, `values` from `parseGen3BlockFile` (already available — no
 blockFile.ts change needed).
 
 ## Step 3 — Axis (from `stash@{0}`)
 
-`src/lib/types.ts`: extend `DecodedBlockFile` with
+`Axis/src/lib/types.ts`: extend `DecodedBlockFile` with
 `blockId: number; itemCount: number; values: number[]`.
 
-`src/lib/blockLibraryApply.ts`: `blockLibraryApplyPayload(block)` returns
+`Axis/src/lib/blockLibraryApply.ts`: `blockLibraryApplyPayload(block)` returns
 `{ device, slug, activeChannel, itemCount, values }` (drop the per-channel
 `params` mapping).
 

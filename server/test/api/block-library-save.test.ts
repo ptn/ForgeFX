@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import '../helpers/env.js';
 import type { DeviceDriver, DriverCapabilities } from '../../src/drivers/types.js';
-import { __setFirmwareForTest } from '../../src/drivers/registry.js';
+import { __setFirmwareForTest } from '../../src/drivers/registryTest.js';
 import { buildTestApp } from '../helpers/api.js';
 import { assert, assertEqual } from '../helpers/mock.js';
 import { parseGen3BlockFile } from 'forgefx-midi/devices/gen3';

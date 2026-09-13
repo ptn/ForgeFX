@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import '../helpers/env.js';
 import { buildApp } from '../../src/app.js';
-import { __createRegistryForTest } from '../../src/drivers/registry.js';
+import { __createRegistryForTest } from '../../src/drivers/registryTest.js';
 import { discoverBlockFiles, expandHomePath, type DiscoveryFs } from '../../src/services/editorCacheDiscovery.js';
 import { decodeBlockFile } from '../../src/services/blockLibraryImport.js';
 import { slugForFolder } from '../../src/services/blockLibrarySave.js';

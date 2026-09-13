@@ -19,19 +19,22 @@ const AM4_CAPS: DriverCapabilities = {
   scenes: 4,
   channels: false,
   presetDump: false,
-  blockParamDecode: false,
   telemetry: { tuner: false, outputMeters: false, cpu: false },
   fcModel: false,
   fcLiveRead: false,
   modBind: false,
   cabIrs: false,
   supportsSave: true,
-  selfDescribe: false
+  selfDescribe: false,
+  presetConvert: false,
+  editorLayouts: false,
+  cacheImport: false,
+  fullCapture: false
 };
 
 type FakeAm4 = DeviceDriver & {
   calls: unknown[][];
-  decodeSyx(bytes: number[]): { count: number; presets: { index: number; location: number | null; code: string | null; name: string }[] };
+  decodePresetBank(bytes: number[]): { count: number; presets: { index: number; location: number | null; code: string | null; name: string }[] };
 };
 
 /** Deterministic fake AM4 driver: every method records its call and returns a fixed DTO. */
@@ -128,8 +131,8 @@ function makeFakeAm4(): FakeAm4 {
       rec('modifierModel');
       return { bindingSupported: false, effectOrdinal: 2, slotCount: 16, fields: {}, sources: [], operations: [], channels: [] };
     },
-    decodeSyx: (bytes: number[]) => {
-      rec('decodeSyx', bytes.length);
+    decodePresetBank: (bytes: number[]) => {
+      rec('decodePresetBank', bytes.length);
       return { count: 1, presets: [{ index: 0, location: 2, code: 'A03', name: 'Decoded' }] };
     }
   };

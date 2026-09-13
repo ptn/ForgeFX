@@ -5,7 +5,7 @@
 // physically unable to emit another device's frames.
 import { createGen3Driver } from '../../src/drivers/gen3.js';
 import { cadenceFor } from '../../src/drivers/telemetryProfiles.js';
-import { __createRegistryForTest } from '../../src/drivers/registry.js';
+import { __createRegistryForTest } from '../../src/drivers/registryTest.js';
 import { setProfileOverride, setConnOverride } from '../../src/transport/connection.js';
 import { PROFILES } from '../../src/devices.js';
 import { effectRoster } from 'forgefx-midi/devices/gen3';
@@ -148,7 +148,7 @@ async function smokeFm3AmpChannelStride(): Promise<void> {
   const prof = PROFILES[model]!;
   const amp = eidFor('amp');
   const codec = createModernFractalCodec(model);
-  const stride = prof.rangeSections.DISTORT?.stride;
+  const stride = prof.rangeSections.DISTORT?.stride ?? 0;
   assertEqual(stride, 144, 'FM3 DISTORT fn=0x1f stride');
 
   const typeId = 6; // DISTORT_TYPE / Amp model selector in the generated FM3 table.

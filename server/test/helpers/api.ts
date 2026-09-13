@@ -5,7 +5,7 @@
 // model byte so route-level behavior is exercised without scripting the AM4 reader wire protocol.
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/app.js';
-import { __createRegistryForTest, __setDriverForTest, type DeviceRegistry } from '../../src/drivers/registry.js';
+import { __createRegistryForTest, __setDriverForTest, type DeviceRegistry, type RegistryDeps } from '../../src/drivers/registryTest.js';
 import type { DeviceDriver } from '../../src/drivers/types.js';
 import { MockTransport, handshakeReply, isIdentifyBroadcast } from './mock.js';
 
@@ -16,20 +16,19 @@ export interface TestApp {
 }
 
 /** Build app + isolated registry with the given model detected (via mocked handshake). An optional
- *  fake driver is seeded into the registry's driver cache BEFORE detection activates it. */
-export async function buildTestApp(modelId: number, fakeDriver?: DeviceDriver): Promise<TestApp> {
+ *  fake driver is seeded into the registry's driver cache BEFORE detection activates it. Any registry
+ *  dep (e.g. `listConnections`, which otherwise hits the real OS port list) can be overridden so the
+ *  suite stays hermetic. */
+export async function buildTestApp(modelId: number, fakeDriver?: DeviceDriver, overrides: Partial<RegistryDeps> = {}): Promise<TestApp> {
   const mock = new MockTransport('serial', `mock-0x${modelId.toString(16)}`);
   mock.reply = (req) => (isIdentifyBroadcast(req) ? [handshakeReply(modelId)] : []);
   const registry = __createRegistryForTest({
     resolveConn: async () => ({ transport: 'serial', id: mock.label }),
-    openConn: () => mock
+    openConn: () => mock,
+    ...overrides
   });
   if (fakeDriver) __setDriverForTest(registry, modelId, fakeDriver);
   await registry.detect(); // activate the driver for modelId (fake if seeded)
   const app = await buildApp(registry);
   return { app, registry, mock };
-}
-
-export function deepEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
 }

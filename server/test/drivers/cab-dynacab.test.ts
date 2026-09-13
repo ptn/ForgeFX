@@ -10,7 +10,7 @@
 // Mocked transport, no hardware — same idiom as cab-prettype.test.ts.
 import { createGen3Driver } from '../../src/drivers/gen3.js';
 import { cadenceFor } from '../../src/drivers/telemetryProfiles.js';
-import { PROFILES } from '../../src/devices.js';
+import { PROFILES, type DeviceLayout } from '../../src/devices.js';
 import { effectRoster } from 'forgefx-midi/devices/gen3';
 import { createModernFractalCodec, packValue16 } from 'forgefx-midi/gen3/axe-fx-iii';
 import { MockTransport, assert, assertEqual } from '../helpers/mock.js';
@@ -61,7 +61,7 @@ async function cabWithMode(mode: number) {
 }
 
 export async function runCabDynacabTests(): Promise<void> {
-  const controlsOf = (l: { pages: { rows: { controls: { rawWidget: string }[] }[] }[] }) =>
+  const controlsOf = (l: DeviceLayout) =>
     l.pages.flatMap((p) => p.rows).flatMap((row) => row.controls);
 
   // 1. MODE=1 (DynaCab) → the DynaCab variant is served and it carries a dynaCabControl cone.

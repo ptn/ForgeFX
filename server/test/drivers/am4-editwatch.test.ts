@@ -87,13 +87,13 @@ function rig(mode: TelemetryMode, st: RigState) {
       return [structFrame(st.scene, slots)];
     }
     if (req[5] === 0x01 && req[8] === (AM4_CHANNEL_STATUS_PID_HIGH & 0x7f) && req[9] === ((AM4_CHANNEL_STATUS_PID_HIGH >> 7) & 0x7f)) {
-      return st.channelIdx === null ? [] : [channelFrame(req[6] | (req[7] << 7), st.channelIdx)];
+      return st.channelIdx === null ? [] : [channelFrame(req[6]! | (req[7]! << 7), st.channelIdx)];
     }
     return [];
   };
   // send() path — the GET_PATCH edited-bit read + the fn-0x1F GET_ALL_PARAMS dumps.
   mock.sendReply = (bytes) => {
-    if (bytes[5] === 0x1f) return dumpTriple(bytes[6] | (bytes[7] << 7), st.dumpValue); // GET_ALL_PARAMS
+    if (bytes[5] === 0x1f) return dumpTriple(bytes[6]! | (bytes[7]! << 7), st.dumpValue); // GET_ALL_PARAMS
     if (bytes[5] === 0x01 && bytes[6] === 0 && bytes[7] === 0) return [getPatchFrame(st.edited)]; // GET_PATCH
     return [];
   };

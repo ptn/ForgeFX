@@ -6,7 +6,7 @@
 // (cloud-sourced 409, nothing persisted 404, signed-out 401 passthrough), disabled route shape.
 import '../helpers/env.js'; // MUST be first — points the conn override + data dir at throwaway paths
 import { buildApp } from '../../src/app.js';
-import { __createRegistryForTest } from '../../src/drivers/registry.js';
+import { __createRegistryForTest } from '../../src/drivers/registryTest.js';
 import * as store from '../../src/store.js';
 import { cloudCacheCheck, cloudCachePull, cloudCachePublish, type DeviceProfileCloud } from '../../src/services/cloudProfiles.js';
 import type { BuiltCache } from 'forgefx-midi/cache';

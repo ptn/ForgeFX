@@ -1,10 +1,11 @@
 // Device-cache runtime build (FORGEFX-15 / A3) — mocked transport, NO hardware. Covers the firmware
 // populate (fn 0x08), the background build orchestration (progress events + persisted doc + telemetry
 // pause/resume), cancel, the cache-hit short-circuit + runtime-profile swap, and the gated 409/501.
-// The build never septet-encodes wire frames: a fake `walkImpl` drives onProgress and returns canned
-// records straight into buildCache (which the codec's own cache:check gate exercises for real).
+// The build never septet-encodes wire frames: a fake walk (injected via deviceCache.setCacheWalkOverride)
+// drives onProgress and returns canned records straight into buildCache (which the codec's own cache:check
+// gate exercises for real).
 import { buildApp } from '../../src/app.js';
-import { __createRegistryForTest, __setDriverForTest, type DeviceRegistry } from '../../src/drivers/registry.js';
+import { __createRegistryForTest, __setDriverForTest, type DeviceRegistry } from '../../src/drivers/registryTest.js';
 import * as deviceCache from '../../src/services/deviceCache.js';
 import * as store from '../../src/store.js';
 import type { BuiltCache, CacheRecord, LiveWalkOptions } from 'forgefx-midi/cache';
@@ -17,6 +18,12 @@ export const DEVICE_CACHE_CASE_COUNT = 10;
 
 const FM3 = 0x11;
 const KEY = '11_12p0'; // FM3 fw 12.0
+
+/** Inject the fake walk (a per-registry embedding seam now that startCacheBuild no longer takes one). */
+function startBuild(registry: DeviceRegistry, walk: deviceCache.WalkImpl, opts?: { force?: boolean; mode?: deviceCache.BuildMode }) {
+  deviceCache.setCacheWalkOverride(registry, walk);
+  return deviceCache.startCacheBuild(store.defaultStore, registry, opts);
+}
 
 /** A fn 0x08 firmware-version reply frame: frame[6]=major, frame[7]=minor (+ optional build date). */
 function firmwareReply(model: number, major: number, minor: number, build?: string): number[] {
@@ -144,7 +151,7 @@ async function buildHappyPath(): Promise<void> {
     await registry.setTuner(true); // schedule a tuner poll so we can observe pause/resume
     const beforeLen = mock.sent.length;
 
-    const r = await deviceCache.startCacheBuild(store.defaultStore, registry, { walkImpl: fakeWalk });
+    const r = await startBuild(registry, fakeWalk);
     assertEqual((r.body as { started?: boolean }).started, true, 'build started');
     await deviceCache.cacheBuildPromise(registry);
 
@@ -189,7 +196,7 @@ async function cancelBuild(): Promise<void> {
     // a walk that never resolves until aborted
     const blockingWalk = (_t: unknown, opts: LiveWalkOptions): Promise<CacheRecord[]> =>
       new Promise((_res, rej) => { opts.signal?.addEventListener('abort', () => rej(new Error('aborted'))); });
-    await deviceCache.startCacheBuild(store.defaultStore, registry, { walkImpl: blockingWalk });
+    await startBuild(registry, blockingWalk);
     const cancel = deviceCache.cancelCacheBuild(registry);
     assertEqual(cancel.ok, true, 'cancel ok');
     await deviceCache.cacheBuildPromise(registry);
@@ -214,7 +221,7 @@ async function cacheHitAndRuntimeProfile(): Promise<void> {
     // build with a spy walk → must NOT be invoked (doc already present, no force)
     let walked = false;
     const spyWalk = async (): Promise<CacheRecord[]> => { walked = true; return []; };
-    const r = await deviceCache.startCacheBuild(store.defaultStore, registry, { walkImpl: spyWalk });
+    const r = await startBuild(registry, spyWalk);
     assertEqual((r.body as { already?: boolean }).already, true, 'already-built short-circuit');
     assertEqual(walked, false, 'walk not invoked on a cache hit');
 
@@ -238,9 +245,9 @@ async function concurrentBuild(): Promise<void> {
         release = () => res(seedRecords());
         opts.signal?.addEventListener('abort', () => rej(new Error('aborted')));
       });
-    const first = await deviceCache.startCacheBuild(store.defaultStore, registry, { walkImpl: gatedWalk });
+    const first = await startBuild(registry, gatedWalk);
     assertEqual((first.body as { started?: boolean }).started, true, 'first build started');
-    const second = await deviceCache.startCacheBuild(store.defaultStore, registry, { walkImpl: gatedWalk });
+    const second = await startBuild(registry, gatedWalk);
     assertEqual(second.code, 409, 'concurrent build → 409');
     release();
     await deviceCache.cacheBuildPromise(registry);
@@ -267,7 +274,7 @@ async function noSelfDescribe(): Promise<void> {
 function gen3FakeCaps(over: Partial<DriverCapabilities>): DriverCapabilities {
   return {
     slotModel: 'grid', grid: { rows: 4, cols: 12 }, gridEdit: true, scenes: 8, channels: true,
-    presetDump: true, presetConvert: true, blockParamDecode: true,
+    presetDump: true, presetConvert: true,
     telemetry: { tuner: false, outputMeters: false, cpu: false }, // inert: no supervisor polls
     fcModel: false, fcLiveRead: false, modBind: false, cabIrs: false, editorLayouts: true,
     supportsSave: true, selfDescribe: true, cacheImport: true, fullCapture: true,
@@ -279,12 +286,14 @@ function gen3FakeCaps(over: Partial<DriverCapabilities>): DriverCapabilities {
 /** A minimal gen-3-shaped fake driver. `selectCalls` records reloadPreset's re-select target so the
  *  full-mode test can assert the current preset was reloaded, without real preset-switch bytes. */
 function makeGen3Fake(caps: DriverCapabilities, selectCalls: number[]): DeviceDriver {
+  const presetRef = async () => ({ number: 7, name: 'Cur' });
+  const selectPreset = async (n: number) => { selectCalls.push(n); return { ok: true }; };
   const fake = {
     modelId: FM3, key: 'fm3', name: 'FM3', capabilities: caps,
     grid: async () => ({ model: 'fm3', name: 'F', crcValid: true, rows: 4, cols: 12, scenes: [], cells: [], source: 'dump' as const }),
-    presetRef: async () => ({ number: 7, name: 'Cur' }),
-    selectPreset: async (n: number) => { selectCalls.push(n); return { ok: true }; },
-    reloadPreset: async () => { const { number } = await fake.presetRef(); if (number >= 0) await fake.selectPreset(number); }
+    presetRef,
+    selectPreset,
+    reloadPreset: async () => { const { number } = await presetRef(); if (number >= 0) await selectPreset(number); }
   } as unknown as DeviceDriver;
   return fake;
 }
@@ -318,7 +327,7 @@ async function fullBuildWithHooks(): Promise<void> {
       await opts.write!.reloadPreset();    // per-block non-destructive reload
       return seedRecords();
     };
-    const r = await deviceCache.startCacheBuild(store.defaultStore, registry, { mode: 'full', walkImpl: fullWalk });
+    const r = await startBuild(registry, fullWalk, { mode: 'full' });
     assertEqual((r.body as { started?: boolean }).started, true, 'full build started');
     await deviceCache.cacheBuildPromise(registry);
 

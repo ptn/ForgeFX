@@ -5,7 +5,7 @@
 // Mirrors device-cache.test.ts: mocked registry via __createRegistryForTest + app.inject().
 import '../helpers/env.js'; // MUST be first — points the conn override + data dir at throwaway paths
 import { buildApp } from '../../src/app.js';
-import { __createRegistryForTest } from '../../src/drivers/registry.js';
+import { __createRegistryForTest } from '../../src/drivers/registryTest.js';
 import * as store from '../../src/store.js';
 import { parseEditorCacheFilename } from '../../src/services/editorCacheImport.js';
 import { discoverEditorCaches, type DiscoveryFs } from '../../src/services/editorCacheDiscovery.js';

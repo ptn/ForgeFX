@@ -3,7 +3,7 @@
 // traffic; the fn-0x1F echo guard (idempotent wrap + self-reply suppression still intact); the
 // interactive-request detector; and the supervisor yield + starvation guard.
 import '../helpers/env.js'; // MUST stay first — isolates ~/.forgefx-conn / data dir before transport loads
-import { __createRegistryForTest, type DeviceRegistry } from '../../src/drivers/registry.js';
+import { __createRegistryForTest, type DeviceRegistry } from '../../src/drivers/registryTest.js';
 import { setProfileOverride, setConnOverride } from '../../src/transport/connection.js';
 import type { Conn } from '../../src/transport/types.js';
 import type { DeviceDriver, DriverCapabilities } from '../../src/drivers/types.js';
@@ -25,7 +25,7 @@ const serial = (mock: MockTransport): Conn => ({ transport: 'serial', id: mock.l
 function fakeGen3(opts: { outputMeters?: boolean; editPush?: boolean; onBurst?: () => void }): DeviceDriver {
   const caps = {
     slotModel: 'grid', grid: { rows: 4, cols: 12 }, gridEdit: true, scenes: 8, channels: true,
-    presetDump: true, blockParamDecode: true,
+    presetDump: true,
     telemetry: { tuner: false, outputMeters: !!opts.outputMeters, cpu: false },
     fcModel: false, fcLiveRead: false, modBind: false, cabIrs: false, editorLayouts: false, supportsSave: true,
     deviceEditPush: !!opts.editPush
@@ -157,6 +157,7 @@ async function yieldStarvation(): Promise<void> {
   const WINDOW = 320; // performance tick = 60 ms → ~5 ticks
 
   // free run: no interactive load
+  let freeDelta = 0;
   {
     const mock = new MockTransport('serial', '/dev/ttyACM0');
     mock.reply = (req) => (isIdentifyBroadcast(req) ? [handshakeReply(0x11)] : []);
@@ -169,7 +170,7 @@ async function yieldStarvation(): Promise<void> {
     const unsub = reg.subscribe(() => {});
     await sleep(WINDOW);
     unsub();
-    var freeDelta = mock.sent.length - base;
+    freeDelta = mock.sent.length - base;
   }
 
   // busy run: a route-driven request held in flight the whole window

@@ -85,7 +85,7 @@ function synthProfile(): DeviceProfile {
     ranges: { [FAMILY]: RANGES },
     rangeSections: { [FAMILY]: { stride: STRIDE, recordCount: STRIDE } },
     rosterFor: () => [],
-    enumLabelsFor: (_family, paramId) => paramId === 16 ? ['OFF', '2', '3'] : undefined,
+    enumLabelsFor: (_family: string, paramId: number) => paramId === 16 ? ['OFF', '2', '3'] : undefined,
     cabIrs: () => ({}),
     familyForEffectId: () => undefined,
     layoutFor: () => undefined,

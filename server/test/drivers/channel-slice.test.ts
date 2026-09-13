@@ -168,7 +168,7 @@ export async function runChannelSliceTests(): Promise<void> {
     fm3,
   );
   assertEqual(overlaid.rangeSections[FAMILY]?.stride, TRUE_STRIDE, 'cache overlay keeps the catalog DISTORT stride');
-  assertEqual(overlaid.rangeSections[FAMILY]?.sectionTag, 58, 'cache overlay still adopts the device-observed section tag');
+  assertEqual((overlaid.rangeSections[FAMILY] as { sectionTag?: number } | undefined)?.sectionTag, 58, 'cache overlay still adopts the device-observed section tag');
   assertEqual(overlaid.rangeSections['WALKONLY']?.stride, 7, 'cache overlay still contributes sections the catalog lacks');
   console.log('  drivers/channel-slice: runtimeProfileFrom keeps the catalog stride, adopts cache-only sections');
 }

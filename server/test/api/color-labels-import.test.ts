@@ -4,7 +4,7 @@
 // editor-cache-import.test.ts) — this file/feature isn't tied to a connected device.
 import '../helpers/env.js';
 import { buildApp } from '../../src/app.js';
-import { __createRegistryForTest } from '../../src/drivers/registry.js';
+import { __createRegistryForTest } from '../../src/drivers/registryTest.js';
 import { parseColorAssignments } from '../../src/services/colorLabelsImport.js';
 import { discoverColorAssignments, type DiscoveryFs } from '../../src/services/editorCacheDiscovery.js';
 import { assert, assertEqual } from '../helpers/mock.js';

@@ -25,7 +25,6 @@ const CAPS: DriverCapabilities = {
   scenes: 8,
   channels: true,
   presetDump: true,
-  blockParamDecode: true,
   telemetry: { tuner: false, outputMeters: false, cpu: false },
   fcModel: false,
   fcLiveRead: false,
@@ -53,7 +52,8 @@ function makeFakeFm3(): DeviceDriver {
 export async function runLocalTests(): Promise<void> {
   const { app } = await buildTestApp(0x11, makeFakeFm3());
   const root = mkdtempSync(join(tmpdir(), 'axis-local-test-'));
-  const inject = (opts: Parameters<typeof app.inject>[0]) => app.inject(opts as never);
+  type InjectOpts = { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; url: string; payload?: unknown };
+  const inject = (opts: InjectOpts) => app.inject(opts as never);
 
   try {
     // 1 — unconfigured state + gated routes

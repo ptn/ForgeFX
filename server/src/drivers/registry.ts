@@ -8,7 +8,6 @@ import { listConnections, resolveConn, openConn, getConnOverride, setConnOverrid
 import { midiAvailable } from '../transport/midi.js';
 import * as store from '../store.js';
 import { createRegistry, type DeviceRegistry, type RegistryDeps } from './registryCore.js';
-import type { DeviceDriver } from './types.js';
 import type { BuiltCache } from 'forgefx-midi/cache';
 import { CACHE_SCHEMA } from 'forgefx-midi/cache';
 
@@ -32,24 +31,9 @@ const nodeDeps: RegistryDeps = {
 
 export const registry = createRegistry(nodeDeps);
 
-// ── TEST-ONLY ──
-/** Build an ISOLATED DeviceRegistry over mocked connection resolution/opening (any dep not given
- *  keeps its real Node implementation — the suites isolate the override file via FORGEFX_PORT_FILE).
- *  For the mocked unit tests (test/drivers/*.test.ts) ONLY — the server always uses the `registry`
- *  singleton above. */
-export function __createRegistryForTest(deps: Partial<RegistryDeps>): DeviceRegistry {
+/** Build an ISOLATED DeviceRegistry over the real Node deps, with any dep overridden — used by the
+ *  mocked suites (which pass fake connection resolution/openers). The server always uses the `registry`
+ *  singleton above; never construct a DeviceRegistry for production. */
+export function createNodeRegistry(deps: Partial<RegistryDeps> = {}): DeviceRegistry {
   return createRegistry({ ...nodeDeps, ...deps });
-}
-
-/** TEST-ONLY: pre-seed the driver instance for a model byte on an ISOLATED test registry, so the
- *  API suites can inject a hand-built fake driver (detect() then activates it via the normal
- *  handshake path). Never call this on the production `registry` singleton. */
-export function __setDriverForTest(reg: DeviceRegistry, modelId: number, d: DeviceDriver): void {
-  reg.__seedDriver(modelId, d);
-}
-
-/** TEST-ONLY: force the running-firmware snapshot on an ISOLATED test registry (the fn 0x08 query
- *  is not scripted by the mock transport, so the save route's firmware stamp would otherwise be null). */
-export function __setFirmwareForTest(reg: DeviceRegistry, fw: { major: number; minor: number; version: string; build: string }): void {
-  reg.__setFirmwareForTest(fw);
 }

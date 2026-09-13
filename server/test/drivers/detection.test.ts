@@ -2,7 +2,7 @@
 // Exercises DeviceRegistry.detect() through the test-only injection seam
 // (__createRegistryForTest): handshake reply, MIDI port-name fallback, forced
 // profile override, silent/absent device, and the telemetry-supervisor gates.
-import { __createRegistryForTest, type DeviceRegistry } from '../../src/drivers/registry.js';
+import { __createRegistryForTest, type DeviceRegistry } from '../../src/drivers/registryTest.js';
 import { setProfileOverride, setConnOverride } from '../../src/transport/connection.js';
 import type { Conn } from '../../src/transport/types.js';
 import { MockTransport, handshakeReply, isIdentifyBroadcast, assert, assertEqual, sleep } from '../helpers/mock.js';

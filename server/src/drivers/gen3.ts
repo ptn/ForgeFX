@@ -103,13 +103,17 @@ interface DecodedDump {
  *  (beacons, other replies) that the strict frame-walking parser would reject; the old decoder
  *  skipped them the same way. */
 function dumpBytesFromFrames(frames: readonly (readonly number[])[]): Uint8Array {
-  const keep: number[] = [];
+  const chunks: (readonly number[])[] = [];
+  let total = 0;
   for (const f of frames) {
     if (f.length < 8 || f[0] !== 0xf0 || f[1] !== 0x00 || f[2] !== 0x01 || f[3] !== 0x74) continue;
     const fn = f[5];
-    if (fn === 0x77 || fn === 0x78 || fn === 0x79) keep.push(...f);
+    if (fn === 0x77 || fn === 0x78 || fn === 0x79) { chunks.push(f); total += f.length; }
   }
-  return Uint8Array.from(keep);
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const f of chunks) { out.set(f, off); off += f.length; }
+  return out;
 }
 
 /** Full dump decode via the package pipeline (parse → raw_patch/CRC/Huffman → structured body),

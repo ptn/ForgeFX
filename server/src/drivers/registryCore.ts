@@ -295,8 +295,10 @@ export class DeviceRegistry {
   }
 
   // ── event bus (SSE source): live tuner/scene/tempo/cpu pushes ──
-  #subscribers = new Set<(e: DeviceEvent) => void>();
-  subscribe(fn: (e: DeviceEvent) => void): () => void {
+  // The second arg is the event pre-serialized once per emit (lazily, on first use) so N SSE clients
+  // don't each re-run JSON.stringify over the same high-frequency telemetry payload.
+  #subscribers = new Set<(e: DeviceEvent, json: string) => void>();
+  subscribe(fn: (e: DeviceEvent, json: string) => void): () => void {
     this.#subscribers.add(fn);
     this.#startMeters(); // a listener is present → stream CPU + audio meters (gen-3 only)
     this.#startEditWatch(); // …and poll for front-panel edits on devices that don't push them (AM4 + FM3)
@@ -319,9 +321,11 @@ export class DeviceRegistry {
     // too, so it re-primes silently instead of emitting a redundant `changed` (which would drive a
     // second, heavy grid reload on top of the scene handler's own lightweight refresh).
     if (e.type === 'scene') { this.#lastSceneIdx = e.index; this.#lastChannels = null; }
+    let json: string | undefined;
     for (const fn of this.#subscribers) {
       try {
-        fn(e);
+        if (json === undefined) json = JSON.stringify(e);
+        fn(e, json);
       } catch {
         /* a dead subscriber must not break the others */
       }

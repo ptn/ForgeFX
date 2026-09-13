@@ -806,7 +806,7 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
       'access-control-allow-origin': '*'
     });
     raw.write(': connected\n\n');
-    const unsub = registry.subscribe((e) => raw.write(`data: ${JSON.stringify(e)}\n\n`));
+    const unsub = registry.subscribe((_e, json) => raw.write(`data: ${json}\n\n`));
     const hb = setInterval(() => raw.write(': hb\n\n'), 15000);
     req.raw.on('close', () => {
       clearInterval(hb);

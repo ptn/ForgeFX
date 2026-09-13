@@ -122,7 +122,12 @@ export class PresetDecoder {
   async dumpRaw(n: number): Promise<{ bytes: Uint8Array; summary: PresetSummary }> {
     const entry = await this.#read(n);
     const summary = this.#summarizeDump(entry.content.decoded.dump, entry.content.models, n);
-    return { bytes: Uint8Array.from(entry.frames.flat()), summary };
+    let total = 0;
+    for (const f of entry.frames) total += f.length;
+    const bytes = new Uint8Array(total);
+    let off = 0;
+    for (const f of entry.frames) { bytes.set(f, off); off += f.length; }
+    return { bytes, summary };
   }
 
   /** Decode a preset from raw .syx bytes (a saved/exported dump) — offline, no device needed. Splits

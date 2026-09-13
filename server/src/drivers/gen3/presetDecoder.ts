@@ -7,10 +7,40 @@ import { EDIT_BUFFER } from './support.js';
 import { decodeDump, decodeRawBody, type DecodedDump, type DecodedDumpDTO } from './dump.js';
 import type { Gen3Host } from './host.js';
 
+/** The slot-independent decode of one preset body (grid, scenes, per-block params, search models).
+ *  Keyed by the dump's content `crc`, so slots that hold identical content decode once. */
+interface DecodedContent {
+  decoded: DecodedDump;
+  blocks: DecodedBlock[];
+  models: Record<string, string[]>;
+}
+
+/** A memoized stored-preset dump: the raw frames (for the .syx bytes) plus the content-addressed
+ *  decode. `crc` is the content fingerprint the dump itself carries. */
+interface DecodedPreset {
+  crc: number;
+  frames: number[][];
+  content: DecodedContent;
+}
+
 export class PresetDecoder {
   #host: Gen3Host;
+  /** Memoized dumps keyed by preset number: every summary/params/raw read of the same slot shares
+   *  ONE dump + decode; a write that changes a slot busts just that key. */
+  #byPreset = new Map<number, DecodedPreset>();
+  /** Decoded content keyed by the dump's crc — lets identical slots (e.g. the empty tail of a
+   *  backup sweep) reuse one Huffman/param decode even though each still needs its own frames. */
+  #byCrc = new Map<number, DecodedContent>();
+  #inflight = new Map<number, Promise<DecodedPreset>>();
 
   constructor(host: Gen3Host) { this.#host = host; }
+
+  /** Drop a memoized dump after a write that changes its content. Omit the slot to clear every
+   *  cached dump (the edit-buffer sentinel changes on ANY edit / preset switch). */
+  invalidate(presetNumber?: number): void {
+    if (presetNumber == null) { this.#byPreset.clear(); this.#byCrc.clear(); }
+    else this.#byPreset.delete(presetNumber);
+  }
 
   /** Read a preset dump, retrying when it arrives incomplete. On Windows USB-MIDI a big multi-packet
    *  dump (Axe-Fx III presets ≈ 18 frames / 32 KB) intermittently drops its 0x78 payload chunks between
@@ -41,29 +71,58 @@ export class PresetDecoder {
     return decodeDump(frames, this.#host.profile);
   }
 
+  /** The memoized dump for one slot: dump + decode + derive once, keyed by preset number. Concurrent
+   *  callers for the same slot share the single in-flight read. */
+  async #read(presetNumber: number): Promise<DecodedPreset> {
+    const cached = this.#byPreset.get(presetNumber);
+    if (cached) return cached;
+    const pending = this.#inflight.get(presetNumber);
+    if (pending) return pending;
+    const p = this.#load(presetNumber);
+    this.#inflight.set(presetNumber, p);
+    try {
+      return await p;
+    } finally {
+      if (this.#inflight.get(presetNumber) === p) this.#inflight.delete(presetNumber);
+    }
+  }
+
+  async #load(presetNumber: number): Promise<DecodedPreset> {
+    const frames = await this.dumpFrames(presetNumber);
+    const decoded = this.decode(frames);
+    const crc = decoded.dump.crc;
+    let content = this.#byCrc.get(crc);
+    if (!content) {
+      const blocks = this.#decodeBlocks(decoded);
+      content = { decoded, blocks, models: modelsFromBlocks(blocks) };
+      this.#byCrc.set(crc, content); // identical content at another slot reuses this decode
+    }
+    const entry: DecodedPreset = { crc, frames, content };
+    // The edit buffer changes on every write, so it is never memoized (the live grid path owns its
+    // own short-TTL read). Only stored slots — which change solely through `store(n)` — are cached.
+    if (presetNumber !== EDIT_BUFFER) this.#byPreset.set(presetNumber, entry);
+    return entry;
+  }
+
   /** Decode any preset by number (non-disruptive — does NOT switch the active preset) into a
    *  library-friendly summary: name, scene names, and the unique effect blocks it contains. */
   async presetSummary(presetNumber: number, withParams = false): Promise<PresetSummary> {
-    const frames = await this.dumpFrames(presetNumber);
-    const decoded = this.decode(frames);
-    const blocks = this.#decodeBlocks(decoded);
-    const summary = this.#summarizeDump(decoded.dump, modelsFromBlocks(blocks), presetNumber);
-    if (withParams) summary.params = blocks; // cache build: summary + full params in one dump
+    const { content } = await this.#read(presetNumber);
+    const summary = this.#summarizeDump(content.decoded.dump, content.models, presetNumber);
+    if (withParams) summary.params = content.blocks; // library build: summary + full params off one dump
     return summary;
   }
 
   /** Full per-block params (every family/param) for one device preset — the deep-search / detail source. */
   async presetParams(presetNumber: number): Promise<DecodedBlock[]> {
-    const frames = await this.dumpFrames(presetNumber);
-    return this.#decodeBlocks(this.decode(frames));
+    return (await this.#read(presetNumber)).content.blocks;
   }
 
   /** Raw .syx bytes (the backup blob) + decoded summary for one slot — the backups service's source. */
   async dumpRaw(n: number): Promise<{ bytes: Uint8Array; summary: PresetSummary }> {
-    const frames = await this.dumpFrames(n);
-    const decoded = this.decode(frames);
-    const summary = this.#summarizeDump(decoded.dump, modelsFromBlocks(this.#decodeBlocks(decoded)), n);
-    return { bytes: Uint8Array.from(frames.flat()), summary };
+    const entry = await this.#read(n);
+    const summary = this.#summarizeDump(entry.content.decoded.dump, entry.content.models, n);
+    return { bytes: Uint8Array.from(entry.frames.flat()), summary };
   }
 
   /** Decode a preset from raw .syx bytes (a saved/exported dump) — offline, no device needed. Splits

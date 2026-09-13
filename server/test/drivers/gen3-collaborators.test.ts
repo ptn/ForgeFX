@@ -3,6 +3,8 @@
 // (per-block monitors, looper telemetry + transport) and EditSync (push-burst diffing + poll fallback).
 // These paths had no direct suite — the split is behavior-preserving, so these lock the wire decode
 // BEFORE the code moves. Mocked transport, no hardware.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createGen3Driver } from '../../src/drivers/gen3.js';
 import { cadenceFor } from '../../src/drivers/telemetryProfiles.js';
 import { PROFILES, SLUG_FAMILY } from '../../src/devices.js';
@@ -14,7 +16,9 @@ import { MockTransport, assert, assertEqual } from '../helpers/mock.js';
 const MODEL = 0x11; // FM3
 const FM3 = PROFILES[MODEL]!;
 
-export const GEN3_COLLABORATOR_CASE_COUNT = 11;
+export const GEN3_COLLABORATOR_CASE_COUNT = 12;
+
+const FM3_PRESET_5 = readFileSync(fileURLToPath(new URL('../fixtures/preset-convert/fm3-preset-5.syx', import.meta.url)));
 
 const compactHex = (f: readonly number[]) => f.map((b) => b.toString(16).padStart(2, '0')).join('');
 const enc14 = (v: number): [number, number] => [v & 0x7f, (v >> 7) & 0x7f];
@@ -306,6 +310,62 @@ async function statusCacheTests(): Promise<void> {
   assertEqual(statusReads(), 2, 'a bypass write busts the status cache');
 }
 
+// ── PresetDecoder dump memoization ──────────────────────────────────────────
+
+/** Split a .syx byte stream into its F0..F7 frames (the shape dumpFrames returns). */
+function splitSyx(bytes: Uint8Array): number[][] {
+  const frames: number[][] = [];
+  let cur: number[] | null = null;
+  for (const b of bytes) {
+    if (b === 0xf0) cur = [b];
+    else if (cur) {
+      cur.push(b);
+      if (b === 0xf7) { frames.push(cur); cur = null; }
+    }
+  }
+  return frames;
+}
+
+async function dumpMemoTests(): Promise<void> {
+  const frames = splitSyx(Uint8Array.from(FM3_PRESET_5));
+  const mock = new MockTransport('serial', 'mock-dump-memo');
+  mock.reply = (req) => (req[5] === 0x03 ? frames : []); // fn 0x03 = request preset dump
+  const driver = makeDriver(mock);
+  const dumps = () => mock.sent.filter((f) => f[5] === 0x03).length;
+
+  // One dump serves the full summary (with params), the params read, and the raw .syx read.
+  const summary = await driver.presetSummary(5, true);
+  assertEqual(dumps(), 1, 'first summary triggers exactly one dump');
+  assert(summary.name.length > 0, 'summary decodes the preset name');
+  const summaryParams = summary.params;
+  assert(!!summaryParams && summaryParams.length > 0, 'full summary embeds decoded block params');
+
+  const params = await driver.presetParams(5);
+  assertEqual(dumps(), 1, 'presetParams reuses the memoized dump (no re-dump)');
+  assertEqual(params.length, summaryParams.length, 'presetParams returns the same decode as the summary');
+
+  const raw = await driver.dumpRaw(5);
+  assertEqual(dumps(), 1, 'dumpRaw reuses the memoized dump (no re-dump)');
+  assert(raw.bytes.length > 0, 'dumpRaw returns the .syx bytes');
+
+  // A warm slot serves concurrent callers straight from cache — zero wire reads.
+  mock.sent.length = 0;
+  await Promise.all([driver.presetSummary(5), driver.presetParams(5), driver.dumpRaw(5)]);
+  assertEqual(dumps(), 0, 'a warm slot serves concurrent callers without touching the wire');
+
+  // Concurrent COLD callers for one slot coalesce onto a single dump (single-flight).
+  const coldMock = new MockTransport('serial', 'mock-dump-memo-cold');
+  coldMock.reply = (req) => (req[5] === 0x03 ? frames : []);
+  const coldDriver = makeDriver(coldMock);
+  await Promise.all([coldDriver.presetSummary(5), coldDriver.presetParams(5), coldDriver.dumpRaw(5)]);
+  assertEqual(coldMock.sent.filter((f) => f[5] === 0x03).length, 1, 'concurrent cold callers share one dump');
+
+  // Storing to the slot changes its content → the memo must be busted and re-read.
+  await driver.store(5);
+  await driver.presetSummary(5);
+  assertEqual(dumps(), 1, 'a store write invalidates that slot\'s memo');
+}
+
 export async function runGen3CollaboratorTests(): Promise<void> {
   await fcReaderTests();
   console.log('  drivers/gen3-collaborators: FcReader GET/range/switch/state decodes locked');
@@ -315,4 +375,6 @@ export async function runGen3CollaboratorTests(): Promise<void> {
   console.log('  drivers/gen3-collaborators: EditSync burst diff + poll fallback locked');
   await statusCacheTests();
   console.log('  drivers/gen3-collaborators: Gen3Host status dump coalesced + busted on writes');
+  await dumpMemoTests();
+  console.log('  drivers/gen3-collaborators: PresetDecoder dumps memoized by slot + crc, busted on store');
 }

@@ -112,6 +112,7 @@ class Gen3Driver implements DeviceDriver {
     this.#prof = profile;
     this.#host.setProfile(profile);
     this.#paramDisplay.invalidateUnitIndex();
+    this.#decoder.invalidate(); // runtime profile changes rows/cols/model-name served off a dump
   }
 
   #conn() { return this.#ctx.transport(); }
@@ -624,7 +625,9 @@ class Gen3Driver implements DeviceDriver {
     if (number >= 0) await this.selectPreset(number);
   }
   async store(n: number) {
-    return this.#write(this.#codec.buildStorePreset(n));
+    const r = await this.#write(this.#codec.buildStorePreset(n));
+    this.#decoder.invalidate(n); // the slot's stored content changed → drop its memoized dump
+    return r;
   }
 
   /** Load a raw preset dump (.syx bytes) straight into the device's EDIT BUFFER — no slot is touched

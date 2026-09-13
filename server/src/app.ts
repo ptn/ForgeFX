@@ -5,28 +5,24 @@
 // answers `501 {error:'unsupported', capability}` instead of firing another model's frames at it.
 // Connection/system concerns (ports, detect, SSE bus, telemetry supervisor) live on the registry.
 //
-// The gen-3 routes ARE the unified surface: every pre-Phase-6 gen-3 route keeps its path and a
-// byte-identical response for FM3 (additive fields only). The old /am4/* routes are thin DEPRECATED
-// ALIASES of the unified routes — same handler functions with param/body shims, `Deprecation` +
-// `Sunset` headers, and a per-path hit counter surfaced in GET /diag.
+// C1: the shared route table (method/path/octet + handler) is src/http/routeManifest.ts — the browser
+// twin (runtime/router.ts) registers the SAME manifest, so method/path drift is impossible. This
+// module keeps only the Fastify adapter, the deprecated /am4/* alias shims, SSE, static UI and the
+// Node-gated file/cloud/remote/telemetry surface.
+//
+// The old /am4/* routes are thin DEPRECATED ALIASES of the unified routes — same handler functions
+// with param/body shims, `Deprecation` + `Sunset` headers, and a per-path hit counter in GET /diag.
 //
 // `buildApp(registry)` exists so the API tests can `app.inject()` against an ISOLATED mocked
 // registry without listening; the production entry (index.ts) builds the app over the singleton
 // registry and listens — identical behavior to the pre-factory module.
-//
-// The NON-TRIVIAL handler bodies (grid/blocks/param writes/preset ops/decode) live in
-// runtime/handlers.ts and are shared verbatim with the browser-facing runtime router
-// (runtime/router.ts) — this module keeps only the Fastify wiring, the deprecated /am4/* alias
-// shims, SSE, static UI and the Node-gated cloud/remote/telemetry surface.
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import { existsSync, statSync, createReadStream } from 'node:fs';
-import { join, resolve, extname } from 'node:path';
+import { join, resolve, extname, sep } from 'node:path';
 import type { DeviceRegistry } from './drivers/registry.js';
-import * as backups from './services/backups.js';
 import * as convert from './services/convert.js';
 import type { ConverterPreset } from 'forgefx-midi/convert';
-import * as deviceCache from './services/deviceCache.js';
 import * as editorCacheImport from './services/editorCacheImport.js';
 import * as colorLabelsImport from './services/colorLabelsImport.js';
 import * as blockLibraryImport from './services/blockLibraryImport.js';
@@ -35,7 +31,8 @@ import * as editorCacheDiscovery from './services/editorCacheDiscovery.js';
 import * as cloudProfiles from './services/cloudProfiles.js';
 import * as store from './store.js';
 import { createUnifiedHandlers } from './runtime/handlers.js';
-import { putStoreDoc } from './runtime/services.js';
+import { createStoreHandlers } from './runtime/storeHandlers.js';
+import { createRouteManifest, type RouteCtx } from './http/routeManifest.js';
 import { registerLocalRoutes } from './localStore.js';
 import { registerHelpRoutes } from './help.js';
 import { telemetryStatus, uploadDebugReport, type DebugReport } from './telemetry.js';
@@ -50,18 +47,42 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     if (!s || !s.length) return done(null, {});
     try { done(null, JSON.parse(s)); } catch (e) { done(e as Error); }
   });
-  // accept raw .syx bytes (preset files) on POST /preset/decode
+  // accept raw .syx bytes (preset files) on the octet routes
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
 
   // The unified handler bodies + capability gate — shared with the runtime router (see handlers.ts).
-  const {
-    driver, unsupported,
-    gridH, blocksH, sceneStateH, blockParamsH, setParamH, applySavedBlockH, bypassH, sceneSetH,
-    presetSelectH, presetStoreH, presetNameH, locationsH, sceneNamesH,
-    backupH, restoreH, fwValidateH, deviceParamH, modModelH,
-    telemetryConfigH, telemetrySetH,
-    decodeH, decodeBytes
-  } = createUnifiedHandlers(registry);
+  const h = createUnifiedHandlers(registry);
+  const { driver, unsupported } = h;
+  const sh = createStoreHandlers(store.defaultStore, registry);
+
+  // ── shared routes (C1 single source) ─────────────────────────────────────────────────────────
+  // One Fastify adapter turns each native request into a surface-neutral RouteCtx, then sends the
+  // handler's return (Uint8Array → octet-stream, everything else → JSON) with the recorded status.
+  for (const r of createRouteManifest(h, sh)) {
+    app.route({
+      method: r.method,
+      url: r.path,
+      handler: async (req: FastifyRequest, reply: FastifyReply) => {
+        const query = new URLSearchParams();
+        for (const [k, v] of Object.entries((req.query ?? {}) as Record<string, unknown>)) {
+          if (Array.isArray(v)) for (const x of v) query.append(k, String(x));
+          else if (v != null) query.set(k, String(v));
+        }
+        const body = req.body as unknown;
+        const ctx: RouteCtx = {
+          params: (req.params ?? {}) as Record<string, string>,
+          query,
+          body: body ?? {},
+          raw: null,
+          reply: { code: (n) => reply.code(n) },
+        };
+        if (r.octet && Buffer.isBuffer(body)) { ctx.raw = new Uint8Array(body); ctx.body = {}; }
+        const out = await r.handler(ctx);
+        if (out instanceof Uint8Array) { reply.type('application/octet-stream'); reply.send(Buffer.from(out)); return; }
+        reply.send(out);
+      },
+    });
+  }
 
   // ── deprecated-alias plumbing (the folded /am4/* routes) ──
   // Every alias hit gets `Deprecation: true` + a `Sunset` date (≈ one release after Axis migrates to
@@ -90,38 +111,8 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     catch (e) { reply.code(503); return { error: (e as Error).message }; }
   });
 
-  // ── system ──
-  // /healthz carries the unified-API version handshake (mirrored as apiVersion on /device).
-  app.get('/healthz', async () => {
-    const h = await registry.health();
-    return { ok: h.ok, api: { version: 2 }, device: h.device };
-  });
-  // full connection diagnostic for the desktop debug log, plus the deprecated-alias hit counters
-  app.get('/diag', async () => ({ ...(await registry.diagnostics()), deprecatedAliasHits: { ...aliasHits } }));
-  app.get('/device', () => registry.deviceInfo());
-  app.get('/ports', () => registry.connections()); // serial + MIDI connections (Fractal flagged) + chosen + override
-  app.post<{ Body: { transport?: 'serial' | 'midi'; id?: string | null; inId?: string | null; outId?: string | null; model?: string | null } }>('/ports/select', (req) => {
-    const b = req.body ?? {};
-    const model = b.model; // undefined = leave the profile override as-is; 'auto'/'' = clear it; else force it
-    // MIDI (Axe-Fx III / FM9, or an FM3 via a MIDI→USB adapter): separate input + output endpoints
-    if (b?.transport === 'midi' && b.inId && b.outId) return registry.selectConnection({ transport: 'midi', id: b.id || b.inId, inId: b.inId, outId: b.outId }, model);
-    if (b?.id) return registry.selectConnection({ transport: b.transport === 'midi' ? 'midi' : 'serial', id: b.id }, model);
-    return registry.selectConnection(null, model); // clear the port back to auto (a forced profile can remain via `model`)
-  }); // manual pick
-
-  // ── device cache (on-connect self-describe build; capability selfDescribe) ──
-  // Status: current key + existence + live build progress + stored-doc meta.
-  app.get('/device/cache', () => deviceCache.cacheStatus(store.defaultStore, registry));
-  // Start a background build (501 no selfDescribe, 503 no device/firmware, 409 already building).
-  app.post<{ Body: { force?: boolean; mode?: 'read-only' | 'full' } }>('/device/cache/build', async (req, reply) => {
-    const r = await deviceCache.startCacheBuild(store.defaultStore, registry, { force: req.body?.force, mode: req.body?.mode });
-    reply.code(r.code);
-    return r.body;
-  });
-  // Cancel the running build (idempotent).
-  app.post('/device/cache/cancel', () => deviceCache.cancelCacheBuild(registry));
-  // Delete the current key's stored cache.
-  app.delete('/device/cache', () => deviceCache.deleteCache(store.defaultStore, registry));
+  // ── system: full connection diagnostic for the desktop debug log + deprecated-alias hit counters ──
+  app.get('/diag', async () => h.diagH(aliasHits));
 
   // ── editor-cache import (SECOND cache source: an official-editor effectDefinitions_*.cache file;
   //    capability cacheImport). See services/editorCacheImport.ts + editorCacheDiscovery.ts. ──
@@ -227,199 +218,24 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
   });
   // Save a placed block back to a caller-selected `.blk` library (the write twin of the decode route
   // above). Device-coupled: the payload is the block's live bulk-read burst and the firmware bytes
-  // come from the connected unit (never a previewed block). See services/blockLibrarySave.ts.
-  app.post<{ Body: { libraryPath?: string; name?: string; effectId?: number; mode?: 'current' | 'all'; overwrite?: boolean } }>(
+  // come from the connected unit (never a previewed block). Orchestration lives in
+  // services/blockLibrarySave.ts#saveBlockToLibrary.
+  app.post<{ Body: blockLibrarySave.SaveBlockRequest }>(
     '/fm3edit/blocks/save',
     async (req, reply) => {
-      const b = req.body ?? {};
-      const { libraryPath, name, effectId, mode, overwrite } = b;
-      if (typeof libraryPath !== 'string' || !libraryPath.trim()) {
-        reply.code(400);
-        return { error: 'libraryPath is required' };
-      }
-      const safeName = blockLibrarySave.sanitizeBlockName(name ?? '');
-      if (!safeName) {
-        reply.code(400);
-        return { error: 'name is required and must be a safe filename' };
-      }
-      if (!Number.isInteger(effectId) || (effectId as number) < 0) {
-        reply.code(400);
-        return { error: 'effectId is required' };
-      }
-      const scope = mode === 'all' ? 'all' : 'current';
-
-      const d = await driver();
-      if (!d.captureBlockForSave) return unsupported(reply, 'blockLibrarySave');
-
-      // Firmware must come from the connected device — echoing a foreign block's version produces
-      // a file the editor refuses (too high) or silently migrates (too low). Fail without it.
-      const fw = registry.firmwareInfo();
-      if (!fw) {
-        reply.code(400);
-        return { error: 'firmware-not-reported', message: 'the connected device did not report its firmware version' };
-      }
-
-      let captured: Awaited<ReturnType<NonNullable<typeof d.captureBlockForSave>>>;
-      try {
-        captured = await d.captureBlockForSave(effectId as number, scope);
-      } catch (e) {
-        reply.code(503);
-        return { error: 'block-capture-failed', message: (e as Error).message };
-      }
-
-      const info = blockLibrarySave.effectTypeForSlug(captured.slug);
-      if (!info) {
-        reply.code(422);
-        return {
-          error: 'unsaved-family',
-          slug: captured.slug,
-          message: `${blockLibrarySave.slugLabel(captured.slug)} blocks can't be saved — this family has no confirmed editor effect-type id`,
-        };
-      }
-
-      const bytes = blockLibrarySave.buildBlockLibraryFile({
-        modelId: d.modelId,
-        firmware: { major: fw.major, minor: fw.minor },
-        effectTypeId: info.effectTypeId,
-        activeChannel: captured.activeChannel,
-        name: safeName,
-        payload: captured.payload,
-      });
-
-      try {
-        const result = blockLibrarySave.writeBlockLibraryFile(
-          editorCacheDiscovery.expandHomePath(libraryPath),
-          info,
-          safeName,
-          bytes,
-          !!overwrite,
-        );
-        return { ok: true, ...result };
-      } catch (e) {
-        const err = e as { code?: string; path?: string; message?: string };
-        if (err.code === 'EXISTS') {
-          reply.code(409);
-          return { error: 'block-exists', path: err.path };
-        }
-        reply.code(500);
-        return { error: 'block-save-failed', message: err.message };
-      }
+      const outcome = await blockLibrarySave.saveBlockToLibrary(
+        await driver(),
+        registry.firmwareInfo(),
+        editorCacheDiscovery.expandHomePath,
+        req.body ?? {},
+      );
+      reply.code(outcome.code);
+      return outcome.body;
     },
   );
 
-  // ── unified handlers ──────────────────────────────────────────────────────────────────────────
-  // Each capability-gated handler that a /am4/* alias folds into is a named function from
-  // createUnifiedHandlers above: the unified route AND its alias call the SAME function (aliases
-  // only shim params/body) — no fastify inject.
-
-  // ── preset ──
-  app.get('/preset', async (_req, reply) => {
-    const d = await driver();
-    if (!d.presetRef) return unsupported(reply, 'presetRef');
-    return d.presetRef();
-  });
-  // Stored preset name (driver-backed since Phase 6; gen-3 keeps the {number, name:''} stub).
-  app.get<{ Params: { n: string } }>('/presets/:n', (req) => presetNameH(Number(req.params.n)));
-  // Decode any preset by number (non-disruptive) → library summary: name, scenes, unique blocks.
-  app.get<{ Params: { n: string }; Querystring: { full?: string } }>('/presets/:n/summary', async (req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.presetSummary) return unsupported(reply, 'presetDump');
-      return await d.presetSummary(Number(req.params.n), req.query.full === '1');
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // Full per-block decoded params for one preset (every family/param) — deep-search + browser detail.
-  app.get<{ Params: { n: string } }>('/presets/:n/params', async (req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.presetParams) return unsupported(reply, 'presetDump');
-      return { blocks: await d.presetParams(Number(req.params.n)) };
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // ── persistent store: documents (Axis config · library metadata · layouts) ──
-  app.get<{ Params: { c: string } }>('/store/:c', (req) => ({ docs: store.listDocs(req.params.c) }));
-  app.get<{ Params: { c: string; id: string } }>('/store/:c/:id', (req, reply) => {
-    const d = store.getDoc(req.params.c, req.params.id);
-    if (!d) { reply.code(404); return { error: 'not found' }; }
-    return d;
-  });
-  // Config writes fan out to every live UI (host SSE + remote relay) — see runtime/services.ts.
-  app.put<{ Params: { c: string; id: string }; Body: { data: unknown; origin?: string } }>('/store/:c/:id', (req) =>
-    putStoreDoc(store.defaultStore, registry, req.params.c, req.params.id, req.body?.data, req.body?.origin));
-  app.delete<{ Params: { c: string; id: string } }>('/store/:c/:id', (req) => { store.delDoc(req.params.c, req.params.id); return { ok: true }; });
-
   // ── local storage folder (Presets/ library + Sync/ plain-syx mirror; see localStore.ts) ──
-  registerLocalRoutes(app, decodeBytes);
-
-  // ── backups + version control ──
-  // snapshot one preset (version control); body optional { source }
-  app.post<{ Params: { n: string } }>('/backup/preset/:n', async (req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.dumpRaw) return unsupported(reply, 'presetDump');
-      const v = await backups.backupPreset(store.defaultStore, d, Number(req.params.n));
-      return v ? { version: v } : (reply.code(422), { error: 'empty/invalid preset' });
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // full-device backup (long-running): body { label, from?, to? }
-  app.post<{ Body: { label?: string; from?: number; to?: number } }>('/backup/device', async (req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.dumpRaw) return unsupported(reply, 'presetDump');
-      return await backups.backupDevice(store.defaultStore, d, req.body?.label ?? 'Device backup', req.body?.from ?? 0, req.body?.to ?? 511);
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  app.get('/backups', () => ({ backups: store.listBackups() }));
-  // load a stored version into the EDIT BUFFER (play it without occupying a slot)
-  app.post<{ Params: { id: string } }>('/version/:id/load', async (req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.loadPresetBytes) return unsupported(reply, 'loadPresetBytes');
-      return await backups.loadVersion(store.defaultStore, d, req.params.id);
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // restore a snapshot to its origin slot (load + commit to that slot — destructive for the slot)
-  app.post<{ Params: { id: string } }>('/version/:id/restore', async (req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.loadPresetBytes || !d.store) return unsupported(reply, 'loadPresetBytes');
-      return await backups.restoreVersion(store.defaultStore, d, req.params.id);
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // load arbitrary raw .syx bytes (e.g. a cloud/file preset) into the edit buffer
-  app.post('/preset/load', async (req, reply) => {
-    const buf = req.body as Buffer | undefined;
-    if (!buf || !buf.length) { reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream' }; }
-    try {
-      const d = await driver();
-      if (!d.loadPresetBytes) return unsupported(reply, 'loadPresetBytes');
-      return await d.loadPresetBytes(new Uint8Array(buf));
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // version history (all, or for one slot via ?location=)
-  app.get<{ Querystring: { location?: string } }>('/versions', (req) => ({ versions: store.listPresetVersions(req.query.location != null ? Number(req.query.location) : undefined) }));
-  // download a stored snapshot's raw .syx
-  app.get<{ Params: { id: string } }>('/version/:id/syx', (req, reply) => {
-    const bytes = store.getPresetVersionBytes(req.params.id);
-    if (!bytes) { reply.code(404); return { error: 'not found' }; }
-    reply.header('content-type', 'application/octet-stream');
-    return Buffer.from(bytes);
-  });
-
-  // Decode an uploaded preset .syx → library summary. Offline (decode touches no transport).
-  // Bodies: raw bytes as application/octet-stream (pre-Phase-6, byte-identical for gen-3 dumps)
-  // OR JSON {bytes:number[]} (Phase 6). Model-byte-dispatched — an AM4 dump decodes via the AM4
-  // offline decoder (see decodeH).
-  app.post<{ Body: Buffer | { bytes?: number[] } }>('/preset/decode', async (req, reply) => {
-    const b = req.body;
-    if (Buffer.isBuffer(b)) {
-      if (!b.length) { reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream' }; }
-      return decodeH(reply, new Uint8Array(b));
-    }
-    const bytes = b && Array.isArray(b.bytes) ? b.bytes : null;
-    if (!bytes || !bytes.length) { reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream, or JSON {bytes:number[]}' }; }
-    return decodeH(reply, Uint8Array.from(bytes));
-  });
+  registerLocalRoutes(app, h.decodeBytes);
 
   // Cross-device preset conversion. `source.syx` (base64) → OFFLINE decode of the uploaded dump
   // (gen-3 + AM4, model-byte dispatched; touches no device). `source` omitted → the CONNECTED device's
@@ -500,300 +316,41 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     },
   );
 
-  app.get('/preset/grid', async (_req, reply) => gridH(reply));
-  app.get<{ Params: { n: string } }>('/presets/:n/grid', async (_req, reply) => gridH(reply));
-  app.get('/preset/blocks', async (_req, reply) => blocksH(reply));
-  // Lightweight per-block bypass+channel (no preset dump) — Axis applies it to its cached grid on a scene change.
-  app.get('/preset/scene-state', async (_req, reply) => sceneStateH(reply));
-  app.post<{ Body: { number: number } }>('/preset/select', async (req, reply) => presetSelectH(reply, req.body.number));
-  app.post<{ Body: { number?: number } }>('/preset/store', async (req, reply) => presetStoreH(reply, req.body?.number));
-  // AM4 preset library scan → every stored location {location, code, name, isEmpty}. Capability
-  // presets.canScanNames (gen-3 → 501 for now — a 512-slot name scan needs its own paced path).
-  app.get('/preset/locations', async (_req, reply) => locationsH(reply));
-  // Verbatim .syx dump of one preset (location omitted → active buffer). Capability backupDump.
-  app.post<{ Body: { location?: number } }>('/preset/backup', async (req, reply) => backupH(reply, req.body?.location));
-  // Verbatim re-emit of a preset dump to its stored location. Capability restoreDump.
-  app.post<{ Body: { bytes?: number[] } }>('/preset/restore', async (req, reply) => restoreH(reply, req.body?.bytes));
-
-  // ── catalog ──
-  app.get('/blocks', async (_req, reply) => {
-    const d = await driver();
-    if (!d.blocksCatalog) return unsupported(reply, 'blocksCatalog');
-    return d.blocksCatalog();
-  });
-  app.get<{ Params: { slug: string } }>('/blocks/:slug/types', async (req, reply) => {
-    const d = await driver();
-    if (!d.blockTypes) return unsupported(reply, 'blockTypes');
-    return d.blockTypes(req.params.slug);
-  });
-
-  // ── live block params (addressed by the placed block's canonical address `addr`: gen-3 = the
-  //    effect id, AM4 = the block's pidLow — exactly what each device's grid/blocks report) ──
-  app.get<{ Params: { eid: string }; Querystring: { observe?: string } }>('/preset/blocks/:eid/params', async (req, reply) =>
-    blockParamsH(reply, Number(req.params.eid), req.query.observe !== '0')
-  );
-  app.put<{ Params: { eid: string; paramId: string }; Body: { value: number; continuous?: boolean } }>(
-    '/preset/blocks/:eid/params/:paramId',
-    async (req, reply) => setParamH(reply, Number(req.params.eid), Number(req.params.paramId), req.body.value, req.body.continuous ?? true)
-  );
-  // Apply the decoded JSON from /fm3edit/blocks/decode to a compatible placed block in one request.
-  app.post<{ Params: { eid: string }; Body: unknown }>('/preset/blocks/:eid/apply', async (req, reply) =>
-    applySavedBlockH(reply, Number(req.params.eid), req.body)
-  );
-  app.post<{ Params: { eid: string }; Body: { bypassed: boolean } }>('/preset/blocks/:eid/bypass', async (req, reply) => bypassH(reply, Number(req.params.eid), req.body.bypassed));
-  app.post<{ Params: { eid: string }; Body: { channel: string } }>('/preset/blocks/:eid/channel', async (req, reply) => {
-    const d = await driver();
-    if (!d.setChannel) return unsupported(reply, 'channels');
-    return d.setChannel(Number(req.params.eid), req.body.channel);
-  });
-  app.post<{ Params: { eid: string }; Body: { value: number } }>('/preset/blocks/:eid/type', async (req, reply) => {
-    const d = await driver();
-    if (!d.setType) return unsupported(reply, 'setType');
-    return d.setType(Number(req.params.eid), req.body.value);
-  });
-
-  // ── grid editing (1-indexed row/col, matching FM-Edit) ──
-  app.put<{ Body: { row: number; col: number; blockId: number } }>('/preset/grid/cell', async (req, reply) => {
-    const d = await driver();
-    if (!d.placeCell) return unsupported(reply, 'gridEdit');
-    return d.placeCell(req.body.row, req.body.col, req.body.blockId);
-  });
-  app.post<{ Body: { srcRow: number; srcCol: number; destRow: number; connect?: boolean } }>('/preset/grid/cable', async (req, reply) => {
-    const d = await driver();
-    if (!d.cable) return unsupported(reply, 'gridEdit');
-    return d.cable(req.body.srcRow, req.body.srcCol, req.body.destRow, req.body.connect ?? true);
-  });
-  app.post<{ Body: { row: number; col: number } }>('/preset/grid/select', async (req, reply) => {
-    const d = await driver();
-    if (!d.selectCell) return unsupported(reply, 'gridEdit');
-    return d.selectCell(req.body.row, req.body.col);
-  });
-
-  // ── telemetry cadence-mode control (GET/PUT /telemetry/config) ──
-  app.get('/telemetry/config', () => telemetryConfigH());
-  app.put<{ Body: { mode?: string } }>('/telemetry/config', (req, reply) => telemetrySetH(reply, req.body?.mode));
-
-  // ── telemetry: tuner · tempo · scene ──
-  app.post<{ Body: { on: boolean } }>('/tuner', (req) => registry.setTuner(!!req.body?.on));
-  app.get('/tempo', async (_req, reply) => {
-    const d = await driver();
-    if (!d.getTempo) return unsupported(reply, 'getTempo');
-    return d.getTempo();
-  });
-  app.post<{ Body: { bpm: number } }>('/tempo', async (req, reply) => {
-    const d = await driver();
-    if (!d.setTempo) return unsupported(reply, 'setTempo');
-    return d.setTempo(req.body.bpm);
-  });
-  app.post('/tempo/tap', async (_req, reply) => {
-    const d = await driver();
-    if (!d.tapTempo) return unsupported(reply, 'tapTempo');
-    return d.tapTempo();
-  });
-  app.get('/scene', async (_req, reply) => {
-    const d = await driver();
-    if (!d.getScene) return unsupported(reply, 'scenes');
-    return d.getScene();
-  });
-  app.get('/preset/scene-names', async (_req, reply) => sceneNamesH(reply));
-  app.post<{ Body: { index: number } }>('/scene', async (req, reply) => sceneSetH(reply, req.body.index));
-  // Rename a scene (0-based index) in the working buffer. Visible immediately; persist is a separate store.
-  app.post<{ Body: { index: number; name: string } }>('/scene/name', async (req, reply) => {
-    const d = await driver();
-    if (!d.setSceneName) return unsupported(reply, 'scenes');
-    return d.setSceneName(req.body.index, req.body.name);
-  });
-  // Rename the working-buffer preset. Visible immediately; persist is a separate store.
-  app.post<{ Body: { name: string } }>('/preset/name', async (req, reply) => {
-    const d = await driver();
-    if (!d.setPresetName) return unsupported(reply, 'setPresetName');
-    return d.setPresetName(req.body.name);
-  });
-
-  // auto-detect the connected Fractal unit (FM3/FM9/Axe-Fx/…) via the fn 0x00 handshake
-  app.get('/device/detect', () => registry.detect());
-
-  // Cab IR names per bank. FM3 USER is cached from a live read; refresh replaces it.
-  app.get<{ Querystring: { refresh?: string } }>('/cab/irs', async (req) => {
-    const d = await driver();
-    if (d.cabIrs) return d.cabIrs(req.query.refresh === '1');
-    return registry.profile.cabIrs();
-  });
-
-  // Foot Controller + Modifier address models (field bases + config formula + enums). FM3-decoded;
-  // null where the device's model isn't decoded yet. The client computes (eid,pid) from these and
-  // reads/writes via the normal raw-read + setParam path.
-  app.get('/fc/model', () => registry.profile.fcModel ?? null);
-  // Modifier address model — unified superset DTO (always carries `bindingSupported`: gen-3 true,
-  // AM4 false). Driver-backed since Phase 6; offline it serves the provisional profile's model.
-  app.get('/mod/model', async () => modModelH());
-  // Per-block monitor (meter) param table: paramName → {family, pid, role, min/maxDb}. Read-only pids
-  // that ride the normal per-block read; Axis renders a meter per placed block from these. {} if none.
-  app.get('/preset/monitors', () => registry.profile.monitorParams ?? {});
-  // Live per-block audio meters: reads each placed monitored block's level (normalized 0..1) + dB.
-  app.get('/preset/monitors/live', async (req, reply) => {
-    const q = (req.query as { eid?: string }).eid;
-    const eid = q != null && q !== '' ? Number(q) : undefined;
-    try {
-      const d = await driver();
-      if (!d.liveMonitors) return unsupported(reply, 'liveMonitors');
-      return await d.liveMonitors(Number.isFinite(eid as number) ? eid : undefined);
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // Looper page telemetry (waveform envelope + playhead position + level). Empty for non-looper blocks.
-  app.get('/preset/looper', async (req, reply) => {
-    const q = (req.query as { eid?: string }).eid;
-    const eid = q != null && q !== '' ? Number(q) : NaN;
-    try {
-      const d = await driver();
-      if (!d.looperTelemetry) return unsupported(reply, 'looperTelemetry');
-      if (!Number.isFinite(eid)) { reply.code(400); return { error: 'eid required' }; }
-      return await d.looperTelemetry(eid);
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // Toggle a looper transport control (record/play/stop/overdub/undo/once/reverse/half).
-  app.post<{ Body: { eid?: number; action?: string; on?: boolean } }>('/preset/looper/control', async (req, reply) => {
-    const { eid, action, on } = req.body ?? {};
-    try {
-      const d = await driver();
-      if (!d.looperControl) return unsupported(reply, 'looperControl');
-      if (!Number.isFinite(eid as number) || !action) { reply.code(400); return { error: 'eid + action required' }; }
-      return await d.looperControl(eid as number, action, on !== false);
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // FC current switch state via the sub-0x01 structured config-selector read (the read FM3-Edit uses on
-  // FC-page entry). Returns the decoded current state (category/function/display/color + labels) for one
-  // (layout,view,switch), read via the sub-0x1b value channel that tracks param edits (fcReadState).
-  app.get<{ Querystring: { layout?: string; view?: string; switch?: string } }>('/fc/state', async (req, reply) => {
-    const layout = Number(req.query.layout ?? 0);
-    const view = Number(req.query.view ?? 0);
-    const sw = Number(req.query.switch ?? 0);
-    try {
-      const d = await driver();
-      if (!d.fcReadState) return unsupported(reply, 'fcLiveRead');
-      return await d.fcReadState(layout, view, sw);
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-
-  // decompressed preset body (hex) — for per-block param-decode RE (offset diffs)
-  app.get('/preset/body', async (_req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.presetBodyHex) return unsupported(reply, 'presetDump');
-      return await d.presetBodyHex();
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-
-  // Validate a firmware .syx (integrity check only, NOT a flasher). Capability firmwareValidate.
-  app.post<{ Body: { bytes?: number[] } }>('/firmware/validate', async (req, reply) => fwValidateH(reply, req.body?.bytes));
-  // Device/global param write by catalog key (e.g. the AM4's 'amp.gain'). Capability deviceParams.
-  app.put<{ Body: { key?: string; value?: number } }>('/device/param', async (req, reply) => deviceParamH(reply, req.body?.key, req.body?.value));
-
-  // bind a modifier slot to a target parameter (writes targetEffectId + targetParam + source on the slot eid)
-  app.post<{ Body: { slot: number; targetEffectId: number; targetParam: number; source: number } }>('/mod/bind', async (req, reply) => {
-    const b = req.body;
-    if (b?.slot == null || b.targetEffectId == null || b.targetParam == null || b.source == null) {
-      reply.code(400);
-      return { ok: false, error: 'slot, targetEffectId, targetParam, source required' };
-    }
-    try {
-      const d = await driver();
-      if (!d.bindModifier) return unsupported(reply, 'modifiers.bind');
-      return await d.bindModifier(b.slot, b.targetEffectId, b.targetParam, b.source);
-    } catch (e) { reply.code(503); return { ok: false, error: (e as Error).message }; }
-  });
-  // resolve the modifier slot bound to a target (or the first free slot) — READ-ONLY lookup, so
-  // opening an editor for (targetEffectId, targetParam) edits the right slot instead of slot 1.
-  app.get<{ Querystring: { targetEffectId?: string; targetParam?: string } }>('/mod/slot', async (req, reply) => {
-    const targetEffectId = Number(req.query.targetEffectId);
-    const targetParam = Number(req.query.targetParam);
-    if (!Number.isFinite(targetEffectId) || !Number.isFinite(targetParam)) {
-      reply.code(400);
-      return { error: 'targetEffectId + targetParam required' };
-    }
-    try {
-      const d = await driver();
-      if (!d.resolveModifierSlot) return unsupported(reply, 'modifiers.bind');
-      const r = await d.resolveModifierSlot(targetEffectId, targetParam);
-      if (r.ok === false && r.error === 'no_free_slot') reply.code(409);
-      return r;
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // raw param values for an effect (for FC eid 199 / Modifier eid 3, whose params have no display range)
-  app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/raw', async (req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.rawBlock) return unsupported(reply, 'rawBlock');
-      return await d.rawBlock(Number(req.params.eid));
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // read specific paramIds via per-pid fn 0x01 GET (FC current state — the 0x1F bulk path doesn't cover FC)
-  app.post<{ Params: { eid: string }; Body: { pids: number[] } }>('/preset/blocks/:eid/read', async (req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.readParams) return unsupported(reply, 'readParams');
-      return await d.readParams(Number(req.params.eid), req.body?.pids ?? []);
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // FC read path: sub 0x1a range-read returning the normalized (0..1) value per pid
-  app.post<{ Params: { eid: string }; Body: { pids: number[] } }>('/preset/blocks/:eid/readrange', async (req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.readRange) return unsupported(reply, 'readRange');
-      return await d.readRange(Number(req.params.eid), req.body?.pids ?? []);
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-  // current state of a cab block (mode / per-slot bank + IR + dyna type) for the picker
-  app.get<{ Params: { eid: string } }>('/preset/blocks/:eid/cab', async (req, reply) => {
-    const d = await driver();
-    if (!d.cabState) return unsupported(reply, 'cabState');
-    return d.cabState(Number(req.params.eid));
-  });
-
-  // per-block meter + swipe-control values for the always-on grid level fill
-  app.post<{ Body: { wants?: Record<string, number[]> } }>('/preset/meters', async (req, reply) => {
-    try {
-      const d = await driver();
-      if (!d.meters) return unsupported(reply, 'meters');
-      return await d.meters(req.body?.wants ?? {});
-    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
-  });
-
   // ── DEPRECATED /am4/* aliases (Phase 6 route folding) ─────────────────────────────────────────
   // Each is the SAME unified handler with a param/body shim: `pidLow`→addr, `pidHigh`→paramId,
   // `norm`→{value, continuous:true}, `value`→{value, continuous:false}, `location`→number. They
   // answer with the unified response shape, send Deprecation/Sunset headers, and count into /diag.
-  app.get('/am4/grid', async (req, reply) => { deprecated(req, reply); return gridH(reply); });
-  app.get('/am4/slots', async (req, reply) => { deprecated(req, reply); return blocksH(reply); });
-  app.get<{ Params: { n: string } }>('/am4/presets/:n/name', async (req, reply) => { deprecated(req, reply); return presetNameH(Number(req.params.n)); });
-  app.get<{ Params: { pidLow: string } }>('/am4/blocks/:pidLow/params', async (req, reply) => { deprecated(req, reply); return blockParamsH(reply, Number(req.params.pidLow)); });
+  app.get('/am4/grid', async (req, reply) => { deprecated(req, reply); return h.gridH(reply); });
+  app.get('/am4/slots', async (req, reply) => { deprecated(req, reply); return h.blocksH(reply); });
+  app.get<{ Params: { n: string } }>('/am4/presets/:n/name', async (req, reply) => { deprecated(req, reply); return h.presetNameH(Number(req.params.n)); });
+  app.get<{ Params: { pidLow: string } }>('/am4/blocks/:pidLow/params', async (req, reply) => { deprecated(req, reply); return h.blockParamsH(reply, Number(req.params.pidLow)); });
   app.put<{ Params: { pidLow: string; pidHigh: string }; Body: { norm?: number; value?: number } }>('/am4/blocks/:pidLow/params/:pidHigh', async (req, reply) => {
     deprecated(req, reply);
     const pl = Number(req.params.pidLow), ph = Number(req.params.pidHigh);
-    if (req.body?.norm != null) return setParamH(reply, pl, ph, req.body.norm, true);
-    if (req.body?.value != null) return setParamH(reply, pl, ph, req.body.value, false);
+    if (req.body?.norm != null) return h.setParamH(reply, pl, ph, req.body.norm, true);
+    if (req.body?.value != null) return h.setParamH(reply, pl, ph, req.body.value, false);
     reply.code(400); return { error: 'norm or value required' };
   });
-  app.get('/am4/presets', async (req, reply) => { deprecated(req, reply); return locationsH(reply); });
-  app.put<{ Body: { key?: string; value?: number } }>('/am4/param', async (req, reply) => { deprecated(req, reply); return deviceParamH(reply, req.body?.key, req.body?.value); });
-  app.post<{ Body: { pidLow: number; bypassed: boolean } }>('/am4/bypass', async (req, reply) => { deprecated(req, reply); return bypassH(reply, req.body.pidLow, req.body.bypassed); });
-  app.post<{ Body: { index: number } }>('/am4/scene', async (req, reply) => { deprecated(req, reply); return sceneSetH(reply, req.body.index); });
-  app.post<{ Body: { location: number } }>('/am4/preset', async (req, reply) => { deprecated(req, reply); return presetSelectH(reply, req.body.location); });
+  app.get('/am4/presets', async (req, reply) => { deprecated(req, reply); return h.locationsH(reply); });
+  app.put<{ Body: { key?: string; value?: number } }>('/am4/param', async (req, reply) => { deprecated(req, reply); return h.deviceParamH(reply, req.body?.key, req.body?.value); });
+  app.post<{ Body: { pidLow: number; bypassed: boolean } }>('/am4/bypass', async (req, reply) => { deprecated(req, reply); return h.bypassH(reply, req.body.pidLow, req.body.bypassed); });
+  app.post<{ Body: { index: number } }>('/am4/scene', async (req, reply) => { deprecated(req, reply); return h.sceneSetH(reply, req.body.index); });
+  app.post<{ Body: { location: number } }>('/am4/preset', async (req, reply) => { deprecated(req, reply); return h.presetSelectH(reply, req.body.location); });
   app.post<{ Body: { location?: number } }>('/am4/preset/store', async (req, reply) => {
     deprecated(req, reply);
     if (req.body?.location == null) { reply.code(400); return { error: 'location (0..103) required' }; }
-    return presetStoreH(reply, req.body.location);
+    return h.presetStoreH(reply, req.body.location);
   });
-  app.post<{ Body: { location?: number } }>('/am4/preset/backup', async (req, reply) => { deprecated(req, reply); return backupH(reply, req.body?.location); });
-  app.post<{ Body: { bytes?: number[] } }>('/am4/preset/restore', async (req, reply) => { deprecated(req, reply); return restoreH(reply, req.body?.bytes); });
+  app.post<{ Body: { location?: number } }>('/am4/preset/backup', async (req, reply) => { deprecated(req, reply); return h.backupH(reply, req.body?.location); });
+  app.post<{ Body: { bytes?: number[] } }>('/am4/preset/restore', async (req, reply) => { deprecated(req, reply); return h.restoreH(reply, req.body?.bytes); });
   app.post<{ Body: { bytes?: number[] } }>('/am4/preset/decode', async (req, reply) => {
     deprecated(req, reply);
     const bytes = Array.isArray(req.body?.bytes) ? req.body.bytes : null;
     if (!bytes || !bytes.length) { reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream, or JSON {bytes:number[]}' }; }
-    return decodeH(reply, Uint8Array.from(bytes));
+    return h.decodeH(reply, Uint8Array.from(bytes));
   });
-  app.get('/am4/mod/model', async (req, reply) => { deprecated(req, reply); return modModelH(); });
-  app.post<{ Body: { bytes?: number[] } }>('/am4/firmware/validate', async (req, reply) => { deprecated(req, reply); return fwValidateH(reply, req.body?.bytes); });
+  app.get('/am4/mod/model', async (req, reply) => { deprecated(req, reply); return h.modModelH(); });
+  app.post<{ Body: { bytes?: number[] } }>('/am4/firmware/validate', async (req, reply) => { deprecated(req, reply); return h.fwValidateH(reply, req.body?.bytes); });
 
   // ── live event stream (SSE): tuner / tempo / scene / cpu pushes ──
   app.get('/events', (req, reply) => {
@@ -829,9 +386,14 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
     };
     app.setNotFoundHandler((req, reply) => {
       if (req.method !== 'GET') return reply.code(404).send({ error: 'not found' });
-      const urlPath = decodeURIComponent(req.url.split('?')[0] ?? '/');
-      let file = join(root, urlPath === '/' ? 'index.html' : urlPath);
-      if (!resolve(file).startsWith(root) || !existsSync(file) || statSync(file).isDirectory()) file = join(root, 'index.html');
+      let urlPath: string;
+      try { urlPath = decodeURIComponent(req.url.split('?')[0] ?? '/'); }
+      catch { return reply.code(400).send({ error: 'bad path' }); }
+      // Resolve against the root and require the result to be the root itself or a true descendant
+      // (separator-aware, so `/srv/app-evil` can't masquerade as inside `/srv/app`).
+      const resolved = resolve(root, urlPath === '/' ? 'index.html' : urlPath);
+      const withinRoot = resolved === root || resolved.startsWith(root + sep);
+      const file = withinRoot && existsSync(resolved) && !statSync(resolved).isDirectory() ? resolved : join(root, 'index.html');
       if (!existsSync(file)) return reply.code(404).send({ error: 'not found' });
       return reply.type(MIME[extname(file).toLowerCase()] ?? 'application/octet-stream').send(createReadStream(file));
     });

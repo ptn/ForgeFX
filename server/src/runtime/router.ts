@@ -16,13 +16,12 @@
 // NO fastify/node:/transport imports here or in anything this pulls in — must bundle for the browser.
 import type { DeviceRegistry } from '../drivers/registryCore.js';
 import type { DeviceEvent } from '../drivers/types.js';
-import * as backups from '../services/backups.js';
-import * as deviceCache from '../services/deviceCache.js';
 import * as editorCacheImport from '../services/editorCacheImport.js';
 import * as cloudProfiles from '../services/cloudProfiles.js';
 import { blockHelpBySlug, helpIndex } from '../help.js';
 import { createUnifiedHandlers } from './handlers.js';
-import { putStoreDoc } from './services.js';
+import { createStoreHandlers } from './storeHandlers.js';
+import { createRouteManifest } from '../http/routeManifest.js';
 import { createLocalService } from './localService.js';
 import type { FolderAdapter } from './folderAdapter.js';
 import type { ScanCachePersistence } from './localFolder.js';
@@ -89,7 +88,7 @@ export function createRouter(deps: RuntimeDeps): {
 } {
   const { registry, store } = deps;
   const h = createUnifiedHandlers(registry);
-  const { driver, unsupported } = h;
+  const sh = createStoreHandlers(store, registry);
 
   // /local/* — the shared route service over the runtime's folder bindings. Without `local` deps the
   // config/gate methods still answer, backed by a stub adapter whose root never exists — exactly the
@@ -109,37 +108,15 @@ export function createRouter(deps: RuntimeDeps): {
   const on = (method: string, path: string, handler: Handler, opts?: { octet?: boolean }) =>
     routes.push({ method, segs: path.split('/').filter(Boolean), octet: !!opts?.octet, handler });
 
-  // ── system ──
-  // /healthz carries the unified-API version handshake (mirrored as apiVersion on /device).
-  on('GET', '/healthz', async () => {
-    const hz = await registry.health();
-    return { ok: hz.ok, api: { version: 2 }, device: hz.device };
-  });
-  // full connection diagnostic; the router has no deprecated aliases, so the hit counters stay empty
-  on('GET', '/diag', async () => ({ ...(await registry.diagnostics()), deprecatedAliasHits: {} }));
-  on('GET', '/device', () => registry.deviceInfo());
-  on('GET', '/ports', () => registry.connections()); // serial + MIDI connections (Fractal flagged) + chosen + override
-  on('POST', '/ports/select', (c) => {
-    const b = (c.body ?? {}) as { transport?: 'serial' | 'midi'; id?: string | null; inId?: string | null; outId?: string | null; model?: string | null };
-    const model = b.model; // undefined = leave the profile override as-is; 'auto'/'' = clear it; else force it
-    // MIDI (Axe-Fx III / FM9, or an FM3 via a MIDI→USB adapter): separate input + output endpoints
-    if (b?.transport === 'midi' && b.inId && b.outId) return registry.selectConnection({ transport: 'midi', id: b.id || b.inId, inId: b.inId, outId: b.outId }, model);
-    if (b?.id) return registry.selectConnection({ transport: b.transport === 'midi' ? 'midi' : 'serial', id: b.id }, model);
-    return registry.selectConnection(null, model); // clear the port back to auto (a forced profile can remain via `model`)
-  });
-  // auto-detect the connected Fractal unit (FM3/FM9/Axe-Fx/…) via the fn 0x00 handshake
-  on('GET', '/device/detect', () => registry.detect());
+  // ── shared routes — single source: src/http/routeManifest.ts (C1) ──
+  for (const r of createRouteManifest(h, sh)) {
+    on(r.method, r.path, (c) => r.handler(c), { octet: r.octet });
+  }
 
-  // ── device cache (on-connect self-describe build; capability selfDescribe) ──
-  on('GET', '/device/cache', () => deviceCache.cacheStatus(store, registry));
-  on('POST', '/device/cache/build', async (c) => {
-    const body = c.body as { force?: boolean; mode?: 'read-only' | 'full' } | undefined;
-    const r = await deviceCache.startCacheBuild(store, registry, { force: !!body?.force, mode: body?.mode });
-    c.reply.code(r.code);
-    return r.body;
-  });
-  on('POST', '/device/cache/cancel', () => deviceCache.cancelCacheBuild(registry));
-  on('DELETE', '/device/cache', () => deviceCache.deleteCache(store, registry));
+  // ── system (surface-specific) ──
+  // full connection diagnostic; the router has no deprecated aliases, so the hit counters stay empty
+  on('GET', '/diag', () => h.diagH({}));
+
   // ── editor-cache import (SECOND cache source; capability cacheImport). Disk discovery is Node-only,
   //    so the browser twin returns an empty candidate list (discovery:'unavailable') + octet-only import. ──
   on('GET', '/device/cache/sources', async () => {
@@ -168,12 +145,6 @@ export function createRouter(deps: RuntimeDeps): {
     c.reply.code(r.code);
     return r.body;
   });
-  // Cab IR names per bank. FM3 USER is cached from a live read; refresh replaces it.
-  on('GET', '/cab/irs', async (c) => {
-    const d = await driver();
-    if (d.cabIrs) return d.cabIrs(c.query.get('refresh') === '1');
-    return registry.profile.cabIrs();
-  });
 
   // ── block & parameter help (curated tooltips; see help.ts) ──
   on('GET', '/help', () => helpIndex(registry.profile));
@@ -183,296 +154,6 @@ export function createRouter(deps: RuntimeDeps): {
     return dto;
   });
 
-  // ── preset ──
-  on('GET', '/preset', async (c) => {
-    const d = await driver();
-    if (!d.presetRef) return unsupported(c.reply, 'presetRef');
-    return d.presetRef();
-  });
-  // Stored preset name (driver-backed since Phase 6; gen-3 keeps the {number, name:''} stub).
-  on('GET', '/presets/:n', (c) => h.presetNameH(Number(c.params.n)));
-  // Decode any preset by number (non-disruptive) → library summary: name, scenes, unique blocks.
-  on('GET', '/presets/:n/summary', async (c) => {
-    try {
-      const d = await driver();
-      if (!d.presetSummary) return unsupported(c.reply, 'presetDump');
-      return await d.presetSummary(Number(c.params.n), c.query.get('full') === '1');
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  // Full per-block decoded params for one preset (every family/param) — deep-search + browser detail.
-  on('GET', '/presets/:n/params', async (c) => {
-    try {
-      const d = await driver();
-      if (!d.presetParams) return unsupported(c.reply, 'presetDump');
-      return { blocks: await d.presetParams(Number(c.params.n)) };
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  on('GET', '/presets/:n/grid', (c) => h.gridH(c.reply));
-  on('GET', '/preset/grid', (c) => h.gridH(c.reply));
-  on('GET', '/preset/blocks', (c) => h.blocksH(c.reply));
-  on('GET', '/preset/scene-state', (c) => h.sceneStateH(c.reply));
-  on('POST', '/preset/select', (c) => h.presetSelectH(c.reply, (c.body as { number: number }).number));
-  on('POST', '/preset/store', (c) => h.presetStoreH(c.reply, (c.body as { number?: number } | undefined)?.number));
-  // AM4 preset library scan → every stored location. Capability presets.canScanNames.
-  on('GET', '/preset/locations', (c) => h.locationsH(c.reply));
-  // Verbatim .syx dump of one preset (location omitted → active buffer). Capability backupDump.
-  on('POST', '/preset/backup', (c) => h.backupH(c.reply, (c.body as { location?: number } | undefined)?.location));
-  // Verbatim re-emit of a preset dump to its stored location. Capability restoreDump.
-  on('POST', '/preset/restore', (c) => h.restoreH(c.reply, (c.body as { bytes?: number[] } | undefined)?.bytes));
-  // Rename the working-buffer preset. Visible immediately; persist is a separate store.
-  on('POST', '/preset/name', async (c) => {
-    const d = await driver();
-    if (!d.setPresetName) return unsupported(c.reply, 'setPresetName');
-    return d.setPresetName((c.body as { name: string }).name);
-  });
-
-  // Decode an uploaded preset .syx → library summary. Offline (decode touches no transport).
-  // Bodies: raw bytes (Uint8Array — the octet-stream shape) OR JSON {bytes:number[]}.
-  // Model-byte-dispatched — an AM4 dump decodes via the AM4 offline decoder (see handlers.decodeH).
-  on('POST', '/preset/decode', async (c) => {
-    if (c.raw) {
-      if (!c.raw.length) { c.reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream' }; }
-      return h.decodeH(c.reply, c.raw);
-    }
-    const b = c.body as { bytes?: number[] } | undefined;
-    const bytes = b && Array.isArray(b.bytes) ? b.bytes : null;
-    if (!bytes || !bytes.length) { c.reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream, or JSON {bytes:number[]}' }; }
-    return h.decodeH(c.reply, Uint8Array.from(bytes));
-  }, { octet: true });
-  // load arbitrary raw .syx bytes (e.g. a cloud/file preset) into the edit buffer
-  on('POST', '/preset/load', async (c) => {
-    if (!c.raw || !c.raw.length) { c.reply.code(400); return { error: 'POST raw .syx bytes as application/octet-stream' }; }
-    try {
-      const d = await driver();
-      if (!d.loadPresetBytes) return unsupported(c.reply, 'loadPresetBytes');
-      return await d.loadPresetBytes(c.raw);
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  }, { octet: true });
-
-  // ── catalog ──
-  on('GET', '/blocks', async (c) => {
-    const d = await driver();
-    if (!d.blocksCatalog) return unsupported(c.reply, 'blocksCatalog');
-    return d.blocksCatalog();
-  });
-  on('GET', '/blocks/:slug/types', async (c) => {
-    const d = await driver();
-    if (!d.blockTypes) return unsupported(c.reply, 'blockTypes');
-    return d.blockTypes(c.params.slug!);
-  });
-
-  // ── live block params (addressed by the placed block's canonical address `addr`) ──
-  on('GET', '/preset/blocks/:eid/params', (c) => h.blockParamsH(c.reply, Number(c.params.eid), c.query.get('observe') !== '0'));
-  on('PUT', '/preset/blocks/:eid/params/:paramId', (c) => {
-    const b = c.body as { value: number; continuous?: boolean };
-    return h.setParamH(c.reply, Number(c.params.eid), Number(c.params.paramId), b.value, b.continuous ?? true);
-  });
-  on('POST', '/preset/blocks/:eid/apply', (c) => h.applySavedBlockH(c.reply, Number(c.params.eid), c.body));
-  on('POST', '/preset/blocks/:eid/bypass', (c) => h.bypassH(c.reply, Number(c.params.eid), (c.body as { bypassed: boolean }).bypassed));
-  on('POST', '/preset/blocks/:eid/channel', async (c) => {
-    const d = await driver();
-    if (!d.setChannel) return unsupported(c.reply, 'channels');
-    return d.setChannel(Number(c.params.eid), (c.body as { channel: string }).channel);
-  });
-  on('POST', '/preset/blocks/:eid/type', async (c) => {
-    const d = await driver();
-    if (!d.setType) return unsupported(c.reply, 'setType');
-    return d.setType(Number(c.params.eid), (c.body as { value: number }).value);
-  });
-  // raw param values for an effect (for FC eid 199 / Modifier eid 3, whose params have no display range)
-  on('GET', '/preset/blocks/:eid/raw', async (c) => {
-    try {
-      const d = await driver();
-      if (!d.rawBlock) return unsupported(c.reply, 'rawBlock');
-      return await d.rawBlock(Number(c.params.eid));
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  // read specific paramIds via per-pid fn 0x01 GET (FC current state — the 0x1F bulk path doesn't cover FC)
-  on('POST', '/preset/blocks/:eid/read', async (c) => {
-    try {
-      const d = await driver();
-      if (!d.readParams) return unsupported(c.reply, 'readParams');
-      return await d.readParams(Number(c.params.eid), (c.body as { pids?: number[] } | undefined)?.pids ?? []);
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  // FC read path: sub 0x1a range-read returning the normalized (0..1) value per pid
-  on('POST', '/preset/blocks/:eid/readrange', async (c) => {
-    try {
-      const d = await driver();
-      if (!d.readRange) return unsupported(c.reply, 'readRange');
-      return await d.readRange(Number(c.params.eid), (c.body as { pids?: number[] } | undefined)?.pids ?? []);
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  // current state of a cab block (mode / per-slot bank + IR + dyna type) for the picker
-  on('GET', '/preset/blocks/:eid/cab', async (c) => {
-    const d = await driver();
-    if (!d.cabState) return unsupported(c.reply, 'cabState');
-    return d.cabState(Number(c.params.eid));
-  });
-
-  // per-block meter + swipe-control values for the always-on grid level fill
-  on('POST', '/preset/meters', async (c) => {
-    try {
-      const d = await driver();
-      if (!d.meters) return unsupported(c.reply, 'meters');
-      return await d.meters((c.body as { wants?: Record<string, number[]> } | undefined)?.wants ?? {});
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-
-  // ── grid editing (1-indexed row/col, matching FM-Edit) ──
-  on('PUT', '/preset/grid/cell', async (c) => {
-    const d = await driver();
-    if (!d.placeCell) return unsupported(c.reply, 'gridEdit');
-    const b = c.body as { row: number; col: number; blockId: number };
-    return d.placeCell(b.row, b.col, b.blockId);
-  });
-  on('POST', '/preset/grid/cable', async (c) => {
-    const d = await driver();
-    if (!d.cable) return unsupported(c.reply, 'gridEdit');
-    const b = c.body as { srcRow: number; srcCol: number; destRow: number; connect?: boolean };
-    return d.cable(b.srcRow, b.srcCol, b.destRow, b.connect ?? true);
-  });
-  on('POST', '/preset/grid/select', async (c) => {
-    const d = await driver();
-    if (!d.selectCell) return unsupported(c.reply, 'gridEdit');
-    const b = c.body as { row: number; col: number };
-    return d.selectCell(b.row, b.col);
-  });
-
-  // ── telemetry cadence-mode control (GET/PUT /telemetry/config) ──
-  on('GET', '/telemetry/config', () => h.telemetryConfigH());
-  on('PUT', '/telemetry/config', (c) => h.telemetrySetH(c.reply, (c.body as { mode?: string } | undefined)?.mode));
-
-  // ── telemetry: tuner · tempo · scene ──
-  on('POST', '/tuner', (c) => registry.setTuner(!!(c.body as { on?: boolean } | undefined)?.on));
-  on('GET', '/tempo', async (c) => {
-    const d = await driver();
-    if (!d.getTempo) return unsupported(c.reply, 'getTempo');
-    return d.getTempo();
-  });
-  on('POST', '/tempo', async (c) => {
-    const d = await driver();
-    if (!d.setTempo) return unsupported(c.reply, 'setTempo');
-    return d.setTempo((c.body as { bpm: number }).bpm);
-  });
-  on('POST', '/tempo/tap', async (c) => {
-    const d = await driver();
-    if (!d.tapTempo) return unsupported(c.reply, 'tapTempo');
-    return d.tapTempo();
-  });
-  on('GET', '/scene', async (c) => {
-    const d = await driver();
-    if (!d.getScene) return unsupported(c.reply, 'scenes');
-    return d.getScene();
-  });
-  on('GET', '/preset/scene-names', (c) => h.sceneNamesH(c.reply));
-  on('POST', '/scene', (c) => h.sceneSetH(c.reply, (c.body as { index: number }).index));
-  // Rename a scene (0-based index) in the working buffer. Visible immediately; persist is a separate store.
-  on('POST', '/scene/name', async (c) => {
-    const d = await driver();
-    if (!d.setSceneName) return unsupported(c.reply, 'scenes');
-    const b = c.body as { index: number; name: string };
-    return d.setSceneName(b.index, b.name);
-  });
-
-  // ── FC / Modifier / monitors ──
-  on('GET', '/fc/model', () => registry.profile.fcModel ?? null);
-  // Modifier address model — unified superset DTO (always carries `bindingSupported`).
-  on('GET', '/mod/model', () => h.modModelH());
-  // Per-block monitor (meter) param table — read-only pids Axis renders meters from. {} if none.
-  on('GET', '/preset/monitors', () => registry.profile.monitorParams ?? {});
-  // Live per-block audio meters: reads each placed monitored block's level (normalized 0..1) + dB.
-  on('GET', '/preset/monitors/live', async (c) => {
-    const q = c.query.get('eid') ?? undefined;
-    const eid = q != null && q !== '' ? Number(q) : undefined;
-    try {
-      const d = await driver();
-      if (!d.liveMonitors) return unsupported(c.reply, 'liveMonitors');
-      return await d.liveMonitors(Number.isFinite(eid as number) ? eid : undefined);
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  on('GET', '/preset/looper', async (c) => {
-    const q = c.query.get('eid') ?? undefined;
-    const eid = q != null && q !== '' ? Number(q) : NaN;
-    try {
-      const d = await driver();
-      if (!d.looperTelemetry) return unsupported(c.reply, 'looperTelemetry');
-      if (!Number.isFinite(eid)) { c.reply.code(400); return { error: 'eid required' }; }
-      return await d.looperTelemetry(eid);
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  on('POST', '/preset/looper/control', async (c) => {
-    const { eid, action, on: onv } = (c.body ?? {}) as { eid?: number; action?: string; on?: boolean };
-    try {
-      const d = await driver();
-      if (!d.looperControl) return unsupported(c.reply, 'looperControl');
-      if (!Number.isFinite(eid as number) || !action) { c.reply.code(400); return { error: 'eid + action required' }; }
-      return await d.looperControl(eid as number, action, onv !== false);
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  // FC current switch state via the sub-0x01 structured config-selector read (see app.ts).
-  on('GET', '/fc/state', async (c) => {
-    const layout = Number(c.query.get('layout') ?? 0);
-    const view = Number(c.query.get('view') ?? 0);
-    const sw = Number(c.query.get('switch') ?? 0);
-    try {
-      const d = await driver();
-      if (!d.fcReadState) return unsupported(c.reply, 'fcLiveRead');
-      return await d.fcReadState(layout, view, sw);
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  // bind a modifier slot to a target parameter (writes targetEffectId + targetParam + source on the slot eid)
-  on('POST', '/mod/bind', async (c) => {
-    const b = c.body as { slot?: number; targetEffectId?: number; targetParam?: number; source?: number } | undefined;
-    if (b?.slot == null || b.targetEffectId == null || b.targetParam == null || b.source == null) {
-      c.reply.code(400);
-      return { ok: false, error: 'slot, targetEffectId, targetParam, source required' };
-    }
-    try {
-      const d = await driver();
-      if (!d.bindModifier) return unsupported(c.reply, 'modifiers.bind');
-      return await d.bindModifier(b.slot, b.targetEffectId, b.targetParam, b.source);
-    } catch (e) { c.reply.code(503); return { ok: false, error: (e as Error).message }; }
-  });
-  // resolve the modifier slot bound to a target (or the first free slot) — READ-ONLY lookup.
-  on('GET', '/mod/slot', async (c) => {
-    const targetEffectId = Number(c.query.get('targetEffectId') ?? NaN);
-    const targetParam = Number(c.query.get('targetParam') ?? NaN);
-    if (!Number.isFinite(targetEffectId) || !Number.isFinite(targetParam)) {
-      c.reply.code(400);
-      return { error: 'targetEffectId + targetParam required' };
-    }
-    try {
-      const d = await driver();
-      if (!d.resolveModifierSlot) return unsupported(c.reply, 'modifiers.bind');
-      const r = await d.resolveModifierSlot(targetEffectId, targetParam);
-      if (r.ok === false && r.error === 'no_free_slot') c.reply.code(409);
-      return r;
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-
-  // Validate a firmware .syx (integrity check only, NOT a flasher). Capability firmwareValidate.
-  on('POST', '/firmware/validate', (c) => h.fwValidateH(c.reply, (c.body as { bytes?: number[] } | undefined)?.bytes));
-  // Device/global param write by catalog key (e.g. the AM4's 'amp.gain'). Capability deviceParams.
-  on('PUT', '/device/param', (c) => {
-    const b = c.body as { key?: string; value?: number } | undefined;
-    return h.deviceParamH(c.reply, b?.key, b?.value);
-  });
-
-  // ── persistent store: documents (Axis config · library metadata · layouts) ──
-  on('GET', '/store/:c', (c) => ({ docs: store.listDocs(c.params.c!) }));
-  on('GET', '/store/:c/:id', (c) => {
-    const d = store.getDoc(c.params.c!, c.params.id!);
-    if (!d) { c.reply.code(404); return { error: 'not found' }; }
-    return d;
-  });
-  // Config writes fan out to every live UI (router subscribers, like the host's SSE) — shared putStoreDoc.
-  on('PUT', '/store/:c/:id', (c) => {
-    const b = c.body as { data?: unknown; origin?: string } | undefined;
-    return putStoreDoc(store, registry, c.params.c!, c.params.id!, b?.data, b?.origin);
-  });
-  on('DELETE', '/store/:c/:id', (c) => { store.delDoc(c.params.c!, c.params.id!); return { ok: true }; });
-
   // ── local storage folder (Presets/ library + Sync/ mirror; shared service — see localService.ts) ──
   on('GET', '/local/config', async (c) => send(c, await local.config()));
   on('PUT', '/local/config', async (c) => send(c, await local.setConfig((c.body as { root?: string | null } | undefined)?.root)));
@@ -481,55 +162,6 @@ export function createRouter(deps: RuntimeDeps): {
   on('POST', '/local/presets', async (c) => send(c, await local.writePreset(c.body as Parameters<typeof local.writePreset>[0])));
   on('POST', '/local/sync', async (c) => send(c, await local.sync()));
   on('POST', '/local/restore', async (c) => send(c, await local.restore()));
-
-  // ── backups + version control ──
-  // snapshot one preset (version control)
-  on('POST', '/backup/preset/:n', async (c) => {
-    try {
-      const d = await driver();
-      if (!d.dumpRaw) return unsupported(c.reply, 'presetDump');
-      const v = await backups.backupPreset(store, d, Number(c.params.n));
-      if (!v) { c.reply.code(422); return { error: 'empty/invalid preset' }; }
-      return { version: v };
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  // full-device backup (long-running): body { label, from?, to? }
-  on('POST', '/backup/device', async (c) => {
-    try {
-      const d = await driver();
-      if (!d.dumpRaw) return unsupported(c.reply, 'presetDump');
-      const b = c.body as { label?: string; from?: number; to?: number } | undefined;
-      return await backups.backupDevice(store, d, b?.label ?? 'Device backup', b?.from ?? 0, b?.to ?? 511);
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  on('GET', '/backups', () => ({ backups: store.listBackups() }));
-  // load a stored version into the EDIT BUFFER (play it without occupying a slot)
-  on('POST', '/version/:id/load', async (c) => {
-    try {
-      const d = await driver();
-      if (!d.loadPresetBytes) return unsupported(c.reply, 'loadPresetBytes');
-      return await backups.loadVersion(store, d, c.params.id!);
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  // restore a snapshot to its origin slot (load + commit to that slot — destructive for the slot)
-  on('POST', '/version/:id/restore', async (c) => {
-    try {
-      const d = await driver();
-      if (!d.loadPresetBytes || !d.store) return unsupported(c.reply, 'loadPresetBytes');
-      return await backups.restoreVersion(store, d, c.params.id!);
-    } catch (e) { c.reply.code(503); return { error: (e as Error).message }; }
-  });
-  // version history (all, or for one slot via ?location=)
-  on('GET', '/versions', (c) => {
-    const loc = c.query.get('location');
-    return { versions: store.listPresetVersions(loc != null ? Number(loc) : undefined) };
-  });
-  // download a stored snapshot's raw .syx
-  on('GET', '/version/:id/syx', (c) => {
-    const bytes = store.getPresetVersionBytes(c.params.id!);
-    if (!bytes) { c.reply.code(404); return { error: 'not found' }; }
-    return bytes; // Uint8Array → application/octet-stream
-  });
 
   // ── cloud sync + remote + telemetry ── absent services answer the server's "disabled" stubs; the
   // gated /cloud/* routes only exist when a cloud service is supplied (parity with AXIS_CLOUD=1).
@@ -609,8 +241,13 @@ export function createRouter(deps: RuntimeDeps): {
         const out = await route.handler(ctx);
         return respond(ctx.reply.statusCode, out);
       } catch (e) {
-        // uncaught handler error → Fastify's default 500 envelope
-        return respond(500, { statusCode: 500, error: 'Internal Server Error', message: (e as Error).message });
+        // Uncaught handler error → mirror Fastify's default error envelope, honouring a driver-set
+        // statusCode (e.g. placeCell's out-of-range instance is a 400, not a 500).
+        const err = e as Error & { statusCode?: number };
+        const code = err?.statusCode && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 500;
+        if (code === 500) return respond(500, { statusCode: 500, error: 'Internal Server Error', message: err?.message });
+        const text: Record<number, string> = { 400: 'Bad Request', 404: 'Not Found', 409: 'Conflict', 422: 'Unprocessable Entity', 503: 'Service Unavailable' };
+        return respond(code, { statusCode: code, error: text[code] ?? 'Error', message: err?.message });
       }
     }
     // Fastify's default not-found body, verbatim
@@ -621,8 +258,8 @@ export function createRouter(deps: RuntimeDeps): {
 }
 
 /** Local-folder responses map onto the reply exactly like localStore.ts's `send` (bytes stay bytes). */
-function send(c: Ctx, r: { status: number; body: unknown }): unknown {
-  c.reply.code(r.status);
+function send(c: Ctx, r: { code: number; body: unknown }): unknown {
+  c.reply.code(r.code);
   return r.body;
 }
 

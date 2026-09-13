@@ -25,6 +25,7 @@ import { runFm3CabIrTests, FM3_CAB_IR_CASE_COUNT } from './drivers/fm3-cab-irs.t
 import { runModifierSlotsTests, MODIFIER_SLOTS_CASE_COUNT } from './drivers/modifier-slots.test.js';
 import { runGen3ModifierSlotTests, GEN3_MODIFIER_SLOT_CASE_COUNT } from './drivers/gen3-modifier-slot.test.js';
 import { runAliasParityTests, ALIAS_PARITY_CASE_COUNT } from './api/alias-parity.test.js';
+import { runRouteGoldenTests, ROUTE_GOLDEN_CASE_COUNT } from './api/route-golden.test.js';
 import { runCapsTests, CAPS_CASE_COUNT } from './api/caps.test.js';
 import { runTelemetryConfigTests, TELEMETRY_CONFIG_CASE_COUNT } from './api/telemetryConfig.test.js';
 import { runRemoteTests, REMOTE_CASE_COUNT } from './api/remote.test.js';
@@ -40,6 +41,11 @@ import { runBlockApplyTests, BLOCK_APPLY_CASE_COUNT } from './api/block-apply.te
 import { runCloudProfilesTests, CLOUD_PROFILES_CASE_COUNT } from './api/cloud-profiles.test.js';
 import { runPresetConvertTests, PRESET_CONVERT_CASE_COUNT } from './api/preset-convert.test.js';
 import { runPresetConvertExportTests, PRESET_CONVERT_EXPORT_CASE_COUNT } from './api/preset-convert-export.test.js';
+import { runTransportTests, TRANSPORT_CASE_COUNT } from './transport/transport.test.js';
+import { runLocalFolderTests, LOCAL_FOLDER_CASE_COUNT } from './runtime/localFolder.test.js';
+import { runLocalServiceTests, LOCAL_SERVICE_CASE_COUNT } from './runtime/localService.test.js';
+import { runStoreBackendTests, STORE_BACKENDS_CASE_COUNT } from './runtime/storeBackends.test.js';
+import { runTelemetryModuleTests, TELEMETRY_MODULE_CASE_COUNT } from './diagnostics/telemetry.test.js';
 
 const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `drivers/detection (${DETECTION_CASE_COUNT} cases, mocked Conn/Transport)`, run: runDetectionTests },
@@ -63,6 +69,7 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `drivers/modifier-slots (${MODIFIER_SLOTS_CASE_COUNT} cases, pure target→slot selection)`, run: runModifierSlotsTests },
   { name: `drivers/gen3-modifier-slot (${GEN3_MODIFIER_SLOT_CASE_COUNT} cases, read-only slot resolution, mocked FM3)`, run: runGen3ModifierSlotTests },
   { name: `api/alias-parity (${ALIAS_PARITY_CASE_COUNT} alias↔unified twins, mocked AM4)`, run: runAliasParityTests },
+  { name: `api/route-golden (${ROUTE_GOLDEN_CASE_COUNT} app JSON snapshots, mocked FM3)`, run: runRouteGoldenTests },
   { name: `api/caps (${CAPS_CASE_COUNT} device capability matrices)`, run: runCapsTests },
   { name: `api/telemetryConfig (${TELEMETRY_CONFIG_CASE_COUNT} GET/PUT mode + event + parity)`, run: runTelemetryConfigTests },
   { name: `api/remote (${REMOTE_CASE_COUNT} whitelist decisions)`, run: runRemoteTests },
@@ -77,7 +84,12 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `api/block-apply (${BLOCK_APPLY_CASE_COUNT} cases, decoded saved-block validation + bulk write)`, run: runBlockApplyTests },
   { name: `api/cloud-profiles (${CLOUD_PROFILES_CASE_COUNT} cases, shared profile check/pull/publish, mocked cloud)`, run: runCloudProfilesTests },
   { name: `api/preset-convert (${PRESET_CONVERT_CASE_COUNT} cases, cross-device convert offline/connected/501/caps, mocked)`, run: runPresetConvertTests },
-  { name: `api/preset-convert-export (${PRESET_CONVERT_EXPORT_CASE_COUNT} cases, FM3→FM3 author round-trip + guards, mocked)`, run: runPresetConvertExportTests }
+  { name: `api/preset-convert-export (${PRESET_CONVERT_EXPORT_CASE_COUNT} cases, FM3→FM3 author round-trip + guards, mocked)`, run: runPresetConvertExportTests },
+  { name: `transport (${TRANSPORT_CASE_COUNT} cases, fake serial port + fake MIDI binding: framing/request/pairing/reconnect)`, run: runTransportTests },
+  { name: `runtime/localFolder (${LOCAL_FOLDER_CASE_COUNT} cases, safeRel/scan/sync/restore over a mem adapter)`, run: runLocalFolderTests },
+  { name: `runtime/localService (${LOCAL_SERVICE_CASE_COUNT} cases, /local/* config/scan/write/sync/restore statuses)`, run: runLocalServiceTests },
+  { name: `runtime/storeBackends (${STORE_BACKENDS_CASE_COUNT} cases, mem + fs backends + node codec)`, run: runStoreBackendTests },
+  { name: `diagnostics/telemetry (${TELEMETRY_MODULE_CASE_COUNT} cases, dark status probe + upload gate)`, run: runTelemetryModuleTests }
 ];
 
 let failures = 0;

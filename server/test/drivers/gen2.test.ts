@@ -1,16 +1,7 @@
 // Axe-Fx II (gen-2) driver unit tests — mocked transport, NO hardware. Verifies the driver's
-// capabilities and that its write methods emit byte-exact frames from the forgefx-midi builders.
-// (The read path — grid()/blockParams() — is exercised by the descriptor reader's own goldens
-// upstream; here we prove the ForgeFX wiring emits the right wire frames.)
-import {
-  buildSetBlockParameterValue,
-  buildSetBlockParameterValueInteger,
-  buildSetBlockBypass,
-  buildSetBlockChannel,
-  buildSetGridCell,
-  buildSetSceneNumber,
-  buildSwitchPreset,
-} from 'forgefx-midi/gen2/axe-fx-ii';
+// capabilities and that its write methods emit BYTE-EXACT golden frames (literal wire bytes, captured
+// from the codec's builders — deliberately NOT recomputed via the same builders, so a codec regression
+// in the frame layout is caught here rather than tautologically mirrored).
 import { createGen2Driver } from '../../src/drivers/gen2.js';
 import type { DriverCtx, DeviceEvent } from '../../src/drivers/types.js';
 import { cadenceFor } from '../../src/drivers/telemetryProfiles.js';
@@ -50,35 +41,35 @@ export async function runGen2Tests(): Promise<void> {
   {
     const { driver, mock } = makeDriver();
     await driver.setParam(AMP1, 1, 0.5, true);
-    eqFrame(mock.sent[0], buildSetBlockParameterValue({ effectId: AMP1, paramId: 1 }, 5), 'gen2 continuous setParam');
+    eqFrame(mock.sent[0]!, [0xf0, 0x00, 0x01, 0x74, 0x07, 0x2e, 0x6a, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x05, 0x04, 0x46, 0xf7], 'gen2 continuous setParam');
   }
 
   // 3. discrete setParam → fn 0x02 integer write (value is the raw ordinal, rounded).
   {
     const { driver, mock } = makeDriver();
     await driver.setParam(AMP1, 0, 3, false);
-    eqFrame(mock.sent[0], buildSetBlockParameterValueInteger({ effectId: AMP1, paramId: 0 }, 3), 'gen2 discrete setParam');
+    eqFrame(mock.sent[0]!, [0xf0, 0x00, 0x01, 0x74, 0x07, 0x02, 0x6a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x01, 0x68, 0xf7], 'gen2 discrete setParam');
   }
 
   // 4. setBypass → fn 0x02 paramId 255 bypass write.
   {
     const { driver, mock } = makeDriver();
     await driver.setBypass(AMP1, true);
-    eqFrame(mock.sent[0], buildSetBlockBypass(AMP1, true), 'gen2 setBypass');
+    eqFrame(mock.sent[0]!, [0xf0, 0x00, 0x01, 0x74, 0x07, 0x02, 0x6a, 0x00, 0x7f, 0x01, 0x01, 0x00, 0x00, 0x01, 0x14, 0xf7], 'gen2 setBypass');
   }
 
   // 5. setChannel → fn 0x11 channel switch (Y).
   {
     const { driver, mock } = makeDriver();
     await driver.setChannel(AMP1, 'Y');
-    eqFrame(mock.sent[0], buildSetBlockChannel(AMP1, 'Y'), 'gen2 setChannel Y');
+    eqFrame(mock.sent[0]!, [0xf0, 0x00, 0x01, 0x74, 0x07, 0x11, 0x6a, 0x00, 0x01, 0x01, 0x79, 0xf7], 'gen2 setChannel Y');
   }
 
   // 6. placeCell → fn 0x5A grid cell (0-based row/col from Axis → 1-based wire), emits changed{grid}.
   {
     const { driver, mock, events } = makeDriver();
     await driver.placeCell(1, 2, AMP1); // row 1, col 2 (0-based) → wire row 2, col 3
-    eqFrame(mock.sent[0], buildSetGridCell({ row: 2, col: 3, blockId: AMP1 }), 'gen2 placeCell');
+    eqFrame(mock.sent[0]!, [0xf0, 0x00, 0x01, 0x74, 0x07, 0x05, 0x6a, 0x00, 0x09, 0x00, 0x64, 0xf7], 'gen2 placeCell');
     assert(events.some((e) => e.type === 'changed' && e.scope === 'grid'), 'placeCell emits changed{grid}');
   }
 
@@ -86,7 +77,7 @@ export async function runGen2Tests(): Promise<void> {
   {
     const { driver, mock, events } = makeDriver();
     await driver.setScene(3);
-    eqFrame(mock.sent[0], buildSetSceneNumber(3), 'gen2 setScene');
+    eqFrame(mock.sent[0]!, [0xf0, 0x00, 0x01, 0x74, 0x07, 0x29, 0x03, 0x28, 0xf7], 'gen2 setScene');
     assert(events.some((e) => e.type === 'scene' && e.index === 3), 'setScene emits scene event');
   }
 
@@ -94,6 +85,6 @@ export async function runGen2Tests(): Promise<void> {
   {
     const { driver, mock } = makeDriver();
     await driver.selectPreset(42);
-    eqFrame(mock.sent[0], buildSwitchPreset(42), 'gen2 selectPreset');
+    eqFrame(mock.sent[0]!, [0xf0, 0x00, 0x01, 0x74, 0x07, 0x3c, 0x00, 0x2a, 0x14, 0xf7], 'gen2 selectPreset');
   }
 }

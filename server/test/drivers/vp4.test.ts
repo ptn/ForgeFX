@@ -1,8 +1,8 @@
 // VP4 driver unit tests — mocked transport, NO hardware. Verifies capabilities + that the allowlisted
-// beta writes emit byte-exact VP4 frames, that the undecoded (gated) writes are refused/omitted, and
-// (R-B1) that grid() reads the whole-preset STRUCTURE blob to populate scene names, current scene, and
-// the true 4-slot chain.
-import { buildVp4SetParam, buildVp4SetBypass, buildVp4Save, buildVp4GetStructureBlob } from 'forgefx-midi/gen3/vp4';
+// beta writes emit BYTE-EXACT golden frames (literal wire bytes, NOT recomputed via the codec's own
+// builders), that the undecoded (gated) writes are refused/omitted, and (R-B1) that grid() reads the
+// whole-preset STRUCTURE blob to populate scene names, current scene, and the true 4-slot chain.
+import { buildVp4GetStructureBlob } from 'forgefx-midi/gen3/vp4';
 import { encode14, fractalChecksum, packValueChunked } from 'forgefx-midi/shared';
 import { createVp4Driver } from '../../src/drivers/vp4.js';
 import type { DriverCtx, DeviceEvent } from '../../src/drivers/types.js';
@@ -72,7 +72,7 @@ export async function runVp4Tests(): Promise<void> {
   {
     const { driver, mock } = makeDriver();
     await driver.setParam(EID, 0, 0.5, true);
-    eqFrame(mock.sent[0], buildVp4SetParam(EID, 0, 0.5, { continuous: true }), 'vp4 continuous setParam');
+    eqFrame(mock.sent[0]!, [0xf0, 0x00, 0x01, 0x74, 0x14, 0x01, 0x64, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x03, 0x78, 0x09, 0xf7], 'vp4 continuous setParam');
   }
 
   // 4. discrete setParam is UNDECODED → clean 400, no frame sent.
@@ -88,14 +88,14 @@ export async function runVp4Tests(): Promise<void> {
   {
     const { driver, mock } = makeDriver();
     await driver.setBypass(EID, true);
-    eqFrame(mock.sent[0], buildVp4SetBypass(EID, true), 'vp4 setBypass');
+    eqFrame(mock.sent[0]!, [0xf0, 0x00, 0x01, 0x74, 0x14, 0x01, 0x64, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x10, 0x03, 0x78, 0x19, 0xf7], 'vp4 setBypass');
   }
 
   // 6. store → the VP4 save frame.
   {
     const { driver, mock } = makeDriver();
     await driver.store(0);
-    eqFrame(mock.sent[0], buildVp4Save(), 'vp4 store/save');
+    eqFrame(mock.sent[0]!, [0xf0, 0x00, 0x01, 0x74, 0x14, 0x01, 0x00, 0x00, 0x00, 0x00, 0x1b, 0x00, 0x00, 0x00, 0x04, 0x00, 0x30, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xf7], 'vp4 store/save');
   }
 
   // 7. grid() issues the structure-blob GET and, on a valid response, populates the 4 scene names,

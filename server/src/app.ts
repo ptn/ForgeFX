@@ -27,6 +27,7 @@ import * as editorCacheImport from './services/editorCacheImport.js';
 import * as colorLabelsImport from './services/colorLabelsImport.js';
 import * as blockLibraryImport from './services/blockLibraryImport.js';
 import * as blockLibrarySave from './services/blockLibrarySave.js';
+import * as presetTemplates from './services/presetTemplates.js';
 import * as editorCacheDiscovery from './services/editorCacheDiscovery.js';
 import * as cloudProfiles from './services/cloudProfiles.js';
 import * as store from './store.js';
@@ -240,6 +241,58 @@ export async function buildApp(registry: DeviceRegistry): Promise<FastifyInstanc
       reply.code(outcome.code);
       return outcome.body;
     },
+  );
+
+  // ── preset templates (~/Documents/Fractal Audio/<Editor>/presets/templates) — plain preset .syx
+  //    files. Caller supplies the directory (no ForgeFX-side settings discovery); sources returns
+  //    metadata only, file returns raw bytes, save writes caller-supplied bytes. NODE-ONLY, and NOT
+  //    device-coupled. See services/presetTemplates.ts. ──
+  app.get<{ Querystring: { templatesPath?: string } }>('/fm3edit/templates/sources', (req, reply) => {
+    const { templatesPath } = req.query;
+    if (!templatesPath) {
+      reply.code(400);
+      return { error: 'templatesPath query parameter is required' };
+    }
+    return { candidates: presetTemplates.discoverTemplateFiles(editorCacheDiscovery.expandHomePath(templatesPath)) };
+  });
+  app.get<{ Querystring: { path?: string; templatesPath?: string } }>('/fm3edit/templates/file', (req, reply) => {
+    const { path, templatesPath } = req.query;
+    if (!templatesPath || !path) {
+      reply.code(400);
+      return { error: 'templatesPath and path are required' };
+    }
+    const bytes = presetTemplates.readTemplateBytes(editorCacheDiscovery.expandHomePath(templatesPath), path);
+    if (!bytes) {
+      reply.code(404);
+      return { error: 'not found' };
+    }
+    reply.type('application/octet-stream');
+    return reply.send(Buffer.from(bytes));
+  });
+  app.post<{ Body: { templatesPath?: string; name?: string; bytes?: number[]; overwrite?: boolean } }>(
+    '/fm3edit/templates/save',
+    (req, reply) => {
+      const { templatesPath, name, bytes, overwrite } = req.body ?? {};
+      if (typeof templatesPath !== 'string' || !templatesPath.trim()) {
+        reply.code(400);
+        return { error: 'templatesPath is required' };
+      }
+      const safeName = presetTemplates.sanitizeTemplateName(name ?? '');
+      if (!safeName) {
+        reply.code(400);
+        return { error: 'name is required and must be a safe filename' };
+      }
+      if (!Array.isArray(bytes) || !bytes.length) {
+        reply.code(400);
+        return { error: 'bytes[] required' };
+      }
+      const out = presetTemplates.writeTemplateFile(editorCacheDiscovery.expandHomePath(templatesPath), safeName, Uint8Array.from(bytes), !!overwrite);
+      if (!out.ok) {
+        reply.code(out.code);
+        return { error: out.error };
+      }
+      return { ok: true, path: out.path };
+    }
   );
 
   // ── local storage folder (Presets/ library + Sync/ plain-syx mirror; see localStore.ts) ──

@@ -74,6 +74,7 @@ export function createRouteManifest(h: Handlers, sh: StoreHandlers): RouteDef[] 
     { method: 'GET', path: '/preset/body', handler: (c) => h.presetBodyH(c.reply) },
     { method: 'POST', path: '/preset/name', handler: (c) => h.setPresetNameH(c.reply, (c.body as { name: string }).name) },
     { method: 'POST', path: '/preset/load', octet: true, handler: (c) => h.presetLoadH(c.reply, c.raw) },
+    { method: 'GET', path: '/preset/blank/syx', handler: (c) => h.presetBlankH(c.reply) },
     { method: 'GET', path: '/preset/locations', handler: (c) => h.locationsH(c.reply) },
     { method: 'POST', path: '/preset/select', handler: (c) => h.presetSelectH(c.reply, (c.body as { number: number }).number) },
     { method: 'POST', path: '/preset/store', handler: (c) => h.presetStoreH(c.reply, (c.body as { number?: number } | undefined)?.number) },

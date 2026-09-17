@@ -7,6 +7,7 @@
 // the router uses a tiny status recorder), so the exact same code produces the exact same
 // status+body on both surfaces. NO node:/fastify imports — this module must load in a browser.
 import type { DeviceRegistry } from '../drivers/registryCore.js';
+import { defaultScaffoldSyx } from 'forgefx-midi/devices/gen3';
 
 /** The one reply capability the shared handlers need: set the response status. FastifyReply's
  *  `code()` matches; the runtime router records the status into its RouterResponse. */
@@ -287,6 +288,18 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
       return await d.loadPresetBytes(bytes);
     } catch (e) { reply.code(503); return { error: (e as Error).message }; }
   };
+  /** The codec's clean "blank" preset for the active model — the client's "start from zero" reset.
+   *  Returns the raw scaffold .syx (the client loads it through the normal /preset/load path, so the
+   *  edit-buffer replacement stays one code path). 501 on a model with no scaffold (AM4/VP4/gen-1/2). */
+  const presetBlankH = async (reply: StatusSink): Promise<Uint8Array | Record<string, unknown>> => {
+    try {
+      const d = await driver();
+      return defaultScaffoldSyx(d.modelId);
+    } catch (e) {
+      reply.code(501);
+      return { error: 'unsupported', capability: 'blankPreset', message: (e as Error).message };
+    }
+  };
   const setPresetNameH = async (reply: StatusSink, name: string) => {
     const d = await driver();
     if (!d.setPresetName) return unsupported(reply, 'setPresetName');
@@ -485,7 +498,7 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
     backupH, restoreH, fwValidateH, deviceParamH, modModelH,
     telemetryConfigH, telemetrySetH,
     decodeH, decodeBytes,
-    presetH, presetSummaryH, presetParamsH, presetBodyH, presetLoadH, setPresetNameH, cabIrsH,
+    presetH, presetSummaryH, presetParamsH, presetBodyH, presetLoadH, presetBlankH, setPresetNameH, cabIrsH,
     blocksCatalogH, blockTypesH,
     setChannelH, setTypeH, rawBlockH, readParamsH, readRangeH, cabStateH, metersH,
     placeCellH, cableH, selectCellH,

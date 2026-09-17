@@ -39,6 +39,7 @@ import { runDeviceCacheTests, DEVICE_CACHE_CASE_COUNT } from './api/device-cache
 import { runEditorCacheImportTests, EDITOR_CACHE_IMPORT_CASE_COUNT } from './api/editor-cache-import.test.js';
 import { runColorLabelsImportTests, COLOR_LABELS_IMPORT_CASE_COUNT } from './api/color-labels-import.test.js';
 import { runBlockLibraryTests, BLOCK_LIBRARY_CASE_COUNT } from './api/block-library.test.js';
+import { runPresetBlankTests, PRESET_BLANK_CASE_COUNT } from './api/preset-blank.test.js';
 import { runBlockLibrarySaveTests, BLOCK_LIBRARY_SAVE_CASE_COUNT } from './api/block-library-save.test.js';
 import { runBlockApplyTests, BLOCK_APPLY_CASE_COUNT } from './api/block-apply.test.js';
 import { runCloudProfilesTests, CLOUD_PROFILES_CASE_COUNT } from './api/cloud-profiles.test.js';
@@ -49,6 +50,7 @@ import { runLocalFolderTests, LOCAL_FOLDER_CASE_COUNT } from './runtime/localFol
 import { runLocalServiceTests, LOCAL_SERVICE_CASE_COUNT } from './runtime/localService.test.js';
 import { runStoreBackendTests, STORE_BACKENDS_CASE_COUNT } from './runtime/storeBackends.test.js';
 import { runPresetMoveTests, PRESET_MOVE_CASE_COUNT } from './services/presetMove.test.js';
+import { runPresetTemplatesTests, PRESET_TEMPLATES_CASE_COUNT } from './services/presetTemplates.test.js';
 import { runTelemetryModuleTests, TELEMETRY_MODULE_CASE_COUNT } from './diagnostics/telemetry.test.js';
 
 const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
@@ -87,6 +89,7 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `api/editor-cache-import (${EDITOR_CACHE_IMPORT_CASE_COUNT} cases, .cache byte-source import + disk discovery, mocked FM3/AM4)`, run: runEditorCacheImportTests },
   { name: `api/color-labels-import (${COLOR_LABELS_IMPORT_CASE_COUNT} cases, FM3-Edit color-assignments parse + disk discovery, no device coupling)`, run: runColorLabelsImportTests },
   { name: `api/block-library (${BLOCK_LIBRARY_CASE_COUNT} cases, explicit .blk library scan + decode, no device coupling)`, run: runBlockLibraryTests },
+  { name: `api/preset-blank (${PRESET_BLANK_CASE_COUNT} cases, clean scaffold .syx per model + 501 for AM4)`, run: runPresetBlankTests },
   { name: `api/block-library-save (${BLOCK_LIBRARY_SAVE_CASE_COUNT} cases, live-block capture + .blk write)`, run: runBlockLibrarySaveTests },
   { name: `api/block-apply (${BLOCK_APPLY_CASE_COUNT} cases, decoded saved-block validation + bulk write)`, run: runBlockApplyTests },
   { name: `api/cloud-profiles (${CLOUD_PROFILES_CASE_COUNT} cases, shared profile check/pull/publish, mocked cloud)`, run: runCloudProfilesTests },
@@ -97,6 +100,7 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `runtime/localService (${LOCAL_SERVICE_CASE_COUNT} cases, /local/* config/scan/write/sync/restore statuses)`, run: runLocalServiceTests },
   { name: `runtime/storeBackends (${STORE_BACKENDS_CASE_COUNT} cases, mem + fs backends + node codec)`, run: runStoreBackendTests },
   { name: `services/presetMove (${PRESET_MOVE_CASE_COUNT} cases, snapshot-first permutation + rollback)`, run: runPresetMoveTests },
+  { name: `services/presetTemplates (${PRESET_TEMPLATES_CASE_COUNT} cases, caller-selected templates dir scan/read/write)`, run: runPresetTemplatesTests },
   { name: `diagnostics/telemetry (${TELEMETRY_MODULE_CASE_COUNT} cases, dark status probe + upload gate)`, run: runTelemetryModuleTests }
 ];
 

@@ -193,6 +193,7 @@ export function createRouteManifest(h: Handlers, sh: StoreHandlers): RouteDef[] 
     { method: 'POST', path: '/version/:id/restore', handler: (c) => sh.versionRestoreH(c.reply, c.params.id!) },
     { method: 'GET', path: '/versions', handler: (c) => { const loc = c.query.get('location'); return sh.versionsH(loc != null ? Number(loc) : undefined); } },
     { method: 'GET', path: '/version/:id/syx', handler: (c) => sh.versionSyxH(c.reply, c.params.id!) },
+    { method: 'POST', path: '/preset/move', handler: (c) => { const b = c.body as { writes?: unknown; slotCount?: number; activeSlot?: number } | undefined; return sh.presetMoveH(c.reply, b); } },
   );
 
   return routes;

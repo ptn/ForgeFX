@@ -4,6 +4,7 @@
 // below is browser-safe, and `Store` is type-only (check-browser-safe.ts enforces it).
 import * as backups from '../services/backups.js';
 import * as deviceCache from '../services/deviceCache.js';
+import * as presetMove from '../services/presetMove.js';
 import type { DeviceRegistry } from '../drivers/registryCore.js';
 import { putStoreDoc } from './services.js';
 import type { Store } from './store.js';
@@ -72,9 +73,26 @@ export function createStoreHandlers(store: Store, registry: DeviceRegistry) {
     return bytes;
   };
 
+  // ── preset move / permutation (snapshot-first; see services/presetMove.ts) ──
+  const presetMoveH = async (
+    reply: StatusSink,
+    body?: { writes?: unknown; slotCount?: number; activeSlot?: number }
+  ) => {
+    try {
+      const d = await driver();
+      if (!d.dumpRaw || !d.loadPresetBytes || !d.store) { reply.code(501); return { error: 'unsupported', capability: 'versionStore' }; }
+      const v = presetMove.validatePresetMoveWrites(body?.writes, body?.slotCount);
+      if (!v.ok) { reply.code(400); return { error: v.error }; }
+      const r = await presetMove.movePresets(store, d, v.writes, body?.activeSlot);
+      if (!r.ok) { reply.code(500); return r; }
+      return r;
+    } catch (e) { reply.code(503); return { error: (e as Error).message }; }
+  };
+
   return {
     cacheStatusH, cacheBuildH, cacheCancelH, cacheDeleteH,
     storeDocsH, storeDocH, storePutH, storeDelH,
-    backupsH, backupPresetH, backupDeviceH, versionLoadH, versionRestoreH, versionsH, versionSyxH
+    backupsH, backupPresetH, backupDeviceH, versionLoadH, versionRestoreH, versionsH, versionSyxH,
+    presetMoveH
   };
 }

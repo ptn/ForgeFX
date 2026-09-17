@@ -48,6 +48,7 @@ import { runTransportTests, TRANSPORT_CASE_COUNT } from './transport/transport.t
 import { runLocalFolderTests, LOCAL_FOLDER_CASE_COUNT } from './runtime/localFolder.test.js';
 import { runLocalServiceTests, LOCAL_SERVICE_CASE_COUNT } from './runtime/localService.test.js';
 import { runStoreBackendTests, STORE_BACKENDS_CASE_COUNT } from './runtime/storeBackends.test.js';
+import { runPresetMoveTests, PRESET_MOVE_CASE_COUNT } from './services/presetMove.test.js';
 import { runTelemetryModuleTests, TELEMETRY_MODULE_CASE_COUNT } from './diagnostics/telemetry.test.js';
 
 const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
@@ -95,6 +96,7 @@ const tests: Array<{ name: string; run: () => void | Promise<void> }> = [
   { name: `runtime/localFolder (${LOCAL_FOLDER_CASE_COUNT} cases, safeRel/scan/sync/restore over a mem adapter)`, run: runLocalFolderTests },
   { name: `runtime/localService (${LOCAL_SERVICE_CASE_COUNT} cases, /local/* config/scan/write/sync/restore statuses)`, run: runLocalServiceTests },
   { name: `runtime/storeBackends (${STORE_BACKENDS_CASE_COUNT} cases, mem + fs backends + node codec)`, run: runStoreBackendTests },
+  { name: `services/presetMove (${PRESET_MOVE_CASE_COUNT} cases, snapshot-first permutation + rollback)`, run: runPresetMoveTests },
   { name: `diagnostics/telemetry (${TELEMETRY_MODULE_CASE_COUNT} cases, dark status probe + upload gate)`, run: runTelemetryModuleTests }
 ];
 

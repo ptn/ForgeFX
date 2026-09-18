@@ -7,7 +7,19 @@
 // the router uses a tiny status recorder), so the exact same code produces the exact same
 // status+body on both surfaces. NO node:/fastify imports — this module must load in a browser.
 import type { DeviceRegistry } from '../drivers/registryCore.js';
-import { defaultScaffoldSyx } from 'forgefx-midi/devices/gen3';
+import { authorGen3PresetFromIRFull, defaultScaffoldSyx } from 'forgefx-midi/devices/gen3';
+
+/** A genuinely BLANK gen-3 preset: the bundled scaffold is the synthesis TEMPLATE (a real factory
+ *  preset), so it must be run through the synth pipeline with an empty IR — which empties the grid,
+ *  the scene names and the block chain and writes the literal `<EMPTY>` name the official editor's
+ *  "Clear Preset" uses. Returns the re-framed, CRC-valid `.syx` for the client's load path. */
+function blankPresetSyx(modelId: number): Uint8Array {
+  return authorGen3PresetFromIRFull(
+    defaultScaffoldSyx(modelId),
+    { name: '<EMPTY>', sceneNames: [], blocks: [], routing: { gridCells: [] } },
+    modelId
+  ).syx;
+}
 
 /** The one reply capability the shared handlers need: set the response status. FastifyReply's
  *  `code()` matches; the runtime router records the status into its RouterResponse. */
@@ -288,13 +300,13 @@ export function createUnifiedHandlers(registry: DeviceRegistry) {
       return await d.loadPresetBytes(bytes);
     } catch (e) { reply.code(503); return { error: (e as Error).message }; }
   };
-  /** The codec's clean "blank" preset for the active model — the client's "start from zero" reset.
-   *  Returns the raw scaffold .syx (the client loads it through the normal /preset/load path, so the
-   *  edit-buffer replacement stays one code path). 501 on a model with no scaffold (AM4/VP4/gen-1/2). */
+  /** The model's BLANK preset — the client's "start from zero" / "Clear preset" reset. Empty grid,
+   *  empty scenes, `<EMPTY>` name; the client loads it through the normal /preset/load path so the
+   *  edit-buffer replacement stays one code path. 501 on a model with no scaffold (AM4/VP4/gen-1/2). */
   const presetBlankH = async (reply: StatusSink): Promise<Uint8Array | Record<string, unknown>> => {
     try {
       const d = await driver();
-      return defaultScaffoldSyx(d.modelId);
+      return blankPresetSyx(d.modelId);
     } catch (e) {
       reply.code(501);
       return { error: 'unsupported', capability: 'blankPreset', message: (e as Error).message };
